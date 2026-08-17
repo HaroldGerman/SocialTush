@@ -271,7 +271,7 @@ public class PostController {
                 .commentsCount(commentsCount)
                 .hasLiked(hasLiked)
                 .isSaved(isSaved)
-                .createdAt(post.getCreatedAt().toString())
+                .createdAt(post.getCreatedAt() != null ? post.getCreatedAt().toString() : java.time.Instant.now().toString())
                 .build();
     }
 

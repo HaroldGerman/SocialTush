@@ -46,7 +46,7 @@ public class NotificationService {
                 .notificationType(notification.getNotificationType())
                 .targetId(notification.getTargetId())
                 .isRead(false)
-                .createdAt(notification.getCreatedAt().toString())
+                .createdAt(notification.getCreatedAt() != null ? notification.getCreatedAt().toString() : java.time.Instant.now().toString())
                 .build();
 
         // 3. Push real-time alert via WebSocket STOMP topic specific to receiver username
