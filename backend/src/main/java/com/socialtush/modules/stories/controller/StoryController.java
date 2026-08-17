@@ -32,6 +32,7 @@ public class StoryController {
     private final FollowRepository followRepository;
     private final ProfileRepository profileRepository;
     private final StorageService storageService;
+    private final com.socialtush.modules.stories.service.StoryService storyService;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> createStory(
@@ -128,6 +129,36 @@ public class StoryController {
         });
 
         return ResponseEntity.ok(responseDtos);
+    }
+
+    @PostMapping("/{id}/view")
+    public ResponseEntity<?> recordView(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+        storyService.recordView(id, currentUser);
+        return ResponseEntity.ok(Map.of("message", "Vista registrada"));
+    }
+
+    @PostMapping("/{id}/reaction")
+    public ResponseEntity<?> recordReaction(@PathVariable UUID id, @RequestParam(value = "reactionType", defaultValue = "HEART") String reactionType, @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+        storyService.recordReaction(id, currentUser, reactionType);
+        return ResponseEntity.ok(Map.of("message", "Reacción registrada"));
+    }
+
+    @GetMapping("/{id}/viewers")
+    public ResponseEntity<?> getStoryViewers(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+        var viewers = storyService.getStoryViewers(id).stream().map(v -> Map.of(
+                "username", v.getViewer().getUsername(),
+                "viewedAt", v.getViewedAt()
+        )).collect(Collectors.toList());
+        return ResponseEntity.ok(viewers);
     }
 
     private StoryDto convertToDto(Story story) {
