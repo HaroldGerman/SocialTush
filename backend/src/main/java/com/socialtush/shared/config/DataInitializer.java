@@ -1,5 +1,7 @@
 package com.socialtush.shared.config;
 
+import com.socialtush.modules.circles.repository.CircleRepository;
+import com.socialtush.modules.circles.service.CircleService;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.users.entity.User;
@@ -17,10 +19,13 @@ public class DataInitializer implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
+    private final CircleRepository circleRepository;
+    private final CircleService circleService;
     private final PasswordEncoder passwordEncoder;
 
     @Override
     public void run(String... args) {
+        User adminUser = null;
         if (userRepository.count() == 0) {
             log.info("Sembrando usuarios por defecto en la base de datos vacía...");
 
@@ -34,13 +39,24 @@ public class DataInitializer implements CommandLineRunner {
             createUserWithProfile("sophia", "sophia@socialtush.com", "password123", "Sophia Loren", "USER");
 
             // 4. Create admin
-            createUserWithProfile("admin", "admin@socialtush.com", "admin123", "Administrador", "ADMIN");
+            adminUser = createUserWithProfile("admin", "admin@socialtush.com", "admin123", "Administrador", "ADMIN");
 
             log.info("Usuarios por defecto sembrados exitosamente.");
+        } else {
+            adminUser = userRepository.findByUsername("admin").orElse(null);
+        }
+
+        if (circleRepository.count() == 0 && adminUser != null) {
+            log.info("Sembrando círculos iniciales en la base de datos...");
+            circleService.createCircle("Exploradores Urbanos", "Amantes de las caminatas, arquitectura y rincones escondidos de la ciudad.", "PUBLIC", "LOCAL", "Lima", "Perú", adminUser);
+            circleService.createCircle("Sostenibles & Eco", "Comunidad orientada al reciclaje, energía limpia y hábitos sostenibles.", "PUBLIC", "GENERAL", null, null, adminUser);
+            circleService.createCircle("Café & Ideas", "Espacio para compartir lecturas, debates de café y proyectos colaborativos.", "PUBLIC", "GENERAL", null, null, adminUser);
+            circleService.createCircle("Developers Perú", "Comunidad de desarrollo de software, arquitectura limpia e inteligencia artificial.", "PUBLIC", "TECH", "Lima", "Perú", adminUser);
+            log.info("Círculos iniciales sembrados exitosamente.");
         }
     }
 
-    private void createUserWithProfile(String username, String email, String password, String displayName, String role) {
+    private User createUserWithProfile(String username, String email, String password, String displayName, String role) {
         User user = User.builder()
                 .username(username)
                 .email(email)
@@ -58,5 +74,6 @@ public class DataInitializer implements CommandLineRunner {
                 .isPrivate(false)
                 .build();
         profileRepository.save(profile);
+        return user;
     }
 }

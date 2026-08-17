@@ -19,6 +19,14 @@
 /home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/chat/repository/ConversationParticipantRepository.java
 /home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/chat/repository/ConversationRepository.java
 /home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/chat/repository/MessageRepository.java
+/home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/circles/controller/CircleController.java
+/home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/circles/entity/Circle.java
+/home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/circles/entity/CircleJoinRequest.java
+/home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/circles/entity/CircleMember.java
+/home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/circles/repository/CircleJoinRequestRepository.java
+/home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/circles/repository/CircleMemberRepository.java
+/home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/circles/repository/CircleRepository.java
+/home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/circles/service/CircleService.java
 /home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/comments/controller/CommentController.java
 /home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/comments/entity/Comment.java
 /home/liftel/SocialTush/backend/src/main/java/com/socialtush/modules/comments/repository/CommentRepository.java

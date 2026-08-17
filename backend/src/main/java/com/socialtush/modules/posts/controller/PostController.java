@@ -52,15 +52,15 @@ public class PostController {
             @RequestParam(value = "location", required = false) String location,
             @RequestParam(value = "musicTitle", required = false) String musicTitle,
             @RequestParam(value = "isShortVideo", defaultValue = "false") boolean isShortVideo,
-            @RequestParam("files") MultipartFile[] files,
+            @RequestParam(value = "files", required = false) MultipartFile[] files,
             @AuthenticationPrincipal User currentUser
     ) {
         if (currentUser == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
 
-        if (files == null || files.length == 0) {
-            return ResponseEntity.badRequest().body(Map.of("message", "Se requiere al menos un archivo multimedia"));
+        if ((caption == null || caption.isBlank()) && (files == null || files.length == 0)) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Se requiere al menos texto o archivo multimedia"));
         }
 
         // 1. Create Post
@@ -73,33 +73,35 @@ public class PostController {
                 .build();
         post = postRepository.save(post);
 
-        // 2. Upload Files and Create PostMedia
+        // 2. Upload Files and Create PostMedia (if files provided)
         List<PostMedia> mediaList = new ArrayList<>();
-        for (int i = 0; i < files.length; i++) {
-            MultipartFile file = files[i];
-            try {
-                String originalFilename = file.getOriginalFilename();
-                String ext = originalFilename != null && originalFilename.contains(".")
-                        ? originalFilename.substring(originalFilename.lastIndexOf("."))
-                        : ".jpg";
-                String randomFilename = UUID.randomUUID().toString() + ext;
+        if (files != null && files.length > 0) {
+            for (int i = 0; i < files.length; i++) {
+                MultipartFile file = files[i];
+                try {
+                    String originalFilename = file.getOriginalFilename();
+                    String ext = originalFilename != null && originalFilename.contains(".")
+                            ? originalFilename.substring(originalFilename.lastIndexOf("."))
+                            : ".jpg";
+                    String randomFilename = UUID.randomUUID().toString() + ext;
 
-                // Upload
-                String fileUrl = storageService.uploadFile(randomFilename, file.getBytes(), file.getContentType());
+                    // Upload
+                    String fileUrl = storageService.uploadFile(randomFilename, file.getBytes(), file.getContentType());
 
-                PostMedia media = PostMedia.builder()
-                        .post(post)
-                        .mediaType(file.getContentType() != null && file.getContentType().startsWith("video") ? "VIDEO" : "IMAGE")
-                        .originalUrl(fileUrl)
-                        .mediumUrl(fileUrl)
-                        .thumbnailUrl(fileUrl)
-                        .displayOrder(i)
-                        .build();
+                    PostMedia media = PostMedia.builder()
+                            .post(post)
+                            .mediaType(file.getContentType() != null && file.getContentType().startsWith("video") ? "VIDEO" : "IMAGE")
+                            .originalUrl(fileUrl)
+                            .mediumUrl(fileUrl)
+                            .thumbnailUrl(fileUrl)
+                            .displayOrder(i)
+                            .build();
 
-                mediaList.add(media);
-            } catch (Exception e) {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body(Map.of("message", "Error al procesar archivo: " + e.getMessage()));
+                    mediaList.add(media);
+                } catch (Exception e) {
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .body(Map.of("message", "Error al procesar archivo: " + e.getMessage()));
+                }
             }
         }
         post.setMediaList(mediaList);
