@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "SocialTush Mobile",
+    "slug": "socialtush-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#09090b",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#09090b"
+      }
+    }
+  }
+}
