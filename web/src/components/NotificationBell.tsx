@@ -110,7 +110,13 @@ export default function NotificationBell() {
   return (
     <div className="relative">
       <button 
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          const nextState = !isOpen;
+          setIsOpen(nextState);
+          if (nextState && unreadCount > 0) {
+            handleMarkAllRead();
+          }
+        }}
         className="p-2.5 rounded-full hover:bg-slate-100 text-slate-600 relative transition-all active:scale-95 border border-transparent focus:outline-none"
         title="Notificaciones"
       >

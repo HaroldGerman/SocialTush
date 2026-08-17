@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight, Play, Pause, Heart, Send } from 'lucide-react';
 
+import { api } from '@/context/AuthContext';
+
 interface Story {
   storyId: string;
   mediaType: string;
@@ -97,12 +99,20 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
     setIsPaused(false);
   };
 
-  const handleSendReply = (e: React.FormEvent) => {
+  const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!replyText.trim()) return;
-    alert(`Respuesta enviada a @${currentUserStories.username}: "${replyText}"`);
+    if (!replyText.trim() || !currentStory) return;
+    const textToSend = replyText.trim();
     setReplyText('');
     setIsPaused(false);
+
+    try {
+      await api.post(`/stories/${currentStory.storyId}/reaction`, { reactionType: 'TEXT', text: textToSend });
+    } catch (err) {}
+
+    try {
+      await api.post('/chat/conversations', { recipientUsername: currentUserStories.username, isGroup: false });
+    } catch (err) {}
   };
 
   if (!currentUserStories || !currentStory) return null;

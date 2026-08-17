@@ -79,10 +79,7 @@ public class WebSocketChatController {
                         part.getUser(),
                         sender,
                         "MESSAGE",
-                        conversation.getId().toString(),
-                        payload.getContent() != null && payload.getContent().length() > 50 
-                                ? payload.getContent().substring(0, 50) + "..." 
-                                : payload.getContent()
+                        conversation.getId()
                 );
             }
         }

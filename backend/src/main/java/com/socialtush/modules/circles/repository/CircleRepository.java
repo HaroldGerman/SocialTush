@@ -16,4 +16,5 @@ public interface CircleRepository extends JpaRepository<Circle, UUID> {
     boolean existsBySlug(String slug);
     List<Circle> findByVisibilityOrderByMembersCountDesc(String visibility);
     List<Circle> findByOwnerId(UUID ownerId);
+    List<Circle> findByNameContainingIgnoreCaseOrDescriptionContainingIgnoreCase(String name, String description);
 }

@@ -227,23 +227,59 @@ function ChatContent() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !activeConversation || !stompClient.current || !stompConnected || !user) return;
+    if (!inputText.trim() || !activeConversation || !user) return;
 
-    stompClient.current.publish({
-      destination: '/app/chat.sendMessage',
-      body: JSON.stringify({
-        conversationId: activeConversation.conversationId,
-        senderUsername: user.username,
-        content: inputText.trim(),
-        messageType: 'TEXT',
-      }),
-    });
-
+    const messageContent = inputText.trim();
     setInputText('');
 
-    // Trigger typing stop
+    // Optimistic UI append
+    const tempId = 'temp-' + Date.now();
+    const optimisticMessage: Message = {
+      messageId: tempId,
+      senderId: user.userId || 'me',
+      senderUsername: user.username,
+      senderDisplayName: user.displayName || user.username,
+      senderAvatarUrl: '',
+      content: messageContent,
+      messageType: 'TEXT',
+      createdAt: 'Ahora mismo'
+    };
+
+    setMessages(prev => [...prev, optimisticMessage]);
+
+    // Update conversation latest message in sidebar
+    setConversations(prev => prev.map(c => {
+      if (c.conversationId === activeConversation.conversationId) {
+        return { ...c, latestMessage: messageContent, updatedAt: new Date().toISOString() };
+      }
+      return c;
+    }));
+
+    if (stompClient.current && stompConnected) {
+      try {
+        stompClient.current.publish({
+          destination: '/app/chat.sendMessage',
+          body: JSON.stringify({
+            conversationId: activeConversation.conversationId,
+            senderUsername: user.username,
+            content: messageContent,
+            messageType: 'TEXT',
+          }),
+        });
+      } catch (err) {
+        console.error('STOMP publish error', err);
+      }
+    } else {
+      try {
+        await api.post(`/chat/conversations/${activeConversation.conversationId}/messages`, {
+          content: messageContent,
+          messageType: 'TEXT'
+        });
+      } catch (err) {}
+    }
+
     sendTypingStatus(false);
   };
 

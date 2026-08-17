@@ -94,7 +94,12 @@ public class StoryController {
                 .map(Follow::getFollowing)
                 .collect(Collectors.toList());
 
-        List<Story> activeStories = storyRepository.findActiveStories(followings, currentUser, Instant.now());
+        List<Story> activeStories;
+        if (followings.isEmpty()) {
+            activeStories = storyRepository.findByExpiresAtAfterOrderByCreatedAtAsc(Instant.now());
+        } else {
+            activeStories = storyRepository.findActiveStories(followings, currentUser, Instant.now());
+        }
 
         // Group stories by User
         Map<User, List<Story>> grouped = activeStories.stream()
