@@ -3,6 +3,7 @@ package com.socialtush.modules.notifications.repository;
 import com.socialtush.modules.notifications.entity.Notification;
 import com.socialtush.modules.users.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import org.springframework.data.jpa.repository.Modifying;
@@ -23,20 +24,20 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     @Transactional
     @Modifying
     @Query("UPDATE Notification n SET n.isRead = true WHERE n.receiver = :receiver AND n.isRead = false")
-    void markAllAsReadForReceiver(User receiver);
+    void markAllAsReadForReceiver(@Param("receiver") User receiver);
 
     @Transactional
     @Modifying
     @Query("UPDATE Notification n SET n.isRead = true WHERE n.receiver = :receiver AND n.notificationType = 'MESSAGE' AND n.isRead = false")
-    void markAllMessagesAsReadForReceiver(User receiver);
+    void markAllMessagesAsReadForReceiver(@Param("receiver") User receiver);
 
     @Transactional
     @Modifying
     @Query("UPDATE Notification n SET n.isRead = true WHERE n.receiver = :receiver AND n.notificationType = 'MESSAGE' AND n.targetId = :targetId AND n.isRead = false")
-    void markConversationMessagesAsRead(User receiver, UUID targetId);
+    void markConversationMessagesAsRead(@Param("receiver") User receiver, @Param("targetId") UUID targetId);
 
     @Transactional
     @Modifying
     @Query("DELETE FROM Notification n WHERE n.receiver = :receiver AND n.isRead = true")
-    void deleteReadNotificationsForReceiver(User receiver);
+    void deleteReadNotificationsForReceiver(@Param("receiver") User receiver);
 }

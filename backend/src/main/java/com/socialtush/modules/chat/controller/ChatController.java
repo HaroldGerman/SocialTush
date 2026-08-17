@@ -52,7 +52,29 @@ public class ChatController {
         }
 
         List<Conversation> conversations = conversationRepository.findUserConversations(currentUser);
-        List<ConversationDto> dtos = conversations.stream().map(c -> {
+        Map<UUID, Conversation> uniquePrivate = new java.util.LinkedHashMap<>();
+        List<Conversation> filteredConversations = new java.util.ArrayList<>();
+
+        for (Conversation c : conversations) {
+            if (c.isGroup()) {
+                filteredConversations.add(c);
+            } else {
+                Optional<ConversationParticipant> otherParticipant = c.getParticipants().stream()
+                        .filter(p -> !p.getUser().getId().equals(currentUser.getId()))
+                        .findFirst();
+                if (otherParticipant.isPresent()) {
+                    UUID otherUserId = otherParticipant.get().getUser().getId();
+                    if (!uniquePrivate.containsKey(otherUserId)) {
+                        uniquePrivate.put(otherUserId, c);
+                        filteredConversations.add(c);
+                    }
+                } else {
+                    filteredConversations.add(c);
+                }
+            }
+        }
+
+        List<ConversationDto> dtos = filteredConversations.stream().map(c -> {
             String name = c.getName();
             String avatarUrl = c.getAvatarUrl();
 
@@ -159,10 +181,11 @@ public class ChatController {
             }
 
             // Check if 1to1 chat already exists
-            Optional<Conversation> existing = conversationRepository.findPrivateConversation(currentUser, recipient);
-            if (existing.isPresent()) {
+            List<Conversation> existingList = conversationRepository.findPrivateConversations(currentUser, recipient);
+            if (!existingList.isEmpty()) {
+                Conversation existing = existingList.get(0);
                 return ResponseEntity.ok(Map.of(
-                        "conversationId", existing.get().getId(),
+                        "conversationId", existing.getId(),
                         "isGroup", false,
                         "message", "Chat ya existente recuperado"
                 ));
