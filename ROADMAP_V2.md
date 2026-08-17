@@ -26,7 +26,7 @@
 | **Señalización Videollamadas** | ✅ | ✅ | 🟡 | 🟡 Parcial | WebSockets activados |
 | **Notificaciones** | ✅ | ✅ | ✅ | 🟢 Hecho | `NotificationBell` activo |
 | **Consola de Admin** | ✅ | ✅ | N/A | 🟢 Hecho | Control de usuarios y moderación |
-| **Tests Automatizados** | ✅ | ✅ | 🟡 | 🟢 Hecho | `mvn test` + `npm test` configurados |
+| **Tests Automatizados** | ✅ | ✅ | 🟡 | 🟢 Hecho | `mvn test` con tests de integración reales MockMvc + H2 en backend y `npm test` en web |
 | **CI/CD Workflows** | 🟡 | 🟡 | 🟡 | ⏳ Siguiente | GitHub Actions pipeline |
 
 ---

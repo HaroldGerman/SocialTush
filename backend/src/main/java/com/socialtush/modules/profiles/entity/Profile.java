@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.springframework.data.domain.Persistable;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -16,7 +17,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Profile {
+public class Profile implements Persistable<UUID> {
 
     @Id
     private UUID userId;
@@ -36,7 +37,7 @@ public class Profile {
     private String avatarUrl;
 
     @Column(name = "interests", columnDefinition = "TEXT")
-    private String interests; // Comma-separated or JSON list of interests
+    private String interests;
 
     @Column(name = "onboarding_completed", nullable = false)
     @Builder.Default
@@ -56,11 +57,11 @@ public class Profile {
 
     @Column(name = "who_can_message", nullable = false, length = 20)
     @Builder.Default
-    private String whoCanMessage = "EVERYONE"; // "EVERYONE", "FOLLOWERS", "NOBODY"
+    private String whoCanMessage = "EVERYONE";
 
     @Column(name = "who_can_comment", nullable = false, length = 20)
     @Builder.Default
-    private String whoCanComment = "EVERYONE"; // "EVERYONE", "FOLLOWERS"
+    private String whoCanComment = "EVERYONE";
 
     @Column(name = "who_can_mention", nullable = false, length = 20)
     @Builder.Default
@@ -81,4 +82,14 @@ public class Profile {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Override
+    public UUID getId() {
+        return userId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return createdAt == null;
+    }
 }

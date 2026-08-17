@@ -15,7 +15,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -134,25 +136,40 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
-        if (request.getCookies() != null) {
+    public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response, @RequestBody(required = false) AuthRequest.Refresh body) {
+        String tokenStr = null;
+
+        // Try getting token from Body first (useful for Mobile)
+        if (body != null && body.getRefreshToken() != null && !body.getRefreshToken().isBlank()) {
+            tokenStr = body.getRefreshToken();
+        }
+
+        // Try getting token from Cookies if not in body
+        if (tokenStr == null && request.getCookies() != null) {
             for (Cookie cookie : request.getCookies()) {
                 if ("refreshToken".equals(cookie.getName())) {
-                    refreshTokenRepository.findByToken(cookie.getValue()).ifPresent(token -> {
-                        token.setRevoked(true);
-                        refreshTokenRepository.save(token);
-                    });
+                    tokenStr = cookie.getValue();
                     break;
                 }
             }
         }
 
-        // Clear Cookie
-        Cookie cookie = new Cookie("refreshToken", null);
-        cookie.setPath("/");
-        cookie.setHttpOnly(true);
-        cookie.setMaxAge(0);
-        response.addCookie(cookie);
+        if (tokenStr != null) {
+            refreshTokenRepository.findByToken(tokenStr).ifPresent(refreshToken -> {
+                refreshToken.setRevoked(true);
+                refreshTokenRepository.save(refreshToken);
+            });
+        }
+
+        // Clear HttpOnly Cookie
+        ResponseCookie cookie = ResponseCookie.from("refreshToken", "")
+                .httpOnly(true)
+                .secure(false)
+                .path("/api/v1/auth")
+                .maxAge(0)
+                .sameSite("Lax")
+                .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
 
         return ResponseEntity.ok(Map.of("message", "Sesión cerrada correctamente"));
     }

@@ -24,6 +24,7 @@ public class DataInitializer implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void run(String... args) {
         User adminUser = null;
         if (userRepository.count() == 0) {
