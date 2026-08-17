@@ -82,11 +82,19 @@ export default function FeedPage() {
   const [commentInputMap, setCommentInputMap] = useState<Record<string, string>>({});
   const [loadingCommentsMap, setLoadingCommentsMap] = useState<Record<string, boolean>>({});
 
+  // Unread Messages Badge State
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+
   // Fetch Feed & Stories on Mount
   useEffect(() => {
     fetchFeedPosts();
     fetchActiveStories();
-  }, []);
+    if (user) {
+      api.get('/notifications/unread-messages-count')
+        .then(res => setUnreadMessagesCount(res.data.count || 0))
+        .catch(() => setUnreadMessagesCount(0));
+    }
+  }, [user]);
 
   const fetchFeedPosts = async () => {
     setLoadingPosts(true);
@@ -323,9 +331,21 @@ export default function FeedPage() {
               <Plus className="w-4 h-4" />
               <span>Crear</span>
             </button>
-            <Link href="/chat" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium text-sm transition-all">
+            <Link 
+              href="/chat" 
+              onClick={() => {
+                api.patch('/notifications/read-messages').catch(() => {});
+                setUnreadMessagesCount(0);
+              }}
+              className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium text-sm transition-all relative"
+            >
               <MessageSquare className="w-4 h-4" />
               <span>Mensajes</span>
+              {unreadMessagesCount > 0 && (
+                <span className="px-1.5 py-0.5 bg-rose-600 text-white font-extrabold text-[10px] rounded-full min-w-[18px] text-center shadow-sm">
+                  {unreadMessagesCount}
+                </span>
+              )}
             </Link>
             <Link href={`/profile/${user?.username || 'usuario_A'}`} className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium text-sm transition-all">
               <User className="w-4 h-4" />

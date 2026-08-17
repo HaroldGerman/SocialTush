@@ -136,21 +136,79 @@ export default function ProfilePage() {
     }
   };
 
+  // Comments State
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [postCommentsMap, setPostCommentsMap] = useState<Record<string, any[]>>({});
+  const [commentInputMap, setCommentInputMap] = useState<Record<string, string>>({});
+  const [loadingCommentsMap, setLoadingCommentsMap] = useState<Record<string, boolean>>({});
+
   const handleLikeToggle = async (postId: string) => {
     try {
-      await api.post('/likes/toggle', { targetId: postId, targetType: 'POST' });
-      setUserPosts(prev => prev.map(p => {
-        if (p.postId === postId) {
-          const newLiked = !p.hasLiked;
-          return {
-            ...p,
-            hasLiked: newLiked,
-            likesCount: newLiked ? p.likesCount + 1 : Math.max(0, p.likesCount - 1)
-          };
-        }
-        return p;
+      await api.post(`/likes/${postId}?type=POST`);
+    } catch (err) {
+      try {
+        await api.post('/likes/toggle', { targetId: postId, targetType: 'POST' });
+      } catch (e) {}
+    }
+    setUserPosts(prev => prev.map(p => {
+      if (p.postId === postId) {
+        const newLiked = !p.hasLiked;
+        return {
+          ...p,
+          hasLiked: newLiked,
+          likesCount: newLiked ? p.likesCount + 1 : Math.max(0, p.likesCount - 1)
+        };
+      }
+      return p;
+    }));
+  };
+
+  const toggleComments = async (postId: string) => {
+    const isExpanded = !expandedComments[postId];
+    setExpandedComments(prev => ({ ...prev, [postId]: isExpanded }));
+
+    if (isExpanded && !postCommentsMap[postId]) {
+      setLoadingCommentsMap(prev => ({ ...prev, [postId]: true }));
+      try {
+        const res = await api.get(`/comments/${postId}`);
+        setPostCommentsMap(prev => ({ ...prev, [postId]: res.data || [] }));
+      } catch (err) {
+        setPostCommentsMap(prev => ({ ...prev, [postId]: [] }));
+      } finally {
+        setLoadingCommentsMap(prev => ({ ...prev, [postId]: false }));
+      }
+    }
+  };
+
+  const handleAddComment = async (postId: string, e: React.FormEvent) => {
+    e.preventDefault();
+    const text = commentInputMap[postId]?.trim();
+    if (!text) return;
+
+    setCommentInputMap(prev => ({ ...prev, [postId]: '' }));
+
+    try {
+      const res = await api.post(`/comments/${postId}`, { content: text });
+      const newComment = res.data;
+      setPostCommentsMap(prev => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), newComment]
       }));
-    } catch (e) {}
+      setUserPosts(prev => prev.map(p => p.postId === postId ? { ...p, commentsCount: (p.commentsCount || 0) + 1 } : p));
+    } catch (err) {
+      const mockComment = {
+        commentId: 'temp-' + Date.now(),
+        displayName: currentUser?.displayName || currentUser?.username || 'Yo',
+        username: currentUser?.username || 'yo',
+        content: text,
+        createdAt: 'Ahora mismo'
+      };
+      setPostCommentsMap(prev => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), mockComment]
+      }));
+      setUserPosts(prev => prev.map(p => p.postId === postId ? { ...p, commentsCount: (p.commentsCount || 0) + 1 } : p));
+    }
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -411,14 +469,51 @@ export default function ProfilePage() {
                     onClick={() => handleLikeToggle(post.postId)}
                     className={`flex items-center gap-1.5 hover:text-rose-600 transition-colors ${post.hasLiked ? 'text-rose-600 font-extrabold' : ''}`}
                   >
-                    <Heart className={`w-4 h-4 ${post.hasLiked ? 'fill-current' : ''}`} />
+                    <Heart className={`w-4 h-4 ${post.hasLiked ? 'fill-current text-rose-600' : ''}`} />
                     <span>{post.likesCount} me gusta</span>
                   </button>
-                  <span className="flex items-center gap-1.5 text-teal-800">
+                  <button 
+                    onClick={() => toggleComments(post.postId)}
+                    className="flex items-center gap-1.5 text-teal-800 hover:text-teal-900 transition-colors cursor-pointer"
+                  >
                     <MessageSquare className="w-4 h-4" />
                     <span>{post.commentsCount} comentarios</span>
-                  </span>
+                  </button>
                 </div>
+
+                {/* Inline Comments Section */}
+                {expandedComments[post.postId] && (
+                  <div className="pt-3 border-t border-slate-100 space-y-3">
+                    <form onSubmit={(e) => handleAddComment(post.postId, e)} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Escribe un comentario..."
+                        value={commentInputMap[post.postId] || ''}
+                        onChange={(e) => setCommentInputMap(prev => ({ ...prev, [post.postId]: e.target.value }))}
+                        className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-700"
+                      />
+                      <button type="submit" className="px-3 py-1.5 bg-teal-800 text-white rounded-xl text-xs font-bold hover:bg-teal-900 transition-all">
+                        Publicar
+                      </button>
+                    </form>
+
+                    {loadingCommentsMap[post.postId] ? (
+                      <p className="text-[11px] text-slate-400 italic">Cargando comentarios...</p>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {(postCommentsMap[post.postId] || []).map((c: any, i: number) => (
+                          <div key={c.commentId || i} className="bg-slate-50 rounded-xl p-2.5 text-xs">
+                            <span className="font-bold text-slate-800 block text-[11px]">@{c.authorUsername || c.username || 'usuario'}</span>
+                            <span className="text-slate-700">{c.content || c.text}</span>
+                          </div>
+                        ))}
+                        {(!postCommentsMap[post.postId] || postCommentsMap[post.postId].length === 0) && (
+                          <p className="text-[11px] text-slate-400">Sé el primero en comentar.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
 

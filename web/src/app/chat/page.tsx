@@ -118,6 +118,7 @@ function ChatContent() {
     };
 
     initConversations();
+    api.patch('/notifications/read-messages').catch(() => {});
   }, [user, targetUsername, fetchConversations]);
 
   // Connect to STOMP WebSocket

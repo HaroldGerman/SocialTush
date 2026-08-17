@@ -25,6 +25,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import com.socialtush.modules.notifications.service.NotificationService;
+
 @RestController
 @RequestMapping("/api/v1/chat")
 @RequiredArgsConstructor
@@ -35,6 +37,7 @@ public class ChatController {
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
+    private final NotificationService notificationService;
 
     @GetMapping("/conversations")
     public ResponseEntity<?> getConversations(@AuthenticationPrincipal User currentUser) {
@@ -221,6 +224,72 @@ public class ChatController {
         Collections.reverse(dtos);
 
         return ResponseEntity.ok(dtos);
+    }
+
+    @PostMapping("/conversations/{conversationId}/messages")
+    public ResponseEntity<?> sendMessage(
+            @PathVariable UUID conversationId,
+            @RequestBody CreateMessageRequest request,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+
+        Conversation conversation = conversationRepository.findById(conversationId).orElse(null);
+        if (conversation == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Conversación no encontrada"));
+        }
+
+        if (!participantRepository.existsByConversationIdAndUserId(conversationId, currentUser.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "No eres miembro de esta conversación"));
+        }
+
+        if (request == null || request.getContent() == null || request.getContent().trim().isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "El mensaje no puede estar vacío"));
+        }
+
+        Message message = Message.builder()
+                .conversation(conversation)
+                .sender(currentUser)
+                .content(request.getContent().trim())
+                .messageType(request.getMessageType() != null ? request.getMessageType() : "TEXT")
+                .build();
+
+        message = messageRepository.save(message);
+
+        // Notify other participants
+        List<ConversationParticipant> participants = participantRepository.findByConversationId(conversationId);
+        for (ConversationParticipant part : participants) {
+            if (!part.getUser().getId().equals(currentUser.getId())) {
+                notificationService.createNotification(
+                        part.getUser(),
+                        currentUser,
+                        "MESSAGE",
+                        conversation.getId()
+                );
+            }
+        }
+
+        Profile senderProfile = profileRepository.findById(currentUser.getId()).orElse(null);
+        MessageResponseDto dto = MessageResponseDto.builder()
+                .messageId(message.getId())
+                .senderId(currentUser.getId())
+                .senderUsername(currentUser.getUsername())
+                .senderDisplayName(senderProfile != null ? senderProfile.getDisplayName() : currentUser.getUsername())
+                .senderAvatarUrl(senderProfile != null ? senderProfile.getAvatarUrl() : "")
+                .content(message.getContent())
+                .messageType(message.getMessageType())
+                .createdAt(message.getCreatedAt().toString())
+                .build();
+
+        return ResponseEntity.ok(dto);
+    }
+
+    @Data
+    public static class CreateMessageRequest {
+        private String content;
+        private String messageType;
     }
 
     @Data

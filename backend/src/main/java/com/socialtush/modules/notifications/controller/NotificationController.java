@@ -86,15 +86,27 @@ public class NotificationController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
 
-        List<Notification> unread = notificationRepository.findByReceiverOrderByCreatedAtDesc(currentUser)
-                .stream().filter(n -> !n.isRead()).collect(Collectors.toList());
-
-        for (Notification n : unread) {
-            n.setRead(true);
-        }
-        notificationRepository.saveAll(unread);
-
+        notificationRepository.markAllAsReadForReceiver(currentUser);
         return ResponseEntity.ok(Map.of("message", "Todas las notificaciones marcadas como leídas"));
+    }
+
+    @GetMapping("/unread-messages-count")
+    public ResponseEntity<?> getUnreadMessagesCount(@AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("count", 0));
+        }
+        long count = notificationRepository.countByReceiverAndNotificationTypeAndIsReadFalse(currentUser, "MESSAGE");
+        return ResponseEntity.ok(Map.of("count", count));
+    }
+
+    @RequestMapping(value = "/read-messages", method = {RequestMethod.POST, RequestMethod.PATCH, RequestMethod.PUT})
+    public ResponseEntity<?> markMessagesAsRead(@AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+
+        notificationRepository.markAllMessagesAsReadForReceiver(currentUser);
+        return ResponseEntity.ok(Map.of("message", "Notificaciones de mensajes marcadas como leídas"));
     }
 
     @PostMapping("/devices")
