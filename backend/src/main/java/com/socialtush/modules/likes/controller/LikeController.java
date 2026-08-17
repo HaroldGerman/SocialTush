@@ -69,4 +69,22 @@ public class LikeController {
                 "message", liked ? "Me gusta registrado" : "Me gusta retirado"
         ));
     }
+
+    @PostMapping("/toggle")
+    public ResponseEntity<?> toggleLikeBody(
+            @RequestBody LikeToggleRequest request,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        if (request == null || request.getTargetId() == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "targetId es requerido"));
+        }
+        String type = request.getTargetType() != null ? request.getTargetType() : "POST";
+        return toggleLike(request.getTargetId(), type, currentUser);
+    }
+
+    @Data
+    public static class LikeToggleRequest {
+        private UUID targetId;
+        private String targetType;
+    }
 }

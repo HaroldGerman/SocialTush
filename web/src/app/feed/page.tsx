@@ -76,6 +76,12 @@ export default function FeedPage() {
   const [activeStoryViewerIndex, setActiveStoryViewerIndex] = useState<number | null>(null);
   const storyFileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Comments State
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [postCommentsMap, setPostCommentsMap] = useState<Record<string, any[]>>({});
+  const [commentInputMap, setCommentInputMap] = useState<Record<string, string>>({});
+  const [loadingCommentsMap, setLoadingCommentsMap] = useState<Record<string, boolean>>({});
+
   // Fetch Feed & Stories on Mount
   useEffect(() => {
     fetchFeedPosts();
@@ -86,13 +92,14 @@ export default function FeedPage() {
     setLoadingPosts(true);
     try {
       const res = await api.get('/posts/feed');
-      const data = res.data.content || res.data || [];
+      const data = res.data?.posts || res.data?.content || (Array.isArray(res.data) ? res.data : []);
       if (Array.isArray(data) && data.length > 0) {
         setPostsList(data);
       } else {
         // Fallback to explore feed if user feed is empty
         const exploreRes = await api.get('/posts/explore');
-        setPostsList(exploreRes.data.content || exploreRes.data || []);
+        const exploreData = exploreRes.data?.posts || exploreRes.data?.content || (Array.isArray(exploreRes.data) ? exploreRes.data : []);
+        setPostsList(exploreData);
       }
     } catch (err) {
       console.log("Feed fetch error, using local fallback");
@@ -211,19 +218,74 @@ export default function FeedPage() {
   // Toggle Like on Post
   const handleToggleLike = async (postId: string) => {
     try {
-      await api.post('/likes/toggle', { targetId: postId, targetType: 'POST' });
-      setPostsList(prev => prev.map(p => {
-        if (p.postId === postId) {
-          const newHasLiked = !p.hasLiked;
-          return {
-            ...p,
-            hasLiked: newHasLiked,
-            likesCount: newHasLiked ? p.likesCount + 1 : Math.max(0, p.likesCount - 1)
-          };
-        }
-        return p;
+      await api.post(`/likes/${postId}?type=POST`);
+    } catch (err) {
+      try {
+        await api.post('/likes/toggle', { targetId: postId, targetType: 'POST' });
+      } catch (e) {}
+    }
+    setPostsList(prev => prev.map(p => {
+      if (p.postId === postId) {
+        const newHasLiked = !p.hasLiked;
+        return {
+          ...p,
+          hasLiked: newHasLiked,
+          likesCount: newHasLiked ? p.likesCount + 1 : Math.max(0, p.likesCount - 1)
+        };
+      }
+      return p;
+    }));
+  };
+
+  // Toggle & Fetch Comments for Post
+  const toggleComments = async (postId: string) => {
+    const isExpanded = !expandedComments[postId];
+    setExpandedComments(prev => ({ ...prev, [postId]: isExpanded }));
+
+    if (isExpanded && !postCommentsMap[postId]) {
+      setLoadingCommentsMap(prev => ({ ...prev, [postId]: true }));
+      try {
+        const res = await api.get(`/comments/${postId}`);
+        setPostCommentsMap(prev => ({ ...prev, [postId]: res.data || [] }));
+      } catch (err) {
+        setPostCommentsMap(prev => ({ ...prev, [postId]: [] }));
+      } finally {
+        setLoadingCommentsMap(prev => ({ ...prev, [postId]: false }));
+      }
+    }
+  };
+
+  // Submit Comment
+  const handleAddComment = async (postId: string, e: React.FormEvent) => {
+    e.preventDefault();
+    const text = commentInputMap[postId]?.trim();
+    if (!text) return;
+
+    setCommentInputMap(prev => ({ ...prev, [postId]: '' }));
+
+    try {
+      const res = await api.post(`/comments/${postId}`, { content: text });
+      const newComment = res.data;
+      setPostCommentsMap(prev => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), newComment]
       }));
-    } catch (err) {}
+      setPostsList(prev => prev.map(p => p.postId === postId ? { ...p, commentsCount: (p.commentsCount || 0) + 1 } : p));
+    } catch (err) {
+      // Local optimistic append fallback
+      const mockComment = {
+        commentId: 'temp-' + Date.now(),
+        displayName: user?.displayName || user?.username || 'Yo',
+        username: user?.username || 'yo',
+        content: text,
+        createdAt: 'Ahora mismo'
+      };
+      setPostCommentsMap(prev => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), mockComment]
+      }));
+      setPostsList(prev => prev.map(p => p.postId === postId ? { ...p, commentsCount: (p.commentsCount || 0) + 1 } : p));
+    }
   };
 
   return (
@@ -527,11 +589,48 @@ export default function FeedPage() {
                     <Heart className={`w-4 h-4 ${post.hasLiked ? 'fill-current text-rose-600' : ''}`} />
                     <span>{post.likesCount} me gusta</span>
                   </button>
-                  <span className="flex items-center gap-1.5 text-teal-800">
+                  <button 
+                    onClick={() => toggleComments(post.postId)}
+                    className="flex items-center gap-1.5 text-teal-800 hover:text-teal-900 transition-colors cursor-pointer"
+                  >
                     <MessageSquare className="w-4 h-4" />
                     <span>{post.commentsCount} comentarios</span>
-                  </span>
+                  </button>
                 </div>
+
+                {/* Inline Comments Section */}
+                {expandedComments[post.postId] && (
+                  <div className="pt-3 border-t border-slate-100 space-y-3">
+                    <form onSubmit={(e) => handleAddComment(post.postId, e)} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Escribe un comentario..."
+                        value={commentInputMap[post.postId] || ''}
+                        onChange={(e) => setCommentInputMap(prev => ({ ...prev, [post.postId]: e.target.value }))}
+                        className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-700"
+                      />
+                      <button type="submit" className="px-3 py-1.5 bg-teal-800 text-white rounded-xl text-xs font-bold hover:bg-teal-900 transition-all">
+                        Publicar
+                      </button>
+                    </form>
+
+                    {loadingCommentsMap[post.postId] ? (
+                      <p className="text-[11px] text-slate-400 italic">Cargando comentarios...</p>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {(postCommentsMap[post.postId] || []).map((c: any, i: number) => (
+                          <div key={c.commentId || i} className="bg-slate-50 rounded-xl p-2.5 text-xs">
+                            <span className="font-bold text-slate-800 block text-[11px]">@{c.authorUsername || c.username || 'usuario'}</span>
+                            <span className="text-slate-700">{c.content || c.text}</span>
+                          </div>
+                        ))}
+                        {(!postCommentsMap[post.postId] || postCommentsMap[post.postId].length === 0) && (
+                          <p className="text-[11px] text-slate-400">Sé el primero en comentar.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
 

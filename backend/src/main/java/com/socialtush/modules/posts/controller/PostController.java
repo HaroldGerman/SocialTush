@@ -133,6 +133,9 @@ public class PostController {
             postPage = postRepository.findAll(pageable);
         } else {
             postPage = postRepository.findFeedPosts(followings, currentUser, pageable);
+            if (postPage.isEmpty()) {
+                postPage = postRepository.findAll(pageable);
+            }
         }
 
         List<PostDto> dtos = postPage.getContent().stream()

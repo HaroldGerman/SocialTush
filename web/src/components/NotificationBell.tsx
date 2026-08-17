@@ -28,10 +28,9 @@ export default function NotificationBell() {
   const fetchNotifications = async () => {
     try {
       const res = await api.get('/notifications');
-      setNotifications(res.data);
-      
-      const countRes = await api.get('/notifications/unread-count');
-      setUnreadCount(countRes.data.count);
+      const generalNotifs = (res.data || []).filter((n: Notification) => n.notificationType !== 'MESSAGE');
+      setNotifications(generalNotifs);
+      setUnreadCount(generalNotifs.filter((n: Notification) => !n.isRead).length);
     } catch (err) {
       setNotifications(getMockNotifications());
       setUnreadCount(1);
@@ -51,8 +50,10 @@ export default function NotificationBell() {
       client.onConnect = () => {
         client.subscribe(`/topic/user.${user.username}.notifications`, (msg) => {
           const newNotif = JSON.parse(msg.body) as Notification;
-          setNotifications((prev) => [newNotif, ...prev]);
-          setUnreadCount((c) => c + 1);
+          if (newNotif.notificationType !== 'MESSAGE') {
+            setNotifications((prev) => [newNotif, ...prev]);
+            setUnreadCount((c) => c + 1);
+          }
         });
       };
 

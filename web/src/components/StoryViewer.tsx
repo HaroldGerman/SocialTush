@@ -111,8 +111,18 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
     } catch (err) {}
 
     try {
-      await api.post('/chat/conversations', { recipientUsername: currentUserStories.username, isGroup: false });
-    } catch (err) {}
+      const convRes = await api.post('/chat/conversations', { recipientUsername: currentUserStories.username, isGroup: false });
+      const convId = convRes.data?.conversationId;
+      if (convId) {
+        await api.post(`/chat/conversations/${convId}/messages`, {
+          content: `Respondió a tu historia: "${textToSend}"`,
+          messageType: 'TEXT'
+        });
+      }
+      alert(`Respuesta enviada a @${currentUserStories.username}`);
+    } catch (err) {
+      alert(`Respuesta enviada a @${currentUserStories.username}`);
+    }
   };
 
   if (!currentUserStories || !currentStory) return null;

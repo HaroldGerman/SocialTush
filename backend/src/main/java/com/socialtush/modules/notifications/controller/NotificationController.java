@@ -80,7 +80,7 @@ public class NotificationController {
         return ResponseEntity.ok(Map.of("message", "Notificación marcada como leída"));
     }
 
-    @PostMapping("/read-all")
+    @RequestMapping(value = "/read-all", method = {RequestMethod.POST, RequestMethod.PATCH, RequestMethod.PUT})
     public ResponseEntity<?> markAllAsRead(@AuthenticationPrincipal User currentUser) {
         if (currentUser == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
