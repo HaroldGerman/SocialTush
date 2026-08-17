@@ -5,6 +5,7 @@ import com.socialtush.modules.likes.repository.LikeRepository;
 import com.socialtush.modules.notifications.service.NotificationService;
 import com.socialtush.modules.posts.repository.PostRepository;
 import com.socialtush.modules.users.entity.User;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

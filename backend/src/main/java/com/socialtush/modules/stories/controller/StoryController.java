@@ -146,11 +146,22 @@ public class StoryController {
     }
 
     @PostMapping("/{id}/reaction")
-    public ResponseEntity<?> recordReaction(@PathVariable UUID id, @RequestParam(value = "reactionType", defaultValue = "HEART") String reactionType, @AuthenticationPrincipal User currentUser) {
+    public ResponseEntity<?> recordReaction(
+            @PathVariable UUID id,
+            @RequestParam(value = "reactionType", required = false) String reactionTypeParam,
+            @RequestBody(required = false) Map<String, Object> body,
+            @AuthenticationPrincipal User currentUser
+    ) {
         if (currentUser == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
-        storyService.recordReaction(id, currentUser, reactionType);
+        String type = "HEART";
+        if (reactionTypeParam != null && !reactionTypeParam.isBlank()) {
+            type = reactionTypeParam;
+        } else if (body != null && body.get("reactionType") != null) {
+            type = body.get("reactionType").toString();
+        }
+        storyService.recordReaction(id, currentUser, type);
         return ResponseEntity.ok(Map.of("message", "Reacción registrada"));
     }
 

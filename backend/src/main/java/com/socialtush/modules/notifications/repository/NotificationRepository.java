@@ -18,6 +18,8 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     long countByReceiverAndIsReadFalse(User receiver);
     long countByReceiverAndNotificationTypeAndIsReadFalse(User receiver, String notificationType);
 
+    long countByReceiverAndNotificationTypeAndTargetIdAndIsReadFalse(User receiver, String notificationType, UUID targetId);
+
     @Transactional
     @Modifying
     @Query("UPDATE Notification n SET n.isRead = true WHERE n.receiver = :receiver AND n.isRead = false")
@@ -27,4 +29,14 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     @Modifying
     @Query("UPDATE Notification n SET n.isRead = true WHERE n.receiver = :receiver AND n.notificationType = 'MESSAGE' AND n.isRead = false")
     void markAllMessagesAsReadForReceiver(User receiver);
+
+    @Transactional
+    @Modifying
+    @Query("UPDATE Notification n SET n.isRead = true WHERE n.receiver = :receiver AND n.notificationType = 'MESSAGE' AND n.targetId = :targetId AND n.isRead = false")
+    void markConversationMessagesAsRead(User receiver, UUID targetId);
+
+    @Transactional
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.receiver = :receiver AND n.isRead = true")
+    void deleteReadNotificationsForReceiver(User receiver);
 }

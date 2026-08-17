@@ -109,6 +109,31 @@ public class NotificationController {
         return ResponseEntity.ok(Map.of("message", "Notificaciones de mensajes marcadas como leídas"));
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteNotification(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+
+        Notification notification = notificationRepository.findById(id).orElse(null);
+        if (notification == null || !notification.getReceiver().getId().equals(currentUser.getId())) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Notificación no encontrada"));
+        }
+
+        notificationRepository.delete(notification);
+        return ResponseEntity.ok(Map.of("message", "Notificación eliminada"));
+    }
+
+    @DeleteMapping
+    public ResponseEntity<?> clearReadNotifications(@AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+
+        notificationRepository.deleteReadNotificationsForReceiver(currentUser);
+        return ResponseEntity.ok(Map.of("message", "Notificaciones leídas eliminadas"));
+    }
+
     @PostMapping("/devices")
     public ResponseEntity<?> registerDevice(@RequestBody DeviceRegisterRequest request, @AuthenticationPrincipal User currentUser) {
         if (currentUser == null) {

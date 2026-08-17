@@ -121,8 +121,8 @@ export default function FeedPage() {
       const res = await api.get('/stories/active');
       setGroupedStories(res.data || []);
     } catch (err) {
-      // Mock fallback stories
-      setGroupedStories(getMockStories());
+      console.error('Error fetching stories:', err);
+      setGroupedStories([]);
     }
   };
 

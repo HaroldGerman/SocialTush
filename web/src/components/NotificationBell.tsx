@@ -32,8 +32,9 @@ export default function NotificationBell() {
       setNotifications(generalNotifs);
       setUnreadCount(generalNotifs.filter((n: Notification) => !n.isRead).length);
     } catch (err) {
-      setNotifications(getMockNotifications());
-      setUnreadCount(1);
+      console.error('Error fetching notifications:', err);
+      setNotifications([]);
+      setUnreadCount(0);
     }
   };
 
@@ -77,10 +78,7 @@ export default function NotificationBell() {
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (err) {
-      setNotifications((prev) =>
-        prev.map((n) => (n.notificationId === id ? { ...n, isRead: true } : n))
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+      console.error('Error marking notification as read:', err);
     }
   };
 
@@ -90,8 +88,26 @@ export default function NotificationBell() {
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       setUnreadCount(0);
     } catch (err) {
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      setUnreadCount(0);
+      console.error('Error marking all notifications as read:', err);
+    }
+  };
+
+  const handleClearReadNotifications = async () => {
+    try {
+      await api.delete('/notifications');
+      setNotifications((prev) => prev.filter((n) => !n.isRead));
+    } catch (err) {
+      console.error('Error clearing read notifications:', err);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.delete(`/notifications/${id}`);
+      setNotifications((prev) => prev.filter((n) => n.notificationId !== id));
+    } catch (err) {
+      console.error('Error deleting notification:', err);
     }
   };
 
@@ -136,14 +152,23 @@ export default function NotificationBell() {
           <div className="absolute right-0 mt-2.5 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
             <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800">Notificaciones</span>
-              {unreadCount > 0 && (
-                <button 
-                  onClick={handleMarkAllRead}
-                  className="text-[11px] text-teal-700 hover:text-teal-800 font-bold"
+              <div className="flex items-center gap-2">
+                {unreadCount > 0 && (
+                  <button 
+                    onClick={handleMarkAllRead}
+                    className="text-[11px] text-teal-700 hover:text-teal-800 font-bold"
+                  >
+                    Marcar todo leído
+                  </button>
+                )}
+                <button
+                  onClick={handleClearReadNotifications}
+                  className="text-[11px] text-slate-500 hover:text-rose-600 font-semibold"
+                  title="Limpiar leídas"
                 >
-                  Marcar todo leído
+                  Limpiar
                 </button>
-              )}
+              </div>
             </div>
 
             <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
@@ -171,15 +196,24 @@ export default function NotificationBell() {
                     <span className="text-[10px] text-slate-400 mt-1 block">Reciente</span>
                   </div>
 
-                  {!n.isRead && (
-                    <button 
-                      onClick={(e) => handleMarkAsRead(n.notificationId, e)}
-                      className="p-1 rounded-full bg-teal-100 text-teal-800 hover:bg-teal-200 transition-colors"
-                      title="Marcar como leída"
+                  <div className="flex items-center gap-1">
+                    {!n.isRead && (
+                      <button 
+                        onClick={(e) => handleMarkAsRead(n.notificationId, e)}
+                        className="p-1 rounded-full bg-teal-100 text-teal-800 hover:bg-teal-200 transition-colors"
+                        title="Marcar como leída"
+                      >
+                        <Check className="h-3 w-3" />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => handleDeleteNotification(n.notificationId, e)}
+                      className="p-1 rounded-full text-slate-300 hover:text-rose-600 transition-colors"
+                      title="Eliminar"
                     >
-                      <Check className="h-3 w-3" />
+                      &times;
                     </button>
-                  )}
+                  </div>
                 </div>
               ))}
 
@@ -194,19 +228,4 @@ export default function NotificationBell() {
       )}
     </div>
   );
-}
-
-function getMockNotifications(): Notification[] {
-  return [
-    {
-      notificationId: '1',
-      senderUsername: 'sophia',
-      senderDisplayName: 'Sophia Loren',
-      senderAvatarUrl: '',
-      notificationType: 'FOLLOW',
-      targetId: '',
-      isRead: false,
-      createdAt: new Date().toISOString()
-    }
-  ];
 }

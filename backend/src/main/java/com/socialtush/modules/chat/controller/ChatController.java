@@ -1,5 +1,12 @@
 package com.socialtush.modules.chat.controller;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import com.socialtush.modules.chat.entity.Conversation;
 import com.socialtush.modules.chat.entity.ConversationParticipant;
 import com.socialtush.modules.chat.entity.Message;
@@ -22,9 +29,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.*;
-import java.util.stream.Collectors;
-
+import com.socialtush.modules.notifications.repository.NotificationRepository;
 import com.socialtush.modules.notifications.service.NotificationService;
 
 @RestController
@@ -38,6 +43,7 @@ public class ChatController {
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final NotificationService notificationService;
+    private final NotificationRepository notificationRepository;
 
     @GetMapping("/conversations")
     public ResponseEntity<?> getConversations(@AuthenticationPrincipal User currentUser) {
@@ -67,6 +73,8 @@ public class ChatController {
             Optional<Message> latestMessage = messageRepository.findFirstByConversationIdOrderByCreatedAtDesc(c.getId());
             String latestText = latestMessage.map(Message::getContent).orElse("No hay mensajes");
             String latestTime = latestMessage.map(m -> m.getCreatedAt().toString()).orElse(c.getUpdatedAt().toString());
+            String latestSender = latestMessage.map(m -> m.getSender() != null ? m.getSender().getUsername() : "").orElse("");
+            long unreadCount = notificationRepository.countByReceiverAndNotificationTypeAndTargetIdAndIsReadFalse(currentUser, "MESSAGE", c.getId());
 
             return ConversationDto.builder()
                     .conversationId(c.getId())
@@ -74,6 +82,8 @@ public class ChatController {
                     .avatarUrl(avatarUrl)
                     .isGroup(c.isGroup())
                     .latestMessage(latestText)
+                    .latestMessageSenderUsername(latestSender)
+                    .unreadCount((int) unreadCount)
                     .updatedAt(latestTime)
                     .build();
         }).collect(Collectors.toList());
@@ -254,6 +264,7 @@ public class ChatController {
                 .sender(currentUser)
                 .content(request.getContent().trim())
                 .messageType(request.getMessageType() != null ? request.getMessageType() : "TEXT")
+                .storyPreviewId(request.getStoryPreviewId())
                 .build();
 
         message = messageRepository.save(message);
@@ -280,16 +291,31 @@ public class ChatController {
                 .senderAvatarUrl(senderProfile != null ? senderProfile.getAvatarUrl() : "")
                 .content(message.getContent())
                 .messageType(message.getMessageType())
+                .storyPreviewId(message.getStoryPreviewId())
                 .createdAt(message.getCreatedAt().toString())
                 .build();
 
         return ResponseEntity.ok(dto);
     }
 
+    @RequestMapping(value = "/conversations/{conversationId}/read", method = {RequestMethod.POST, RequestMethod.PATCH, RequestMethod.PUT})
+    public ResponseEntity<?> markConversationAsRead(
+            @PathVariable UUID conversationId,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+
+        notificationRepository.markConversationMessagesAsRead(currentUser, conversationId);
+        return ResponseEntity.ok(Map.of("message", "Conversación marcada como leída"));
+    }
+
     @Data
     public static class CreateMessageRequest {
         private String content;
         private String messageType;
+        private UUID storyPreviewId;
     }
 
     @Data
@@ -300,6 +326,8 @@ public class ChatController {
         private String avatarUrl;
         private boolean isGroup;
         private String latestMessage;
+        private String latestMessageSenderUsername;
+        private int unreadCount;
         private String updatedAt;
     }
 
@@ -321,6 +349,7 @@ public class ChatController {
         private String senderAvatarUrl;
         private String content;
         private String messageType;
+        private UUID storyPreviewId;
         private String createdAt;
     }
 }

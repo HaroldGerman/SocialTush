@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight, Play, Pause, Heart, Send } from 'lucide-react';
 
-import { api } from '@/context/AuthContext';
+import { api, useAuth } from '@/context/AuthContext';
 
 interface Story {
   storyId: string;
@@ -30,6 +30,7 @@ interface StoryViewerProps {
 }
 
 export default function StoryViewer({ groupedStories, initialUserIndex, onClose }: StoryViewerProps) {
+  const { user } = useAuth();
   const [userIndex, setUserIndex] = useState(initialUserIndex);
   const [storyIndex, setStoryIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -40,12 +41,20 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
 
   const currentUserStories = groupedStories[userIndex];
   const currentStory = currentUserStories?.stories[storyIndex];
+  const isOwnStory = user?.username && currentUserStories?.username && user.username.toLowerCase() === currentUserStories.username.toLowerCase();
 
   // Reset story index when user index changes
   useEffect(() => {
     setStoryIndex(0);
     setProgress(0);
   }, [userIndex]);
+
+  // Record view automatically
+  useEffect(() => {
+    if (currentStory && !isOwnStory) {
+      api.post(`/stories/${currentStory.storyId}/view`).catch(() => {});
+    }
+  }, [currentStory, isOwnStory]);
 
   // Handle automatic progress timer (5 seconds per story)
   useEffect(() => {
@@ -99,29 +108,52 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
     setIsPaused(false);
   };
 
+  const formatRelativeTime = (dateStr: string) => {
+    if (!dateStr) return '';
+    try {
+      const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+      if (diff < 60) return ' · hace ' + Math.max(1, diff) + ' s';
+      if (diff < 3600) return ' · hace ' + Math.floor(diff / 60) + ' min';
+      return ' · hace ' + Math.floor(diff / 3600) + ' h';
+    } catch {
+      return '';
+    }
+  };
+
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!replyText.trim() || !currentStory) return;
+    if (isOwnStory) {
+      alert("Es tu propia historia.");
+      return;
+    }
     const textToSend = replyText.trim();
-    setReplyText('');
     setIsPaused(false);
-
-    try {
-      await api.post(`/stories/${currentStory.storyId}/reaction`, { reactionType: 'TEXT', text: textToSend });
-    } catch (err) {}
 
     try {
       const convRes = await api.post('/chat/conversations', { recipientUsername: currentUserStories.username, isGroup: false });
       const convId = convRes.data?.conversationId;
       if (convId) {
         await api.post(`/chat/conversations/${convId}/messages`, {
-          content: `Respondió a tu historia: "${textToSend}"`,
-          messageType: 'TEXT'
+          content: textToSend,
+          messageType: 'STORY_REPLY',
+          storyPreviewId: currentStory.storyId
         });
       }
+      setReplyText('');
       alert(`Respuesta enviada a @${currentUserStories.username}`);
     } catch (err) {
-      alert(`Respuesta enviada a @${currentUserStories.username}`);
+      console.error('Error enviando respuesta a historia:', err);
+      alert('No se pudo enviar la respuesta. Inténtalo de nuevo.');
+    }
+  };
+
+  const handleSendEmojiReaction = async (emojiType: string) => {
+    if (!currentStory) return;
+    try {
+      await api.post(`/stories/${currentStory.storyId}/reaction`, { reactionType: emojiType });
+    } catch (err) {
+      console.error('Error enviando reacción:', err);
     }
   };
 
@@ -146,7 +178,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
           {currentUserStories.stories.map((s, idx) => (
             <div key={s.storyId} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-indigo-500 rounded-full transition-all duration-75"
+                className="h-full bg-teal-500 rounded-full transition-all duration-75"
                 style={{ 
                   width: idx < storyIndex ? '100%' : idx === storyIndex ? `${progress}%` : '0%' 
                 }}
@@ -168,7 +200,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
             )}
             <div>
               <span className="text-white text-xs font-bold block">{currentUserStories.displayName}</span>
-              <span className="text-[10px] text-zinc-400 block">@{currentUserStories.username}</span>
+              <span className="text-[10px] text-zinc-400 block">@{currentUserStories.username}{formatRelativeTime(currentStory.createdAt)}</span>
             </div>
           </div>
 
@@ -218,8 +250,22 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
         </div>
       </div>
 
-      {/* Bottom quick action chat reply */}
-      <div className="w-full max-w-lg p-4 bg-zinc-950 border-t border-zinc-900 z-25 flex items-center gap-3">
+      {/* Bottom quick action chat reply & reactions */}
+      <div className="w-full max-w-lg p-4 bg-zinc-950 border-t border-zinc-900 z-25 flex flex-col gap-2">
+        {/* Quick Emoji Reactions */}
+        <div className="flex items-center justify-around py-1 text-lg">
+          {['❤️', '😂', '😮', '😢', '🔥'].map((emoji, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => handleSendEmojiReaction(emoji)}
+              className="hover:scale-125 transition-transform p-1"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+
         <form onSubmit={handleSendReply} className="flex-1 flex gap-2">
           <input
             type="text"
@@ -227,11 +273,11 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
             value={replyText}
             onFocus={() => setIsPaused(true)}
             onChange={(e) => setReplyText(e.target.value)}
-            className="flex-grow px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500/80 transition-all placeholder-zinc-500"
+            className="flex-grow px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-teal-500/80 transition-all placeholder-zinc-500"
           />
           <button 
             type="submit"
-            className="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl active:scale-95 transition-all flex items-center justify-center"
+            className="p-2.5 bg-teal-800 hover:bg-teal-900 text-white rounded-xl active:scale-95 transition-all flex items-center justify-center font-bold text-xs"
           >
             <Send className="h-4 w-4" />
           </button>
