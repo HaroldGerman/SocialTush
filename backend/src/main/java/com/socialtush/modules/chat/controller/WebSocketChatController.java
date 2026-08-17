@@ -1,9 +1,12 @@
 package com.socialtush.modules.chat.controller;
 
 import com.socialtush.modules.chat.entity.Conversation;
+import com.socialtush.modules.chat.entity.ConversationParticipant;
 import com.socialtush.modules.chat.entity.Message;
+import com.socialtush.modules.chat.repository.ConversationParticipantRepository;
 import com.socialtush.modules.chat.repository.ConversationRepository;
 import com.socialtush.modules.chat.repository.MessageRepository;
+import com.socialtush.modules.notifications.service.NotificationService;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.users.entity.User;
@@ -16,6 +19,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Controller
@@ -25,8 +29,10 @@ public class WebSocketChatController {
     private final SimpMessagingTemplate messagingTemplate;
     private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
+    private final ConversationParticipantRepository participantRepository;
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
+    private final NotificationService notificationService;
 
     @MessageMapping("/chat.sendMessage")
     public void sendMessage(ChatMessagePayload payload) {
@@ -59,16 +65,31 @@ public class WebSocketChatController {
                 .senderAvatarUrl(profile != null ? profile.getAvatarUrl() : "")
                 .content(message.getContent())
                 .messageType(message.getMessageType())
-                .createdAt(message.getCreatedAt().toString())
+                .createdAt(message.getCreatedAt() != null ? message.getCreatedAt().toString() : Instant.now().toString())
                 .build();
 
         // 4. Broadcast message to all subscribers of this conversation topic
         messagingTemplate.convertAndSend("/topic/conversation." + payload.getConversationId(), dto);
+
+        // 5. Notify each participant (except sender) via real-time notifications
+        List<ConversationParticipant> participants = participantRepository.findByConversationId(conversation.getId());
+        for (ConversationParticipant part : participants) {
+            if (!part.getUser().getId().equals(sender.getId())) {
+                notificationService.createNotification(
+                        part.getUser(),
+                        sender,
+                        "MESSAGE",
+                        conversation.getId().toString(),
+                        payload.getContent() != null && payload.getContent().length() > 50 
+                                ? payload.getContent().substring(0, 50) + "..." 
+                                : payload.getContent()
+                );
+            }
+        }
     }
 
     @MessageMapping("/chat.typing")
-    public void sendTyping(ChatTypingPayload payload) {
-        // Propagate typing state dynamically to the room
+    public void handleTyping(TypingPayload payload) {
         messagingTemplate.convertAndSend("/topic/conversation." + payload.getConversationId() + ".typing", payload);
     }
 
@@ -81,7 +102,7 @@ public class WebSocketChatController {
     }
 
     @Data
-    public static class ChatTypingPayload {
+    public static class TypingPayload {
         private String conversationId;
         private String username;
         private boolean isTyping;

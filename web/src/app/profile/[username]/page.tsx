@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth, api } from '@/context/AuthContext';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import NotificationBell from '@/components/NotificationBell';
 import { 
   User, Lock, Settings, LogOut, Grid, Bookmark, Users, ChevronLeft, Check, Plus, Edit2, ShieldAlert, Sparkles, MessageSquare, MapPin, Radio, Calendar, Home, Compass, Search, Bell, Heart, Activity, Award
 } from 'lucide-react';
@@ -24,12 +25,30 @@ interface ProfileData {
   readReceiptsEnabled: boolean;
 }
 
+interface PostData {
+  postId: string;
+  userId: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string;
+  caption: string;
+  location?: string;
+  musicTitle?: string;
+  mediaUrls: string[];
+  likesCount: number;
+  commentsCount: number;
+  hasLiked: boolean;
+  isSaved?: boolean;
+  createdAt: string;
+}
+
 export default function ProfilePage() {
   const { username } = useParams() as { username: string };
   const { user: currentUser, logout, isLoading: authLoading } = useAuth();
   const router = useRouter();
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [userPosts, setUserPosts] = useState<PostData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'MOMENTOS' | 'RESPUESTAS' | 'CIRCULOS' | 'GUARDADOS'>('MOMENTOS');
@@ -52,8 +71,15 @@ export default function ProfilePage() {
       setEditDisplayName(res.data.displayName);
       setEditBio(res.data.bio || '');
       setEditIsPrivate(res.data.isPrivate);
+
+      // Load real posts for user
+      try {
+        const postsRes = await api.get(`/posts/user/${username}`);
+        setUserPosts(postsRes.data.content || postsRes.data || []);
+      } catch (e) {
+        setUserPosts([]);
+      }
     } catch (err: any) {
-      // Fallback self-healing profile
       setProfile({
         userId: 'fallback-id',
         username: username,
@@ -110,6 +136,23 @@ export default function ProfilePage() {
     }
   };
 
+  const handleLikeToggle = async (postId: string) => {
+    try {
+      await api.post('/likes/toggle', { targetId: postId, targetType: 'POST' });
+      setUserPosts(prev => prev.map(p => {
+        if (p.postId === postId) {
+          const newLiked = !p.hasLiked;
+          return {
+            ...p,
+            hasLiked: newLiked,
+            likesCount: newLiked ? p.likesCount + 1 : Math.max(0, p.likesCount - 1)
+          };
+        }
+        return p;
+      }));
+    } catch (e) {}
+  };
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpdating(true);
@@ -162,7 +205,7 @@ export default function ProfilePage() {
               <Home className="w-4 h-4" />
               <span>Inicio</span>
             </Link>
-            <Link href="/feed" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium text-sm transition-all">
+            <Link href="/circles" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium text-sm transition-all">
               <Compass className="w-4 h-4" />
               <span>Círculos</span>
             </Link>
@@ -177,6 +220,7 @@ export default function ProfilePage() {
           </nav>
 
           <div className="flex items-center gap-4">
+            <NotificationBell />
             <button onClick={() => router.push('/feed')} className="flex items-center gap-1.5 text-xs font-bold text-teal-800 hover:underline">
               <ChevronLeft className="w-4 h-4" />
               Volver al Feed
@@ -188,7 +232,7 @@ export default function ProfilePage() {
       {/* Main Container */}
       <main className="max-w-[1200px] mx-auto w-full px-6 py-8 flex-1 space-y-6">
         
-        {/* Profile Card Header (Matching Dark Teal Banner Card in RITMO Design) */}
+        {/* Profile Card Header */}
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
           {/* Top Banner Gradient */}
           <div className="h-40 bg-gradient-to-r from-teal-900 via-teal-800 to-emerald-800 p-6 relative flex items-end">
@@ -220,103 +264,91 @@ export default function ProfilePage() {
                         : 'bg-teal-700 hover:bg-teal-600 text-white'
                     }`}
                   >
-                    {profile.isFollowing ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Plus className="w-3.5 h-3.5" />}
-                    {profile.isFollowing ? 'Siguiendo' : 'Seguir'}
+                    {profile.isFollowing ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-teal-700" />
+                        Siguiendo
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5" />
+                        Seguir
+                      </>
+                    )}
                   </button>
-                  <button 
-                    onClick={() => router.push(`/chat?username=${profile.username}`)}
-                    className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold backdrop-blur-md transition-all"
+                  <Link 
+                    href="/chat"
+                    className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold backdrop-blur-md flex items-center gap-1.5 transition-all"
                   >
+                    <MessageSquare className="w-3.5 h-3.5" />
                     Mensaje
-                  </button>
+                  </Link>
                 </>
               )}
             </div>
           </div>
 
-          {/* Profile Header Info Content */}
+          {/* Profile Header Details */}
           <div className="px-8 pb-8 pt-0 relative">
-            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-6 -mt-16 mb-6">
-              {/* Avatar */}
-              <div className="w-28 h-28 rounded-full bg-white p-1.5 shadow-xl shrink-0">
-                <div className="w-full h-full rounded-full bg-gradient-to-tr from-teal-800 to-emerald-700 flex items-center justify-center font-black text-white text-3xl shadow-inner">
-                  {profile.displayName.charAt(0).toUpperCase()}
+            <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 -mt-16 mb-6">
+              <div className="flex items-end gap-5">
+                <div className="w-28 h-28 rounded-3xl bg-gradient-to-tr from-teal-800 to-emerald-600 p-1 shadow-xl">
+                  <div className="w-full h-full rounded-[22px] bg-white flex items-center justify-center font-black text-teal-800 text-3xl">
+                    {profile.displayName.charAt(0).toUpperCase()}
+                  </div>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    {profile.displayName}
+                    {profile.isPrivate && <span title="Perfil Privado"><Lock className="w-4 h-4 text-slate-400" /></span>}
+                  </h1>
+                  <span className="text-xs font-bold text-teal-800">@{profile.username}</span>
                 </div>
               </div>
 
-              {/* Names & Tagline */}
-              <div className="flex-1 text-center sm:text-left">
-                <div className="flex flex-col sm:flex-row items-center gap-2">
-                  <h1 className="text-2xl font-black text-slate-800 tracking-tight">{profile.displayName}</h1>
-                  <span className="text-xs font-bold text-teal-800 bg-teal-50 px-3 py-1 rounded-full border border-teal-100">
-                    @{profile.username}
-                  </span>
+              {/* Stats Bar */}
+              <div className="flex items-center gap-6 bg-slate-50 border border-slate-200/80 px-6 py-3 rounded-2xl">
+                <div className="text-center">
+                  <span className="block text-base font-black text-slate-800">{userPosts.length}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Momentos</span>
                 </div>
-                <p className="text-xs text-slate-500 font-semibold mt-1 flex items-center justify-center sm:justify-start gap-2">
-                  <span>Diseñadora • Curiosa • Cafetera</span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1 text-slate-600">
-                    <MapPin className="w-3 h-3 text-teal-800" />
-                    Ciudad de México
-                  </span>
-                </p>
+                <div className="h-6 w-px bg-slate-200" />
+                <div className="text-center">
+                  <span className="block text-base font-black text-slate-800">{profile.followersCount}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Seguidores</span>
+                </div>
+                <div className="h-6 w-px bg-slate-200" />
+                <div className="text-center">
+                  <span className="block text-base font-black text-slate-800">{profile.followingCount}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Siguiendo</span>
+                </div>
               </div>
             </div>
 
-            {/* Bio text */}
-            <p className="text-xs text-slate-600 leading-relaxed font-medium max-w-2xl bg-slate-50 p-4 rounded-2xl border border-slate-200">
-              "{profile.bio || 'Construyendo comunidad desde las pequeñas cosas. Compartiendo momentos, arte y proyectos sostenibles.'}"
+            <p className="text-sm text-slate-600 font-medium max-w-2xl leading-relaxed mb-4">
+              {profile.bio || '¡Hola! Bienvenido a mi espacio en SocialTush. 🚀'}
             </p>
-
-            {/* Stats Metrics Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 pt-6 mt-6 border-t border-slate-100">
-              <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-200">
-                <span className="block text-base font-black text-teal-800">32</span>
-                <span className="text-[10px] text-slate-400 font-bold uppercase">Momentos</span>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-200">
-                <span className="block text-base font-black text-teal-800">18</span>
-                <span className="text-[10px] text-slate-400 font-bold uppercase">Respuestas</span>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-200">
-                <span className="block text-base font-black text-amber-600">7</span>
-                <span className="text-[10px] text-slate-400 font-bold uppercase">Proyectos</span>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-200">
-                <span className="block text-base font-black text-emerald-600">54</span>
-                <span className="text-[10px] text-slate-400 font-bold uppercase">Aportes</span>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-200">
-                <span className="block text-base font-black text-slate-800">{profile.followersCount}</span>
-                <span className="text-[10px] text-slate-400 font-bold uppercase">Seguidores</span>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-2xl text-center border border-slate-200">
-                <span className="block text-base font-black text-slate-800">{profile.followingCount}</span>
-                <span className="text-[10px] text-slate-400 font-bold uppercase">Seguidos</span>
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* Profile Content Tabs */}
+        {/* Tab Navigation */}
         <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {[
-              { id: 'MOMENTOS', label: '⚡ MIS MOMENTOS' },
-              { id: 'RESPUESTAS', label: '💬 RESPUESTAS' },
-              { id: 'CIRCULOS', label: '👥 MIS CÍRCULOS' },
-              { id: 'GUARDADOS', label: '⭐️ GUARDADOS' },
+              { id: 'MOMENTOS', label: 'Momentos', icon: Grid },
+              { id: 'CIRCULOS', label: 'Círculos', icon: Compass },
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all ${
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all ${
                   activeTab === tab.id
-                    ? 'bg-teal-800 text-white shadow-md shadow-teal-800/20'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                    ? 'bg-teal-800 text-white shadow-sm'
+                    : 'text-slate-500 hover:bg-white hover:text-slate-800'
                 }`}
               >
-                {tab.label}
+                <tab.icon className="w-4 h-4" />
+                <span>{tab.label}</span>
               </button>
             ))}
           </div>
@@ -349,39 +381,54 @@ export default function ProfilePage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-teal-800 text-white font-bold flex items-center justify-center text-xs">
-                  {profile.displayName.charAt(0)}
+            {userPosts.map(post => (
+              <div key={post.postId} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-teal-800 text-white font-bold flex items-center justify-center text-xs shadow-sm">
+                      {post.displayName ? post.displayName.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-sm text-slate-800">{post.displayName || post.username}</h5>
+                      <span className="text-[10px] text-slate-400 font-medium">@{post.username}</span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-semibold">{post.createdAt || 'Reciente'}</span>
                 </div>
-                <div>
-                  <h5 className="font-bold text-xs text-slate-800">{profile.displayName}</h5>
-                  <span className="text-[10px] text-slate-400">Hace 2 horas • En Café & Ideas</span>
-                </div>
-              </div>
-              <p className="text-xs text-slate-700 font-medium leading-relaxed">
-                ¡Nuevos diseños listos para el taller colaborativo del fin de semana! Nos vemos en el Café Centro a las 5:00 PM. ☕🎨
-              </p>
-              <div className="flex items-center gap-4 pt-2 border-t border-slate-100 text-xs text-slate-500 font-bold">
-                <span className="flex items-center gap-1 text-rose-600">❤️ 24 me gusta</span>
-                <span className="flex items-center gap-1 text-teal-800">💬 6 comentarios</span>
-              </div>
-            </div>
 
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-teal-800 text-white font-bold flex items-center justify-center text-xs">
-                  {profile.displayName.charAt(0)}
-                </div>
-                <div>
-                  <h5 className="font-bold text-xs text-slate-800">{profile.displayName}</h5>
-                  <span className="text-[10px] text-slate-400">Ayer • En Sostenibles</span>
+                <p className="text-sm text-slate-700 font-medium leading-relaxed">
+                  {post.caption}
+                </p>
+
+                {post.mediaUrls && post.mediaUrls.length > 0 && (
+                  <div className="rounded-2xl overflow-hidden max-h-96 border border-slate-100">
+                    <img src={post.mediaUrls[0]} alt="Media" className="w-full h-full object-cover" />
+                  </div>
+                )}
+
+                <div className="flex items-center gap-6 pt-3 border-t border-slate-100 text-xs text-slate-500 font-bold">
+                  <button 
+                    onClick={() => handleLikeToggle(post.postId)}
+                    className={`flex items-center gap-1.5 hover:text-rose-600 transition-colors ${post.hasLiked ? 'text-rose-600 font-extrabold' : ''}`}
+                  >
+                    <Heart className={`w-4 h-4 ${post.hasLiked ? 'fill-current' : ''}`} />
+                    <span>{post.likesCount} me gusta</span>
+                  </button>
+                  <span className="flex items-center gap-1.5 text-teal-800">
+                    <MessageSquare className="w-4 h-4" />
+                    <span>{post.commentsCount} comentarios</span>
+                  </span>
                 </div>
               </div>
-              <p className="text-xs text-slate-700 font-medium leading-relaxed">
-                Avanzando un 65% en la preparación de compostaje urbano con los vecinos del barrio. 🌿
-              </p>
-            </div>
+            ))}
+
+            {userPosts.length === 0 && (
+              <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center text-slate-400 space-y-2">
+                <Grid className="w-8 h-8 mx-auto text-slate-300" />
+                <p className="text-xs font-bold text-slate-600">No hay momentos publicados aún</p>
+                <p className="text-[11px] text-slate-400">Este usuario no ha compartido ninguna publicación.</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -401,35 +448,58 @@ export default function ProfilePage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-600">Nombre público</label>
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nombre Visible</label>
                 <input 
                   type="text" 
                   value={editDisplayName}
                   onChange={(e) => setEditDisplayName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-teal-800"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold focus:outline-none focus:border-teal-700"
                   required
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-600">Biografía</label>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Biografía</label>
                 <textarea 
+                  rows={3}
                   value={editBio}
                   onChange={(e) => setEditBio(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-teal-800 h-24 resize-none"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium focus:outline-none focus:border-teal-700 resize-none"
                   placeholder="Cuéntanos sobre ti..."
                 />
               </div>
 
-              <button
-                type="submit"
-                disabled={updating}
-                className="w-full py-3 bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs rounded-xl shadow-md shadow-teal-800/20"
-              >
-                {updating ? 'Guardando...' : 'Guardar Cambios'}
-              </button>
+              <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                <div>
+                  <span className="block text-xs font-bold text-slate-800">Perfil Privado</span>
+                  <span className="text-[10px] text-slate-400">Requiere aprobación para seguirte</span>
+                </div>
+                <input 
+                  type="checkbox"
+                  checked={editIsPrivate}
+                  onChange={(e) => setEditIsPrivate(e.target.checked)}
+                  className="w-4 h-4 accent-teal-800 rounded"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating}
+                  className="px-6 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
+                >
+                  {updating ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
             </form>
           </div>
         </div>

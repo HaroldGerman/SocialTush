@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth, api } from '@/context/AuthContext';
-import { Bell, Heart, MessageSquare, UserPlus, Mail, Circle, Check } from 'lucide-react';
+import { Bell, Check, MessageSquare } from 'lucide-react';
 import { Client } from '@stomp/stompjs';
+import { useRouter } from 'next/navigation';
 
 interface Notification {
   notificationId: string;
@@ -18,6 +19,7 @@ interface Notification {
 
 export default function NotificationBell() {
   const { user } = useAuth();
+  const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -31,7 +33,6 @@ export default function NotificationBell() {
       const countRes = await api.get('/notifications/unread-count');
       setUnreadCount(countRes.data.count);
     } catch (err) {
-      // Mock notifications in fallback case
       setNotifications(getMockNotifications());
       setUnreadCount(1);
     }
@@ -41,7 +42,6 @@ export default function NotificationBell() {
     if (user) {
       fetchNotifications();
 
-      // Subscribe to real-time notifications via STOMP WebSocket
       const client = new Client({
         brokerURL: 'ws://localhost:8080/ws/chat',
         reconnectDelay: 5000,
@@ -60,7 +60,9 @@ export default function NotificationBell() {
       stompClient.current = client;
 
       return () => {
-        if (stompClient.current) stompClient.current.deactivate();
+        if (stompClient.current) {
+          stompClient.current.deactivate();
+        }
       };
     }
   }, [user]);
@@ -68,29 +70,39 @@ export default function NotificationBell() {
   const handleMarkAsRead = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await api.post(`/notifications/${id}/read`);
+      await api.patch(`/notifications/${id}/read`);
       setNotifications((prev) =>
         prev.map((n) => (n.notificationId === id ? { ...n, isRead: true } : n))
       );
-      setUnreadCount((c) => Math.max(0, c - 1));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (err) {
-      // Offline fallback
       setNotifications((prev) =>
         prev.map((n) => (n.notificationId === id ? { ...n, isRead: true } : n))
       );
-      setUnreadCount((c) => Math.max(0, c - 1));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
     }
   };
 
   const handleMarkAllRead = async () => {
     try {
-      await api.post('/notifications/read-all');
+      await api.patch('/notifications/read-all');
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       setUnreadCount(0);
     } catch (err) {
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       setUnreadCount(0);
     }
+  };
+
+  const handleNotificationClick = (n: Notification) => {
+    if (n.notificationType === 'MESSAGE') {
+      router.push('/chat');
+    } else if (n.notificationType === 'FOLLOW' || n.notificationType === 'FOLLOW_REQUEST') {
+      router.push(`/profile/${n.senderUsername}`);
+    } else {
+      router.push('/feed');
+    }
+    setIsOpen(false);
   };
 
   if (!user) return null;
@@ -99,11 +111,12 @@ export default function NotificationBell() {
     <div className="relative">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors text-zinc-300 relative active:scale-95"
+        className="p-2.5 rounded-full hover:bg-slate-100 text-slate-600 relative transition-all active:scale-95 border border-transparent focus:outline-none"
+        title="Notificaciones"
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="w-5 h-5 text-slate-700" />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-indigo-600 text-white font-extrabold text-[9px] flex items-center justify-center animate-pulse">
+          <span className="absolute top-1 right-1 h-4 min-w-4 px-1 rounded-full bg-rose-500 text-white font-extrabold text-[10px] flex items-center justify-center animate-pulse shadow-sm">
             {unreadCount}
           </span>
         )}
@@ -111,51 +124,50 @@ export default function NotificationBell() {
 
       {isOpen && (
         <>
-          {/* Overlay to close */}
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           
-          <div className="absolute right-0 mt-2.5 w-80 bg-zinc-900 border border-zinc-850 rounded-2xl shadow-2xl z-50 overflow-hidden animate-scale-in">
-            {/* Header */}
-            <div className="p-3 border-b border-zinc-800 flex items-center justify-between">
-              <span className="text-xs font-bold text-white">Actividad</span>
+          <div className="absolute right-0 mt-2.5 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+            <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800">Notificaciones</span>
               {unreadCount > 0 && (
                 <button 
                   onClick={handleMarkAllRead}
-                  className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold"
+                  className="text-[11px] text-teal-700 hover:text-teal-800 font-bold"
                 >
                   Marcar todo leído
                 </button>
               )}
             </div>
 
-            {/* List */}
-            <div className="max-h-72 overflow-y-auto divide-y divide-zinc-800/40">
+            <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
               {notifications.map((n) => (
                 <div 
                   key={n.notificationId}
-                  className={`p-3 flex items-start gap-3 hover:bg-zinc-950/20 transition-all cursor-pointer ${
-                    !n.isRead ? 'bg-indigo-500/5' : 'bg-transparent'
+                  onClick={() => handleNotificationClick(n)}
+                  className={`p-3 flex items-start gap-3 hover:bg-slate-50 transition-all cursor-pointer ${
+                    !n.isRead ? 'bg-teal-50/50' : 'bg-white'
                   }`}
                 >
-                  <div className="h-8 w-8 rounded-full bg-zinc-850 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-                    {n.senderDisplayName.charAt(0).toUpperCase()}
+                  <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-teal-700 to-emerald-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0 shadow-sm">
+                    {n.senderDisplayName ? n.senderDisplayName.charAt(0).toUpperCase() : 'S'}
                   </div>
                   
                   <div className="flex-1 min-w-0">
-                    <p className="text-[11px] text-zinc-300 leading-normal">
-                      <strong className="text-white">@{n.senderUsername}</strong>{' '}
-                      {n.notificationType === 'LIKE_POST' && 'le dio me gusta a tu post.'}
-                      {n.notificationType === 'COMMENT' && 'comentó en tu post.'}
+                    <p className="text-xs text-slate-700 leading-snug">
+                      <strong className="text-slate-900 font-semibold">@{n.senderUsername}</strong>{' '}
+                      {n.notificationType === 'LIKE_POST' && 'le dio me gusta a tu publicación.'}
+                      {n.notificationType === 'COMMENT' && 'comentó en tu publicación.'}
                       {n.notificationType === 'FOLLOW' && 'comenzó a seguirte.'}
                       {n.notificationType === 'FOLLOW_REQUEST' && 'te envió una solicitud de seguimiento.'}
+                      {n.notificationType === 'MESSAGE' && 'te envió un mensaje directo.'}
                     </p>
-                    <span className="text-[9px] text-zinc-650 mt-1 block">hace un momento</span>
+                    <span className="text-[10px] text-slate-400 mt-1 block">Reciente</span>
                   </div>
 
                   {!n.isRead && (
                     <button 
                       onClick={(e) => handleMarkAsRead(n.notificationId, e)}
-                      className="p-1 rounded-full bg-zinc-950 border border-zinc-800 text-indigo-400 hover:bg-zinc-800 transition-colors"
+                      className="p-1 rounded-full bg-teal-100 text-teal-800 hover:bg-teal-200 transition-colors"
                       title="Marcar como leída"
                     >
                       <Check className="h-3 w-3" />
@@ -165,8 +177,8 @@ export default function NotificationBell() {
               ))}
 
               {notifications.length === 0 && (
-                <div className="text-center py-8 text-zinc-600 text-xs font-semibold">
-                  Sin notificaciones recientes
+                <div className="text-center py-8 text-slate-400 text-xs font-medium">
+                  Sin notificaciones pendientes
                 </div>
               )}
             </div>
@@ -180,12 +192,12 @@ export default function NotificationBell() {
 function getMockNotifications(): Notification[] {
   return [
     {
-      notificationId: 'n1',
+      notificationId: '1',
       senderUsername: 'sophia',
       senderDisplayName: 'Sophia Loren',
       senderAvatarUrl: '',
-      notificationType: 'LIKE_POST',
-      targetId: 't1',
+      notificationType: 'FOLLOW',
+      targetId: '',
       isRead: false,
       createdAt: new Date().toISOString()
     }
