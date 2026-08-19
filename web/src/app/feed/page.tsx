@@ -181,24 +181,10 @@ export default function FeedPage() {
       setPostsList(prev => [res.data, ...prev]);
       setNewMomentText('');
       setSelectedFile(null);
-    } catch (err) {
-      // Local optimistic append if offline
-      const mockPost: PostData = {
-        postId: Math.random().toString(),
-        userId: user?.userId || '1',
-        username: user?.username || 'usuario_A',
-        displayName: user?.displayName || 'Usuario A',
-        avatarUrl: '',
-        caption: newMomentText,
-        mediaUrls: selectedFile ? [URL.createObjectURL(selectedFile)] : [],
-        likesCount: 0,
-        commentsCount: 0,
-        hasLiked: false,
-        createdAt: 'Ahora mismo'
-      };
-      setPostsList(prev => [mockPost, ...prev]);
-      setNewMomentText('');
-      setSelectedFile(null);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'Error al publicar la entrada';
+      console.error('Error al publicar post:', err);
+      alert(errorMsg);
     } finally {
       setIsPublishing(false);
     }

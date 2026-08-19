@@ -1,13 +1,10 @@
 package com.socialtush.modules.posts.controller;
 
-import com.socialtush.modules.comments.repository.CommentRepository;
-import com.socialtush.modules.likes.repository.LikeRepository;
-import com.socialtush.modules.media.service.StorageService;
 import com.socialtush.modules.posts.entity.Post;
-import com.socialtush.modules.posts.entity.PostMedia;
 import com.socialtush.modules.posts.entity.SavedPost;
 import com.socialtush.modules.posts.repository.PostRepository;
 import com.socialtush.modules.posts.repository.SavedPostRepository;
+import com.socialtush.modules.posts.service.PostService;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.social.entity.Follow;
@@ -41,10 +38,8 @@ public class PostController {
     private final SavedPostRepository savedPostRepository;
     private final FollowRepository followRepository;
     private final ProfileRepository profileRepository;
-    private final LikeRepository likeRepository;
-    private final CommentRepository commentRepository;
     private final UserRepository userRepository;
-    private final StorageService storageService;
+    private final PostService postService;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> createPost(
@@ -59,55 +54,8 @@ public class PostController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
 
-        if ((caption == null || caption.isBlank()) && (files == null || files.length == 0)) {
-            return ResponseEntity.badRequest().body(Map.of("message", "Se requiere al menos texto o archivo multimedia"));
-        }
-
-        // 1. Create Post
-        Post post = Post.builder()
-                .user(currentUser)
-                .caption(caption)
-                .location(location)
-                .musicTitle(musicTitle)
-                .isShortVideo(isShortVideo)
-                .build();
-        post = postRepository.save(post);
-
-        // 2. Upload Files and Create PostMedia (if files provided)
-        List<PostMedia> mediaList = new ArrayList<>();
-        if (files != null && files.length > 0) {
-            for (int i = 0; i < files.length; i++) {
-                MultipartFile file = files[i];
-                try {
-                    String originalFilename = file.getOriginalFilename();
-                    String ext = originalFilename != null && originalFilename.contains(".")
-                            ? originalFilename.substring(originalFilename.lastIndexOf("."))
-                            : ".jpg";
-                    String randomFilename = UUID.randomUUID().toString() + ext;
-
-                    // Upload
-                    String fileUrl = storageService.uploadFile(randomFilename, file.getBytes(), file.getContentType());
-
-                    PostMedia media = PostMedia.builder()
-                            .post(post)
-                            .mediaType(file.getContentType() != null && file.getContentType().startsWith("video") ? "VIDEO" : "IMAGE")
-                            .originalUrl(fileUrl)
-                            .mediumUrl(fileUrl)
-                            .thumbnailUrl(fileUrl)
-                            .displayOrder(i)
-                            .build();
-
-                    mediaList.add(media);
-                } catch (Exception e) {
-                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                            .body(Map.of("message", "Error al procesar archivo: " + e.getMessage()));
-                }
-            }
-        }
-        post.setMediaList(mediaList);
-        post = postRepository.save(post);
-
-        return ResponseEntity.ok(convertToDto(post, currentUser));
+        PostDto dto = postService.createPost(caption, location, musicTitle, isShortVideo, files, currentUser);
+        return ResponseEntity.ok(dto);
     }
 
     @GetMapping("/feed")
@@ -122,14 +70,12 @@ public class PostController {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
 
-        // Get followed users
         List<User> followings = followRepository.findByFollower(currentUser).stream()
                 .map(Follow::getFollowing)
                 .collect(Collectors.toList());
 
         Page<Post> postPage;
         if (followings.isEmpty()) {
-            // Fallback: show standard recent public posts
             postPage = postRepository.findAll(pageable);
         } else {
             postPage = postRepository.findFeedPosts(followings, currentUser, pageable);
@@ -139,7 +85,7 @@ public class PostController {
         }
 
         List<PostDto> dtos = postPage.getContent().stream()
-                .map(p -> convertToDto(p, currentUser))
+                .map(p -> postService.convertToDto(p, currentUser))
                 .collect(Collectors.toList());
 
         Map<String, Object> response = new HashMap<>();
@@ -163,7 +109,7 @@ public class PostController {
         Page<Post> postPage = postRepository.findExplorePosts(reelsOnly, pageable);
 
         List<PostDto> dtos = postPage.getContent().stream()
-                .map(p -> convertToDto(p, currentUser))
+                .map(p -> postService.convertToDto(p, currentUser))
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(dtos);
@@ -181,7 +127,6 @@ public class PostController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Usuario no encontrado"));
         }
 
-        // Verify privacy boundaries
         Profile targetProfile = profileRepository.findById(targetUser.getId()).orElse(null);
         boolean isSelf = currentUser != null && currentUser.getId().equals(targetUser.getId());
         boolean isFollowing = currentUser != null && followRepository.existsByFollowerAndFollowing(currentUser, targetUser);
@@ -194,7 +139,7 @@ public class PostController {
         Page<Post> postPage = postRepository.findByUserOrderByCreatedAtDesc(targetUser, pageable);
 
         List<PostDto> dtos = postPage.getContent().stream()
-                .map(p -> convertToDto(p, currentUser))
+                .map(p -> postService.convertToDto(p, currentUser))
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(dtos);
@@ -235,7 +180,7 @@ public class PostController {
         Page<Post> reelsPage = postRepository.findExplorePosts(true, pageable);
 
         List<PostDto> dtos = reelsPage.getContent().stream()
-                .map(post -> convertToDto(post, currentUser))
+                .map(post -> postService.convertToDto(post, currentUser))
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(Map.of(
@@ -245,37 +190,6 @@ public class PostController {
                 "totalPages", reelsPage.getTotalPages(),
                 "isLast", reelsPage.isLast()
         ));
-    }
-
-    private PostDto convertToDto(Post post, User currentUser) {
-        Profile profile = profileRepository.findById(post.getUser().getId()).orElse(null);
-        
-        long likesCount = likeRepository.countByTargetIdAndTargetType(post.getId(), "POST");
-        long commentsCount = commentRepository.countByPostId(post.getId());
-        
-        boolean hasLiked = currentUser != null && likeRepository.existsByUserAndTargetIdAndTargetType(currentUser, post.getId(), "POST");
-        boolean isSaved = currentUser != null && savedPostRepository.existsByUserAndPostId(currentUser, post.getId());
-
-        List<String> mediaUrls = post.getMediaList().stream()
-                .map(PostMedia::getOriginalUrl)
-                .collect(Collectors.toList());
-
-        return PostDto.builder()
-                .postId(post.getId())
-                .userId(post.getUser().getId())
-                .username(post.getUser().getUsername())
-                .displayName(profile != null ? profile.getDisplayName() : post.getUser().getUsername())
-                .avatarUrl(profile != null ? profile.getAvatarUrl() : "")
-                .caption(post.getCaption())
-                .location(post.getLocation())
-                .musicTitle(post.getMusicTitle())
-                .mediaUrls(mediaUrls)
-                .likesCount(likesCount)
-                .commentsCount(commentsCount)
-                .hasLiked(hasLiked)
-                .isSaved(isSaved)
-                .createdAt(post.getCreatedAt() != null ? post.getCreatedAt().toString() : java.time.Instant.now().toString())
-                .build();
     }
 
     @Data

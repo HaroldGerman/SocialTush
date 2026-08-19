@@ -44,8 +44,8 @@ app:
     refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:604800000}
   
   storage:
-    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
-    access-key: ${MINIO_ACCESS_KEY:socialtush_minio_admin}
-    secret-key: ${MINIO_SECRET_KEY:socialtush_minio_secret}
-    bucket-name: ${MINIO_BUCKET_NAME:socialtush-media}
-    public-url: ${MINIO_PUBLIC_URL:http://localhost:9000/socialtush-media}
+    endpoint: ${APP_STORAGE_ENDPOINT:${MINIO_ENDPOINT:http://localhost:9000}}
+    access-key: ${APP_STORAGE_ACCESS_KEY:${MINIO_ACCESS_KEY:socialtush_minio_admin}}
+    secret-key: ${APP_STORAGE_SECRET_KEY:${MINIO_SECRET_KEY:socialtush_minio_secret}}
+    bucket-name: ${APP_STORAGE_BUCKET_NAME:${MINIO_BUCKET_NAME:socialtush-media}}
+    public-url: ${APP_STORAGE_PUBLIC_URL:${MINIO_PUBLIC_URL:http://localhost:9000/socialtush-media}}

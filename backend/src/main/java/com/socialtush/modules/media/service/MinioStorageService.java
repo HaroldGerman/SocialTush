@@ -1,5 +1,6 @@
 package com.socialtush.modules.media.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -13,6 +14,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import jakarta.annotation.PostConstruct;
 import java.net.URI;
 
+@Slf4j
 @Service
 public class MinioStorageService implements StorageService {
 
@@ -36,21 +38,29 @@ public class MinioStorageService implements StorageService {
     @PostConstruct
     public void init() {
         try {
-            this.s3Client = S3Client.builder()
-                    .endpointOverride(URI.create(endpoint))
-                    .credentialsProvider(StaticCredentialsProvider.create(
-                            AwsBasicCredentials.create(accessKey, secretKey)
-                    ))
-                    .region(Region.US_EAST_1)
-                    .serviceConfiguration(b -> b.pathStyleAccessEnabled(true))
-                    .build();
+            if (endpoint != null && !endpoint.isBlank()) {
+                this.s3Client = S3Client.builder()
+                        .endpointOverride(URI.create(endpoint))
+                        .credentialsProvider(StaticCredentialsProvider.create(
+                                AwsBasicCredentials.create(accessKey, secretKey)
+                        ))
+                        .region(Region.US_EAST_1)
+                        .serviceConfiguration(b -> b.pathStyleAccessEnabled(true))
+                        .build();
+                log.info("Storage S3Client successfully initialized for endpoint: {}", endpoint);
+            }
         } catch (Exception e) {
-            // S3Client creation failure, fallback enabled
+            log.error("Failed to initialize S3Client with endpoint [{}]: {}", endpoint, e.getMessage());
         }
     }
 
     @Override
     public String uploadFile(String filename, byte[] content, String contentType) {
+        if (s3Client == null) {
+            log.error("Storage upload rejected: S3Client is not initialized. Endpoint: {}", endpoint);
+            throw new IllegalStateException("El servicio de almacenamiento de imágenes no está disponible o no está configurado.");
+        }
+
         try {
             PutObjectRequest putRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
@@ -59,25 +69,30 @@ public class MinioStorageService implements StorageService {
                     .build();
 
             s3Client.putObject(putRequest, RequestBody.fromBytes(content));
-            return publicUrl + "/" + filename;
+
+            String cleanPublicUrl = publicUrl != null ? publicUrl.replaceAll("/+$", "") : "";
+            String finalUrl = cleanPublicUrl + "/" + filename;
+            log.info("File uploaded successfully to S3/MinIO: {}", finalUrl);
+            return finalUrl;
         } catch (Exception e) {
-            // Fallback for sandboxes without local MinIO running: returns stable, visually pleasing picsum images
-            return "https://picsum.photos/seed/" + filename.hashCode() + "/800/800";
+            log.error("Storage upload error for file [{}] in bucket [{}]: {}", filename, bucketName, e.getMessage(), e);
+            throw new RuntimeException("Error al subir el archivo al almacenamiento de producción: " + e.getMessage(), e);
         }
     }
 
     @Override
     public void deleteFile(String filename) {
         try {
-            if (s3Client != null) {
+            if (s3Client != null && filename != null && !filename.isBlank()) {
                 DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
                         .bucket(bucketName)
                         .key(filename)
                         .build();
                 s3Client.deleteObject(deleteRequest);
+                log.info("File deleted successfully from S3/MinIO: {}", filename);
             }
         } catch (Exception e) {
-            // Ignore error on deletion fallback
+            log.error("Error deleting file [{}] from bucket [{}]: {}", filename, bucketName, e.getMessage());
         }
     }
 }
