@@ -28,7 +28,7 @@ export default function NotificationBell() {
   const fetchNotifications = async () => {
     try {
       const res = await api.get('/notifications');
-      const generalNotifs = (res.data || []).filter((n: Notification) => n.notificationType !== 'MESSAGE');
+      const generalNotifs = (res.data || []).filter((n: Notification) => n.notificationType !== 'MESSAGE' && !n.isRead);
       setNotifications(generalNotifs);
       setUnreadCount(generalNotifs.filter((n: Notification) => !n.isRead).length);
     } catch (err) {
