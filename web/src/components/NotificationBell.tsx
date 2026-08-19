@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth, api } from '@/context/AuthContext';
+import { WS_BASE_URL } from '@/config/api';
 import { Bell, Check, MessageSquare } from 'lucide-react';
 import { Client } from '@stomp/stompjs';
 import { useRouter } from 'next/navigation';
@@ -43,7 +44,7 @@ export default function NotificationBell() {
       fetchNotifications();
 
       const client = new Client({
-        brokerURL: 'ws://localhost:8080/ws/chat',
+        brokerURL: WS_BASE_URL,
         reconnectDelay: 5000,
         debug: (str) => console.log(str),
       });

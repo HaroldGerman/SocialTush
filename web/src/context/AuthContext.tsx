@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios, { AxiosInstance } from 'axios';
+import { API_BASE_URL } from '@/config/api';
 
 interface UserSession {
   userId: string;
@@ -24,7 +25,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const api = axios.create({
-  baseURL: 'http://localhost:8080/api/v1',
+  baseURL: API_BASE_URL,
   withCredentials: true, // Enables sending cookies (RefreshToken)
 });
 
@@ -67,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           originalRequest._retry = true;
           try {
             // Attempt to refresh
-            const res = await axios.post('http://localhost:8080/api/v1/auth/refresh', {}, { withCredentials: true });
+            const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
             const newAccessToken = res.data.accessToken;
             setToken(newAccessToken);
             
@@ -100,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const res = await axios.post('http://localhost:8080/api/v1/auth/refresh', {}, { withCredentials: true });
+        const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
         setToken(res.data.accessToken);
         setUser({
           userId: res.data.userId,

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense, useCallback } from 'react';
 import { useAuth, api } from '@/context/AuthContext';
+import { WS_BASE_URL } from '@/config/api';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Client } from '@stomp/stompjs';
@@ -147,7 +148,7 @@ function ChatContent() {
     if (!user) return;
 
     const client = new Client({
-      brokerURL: 'ws://localhost:8080/ws/chat',
+      brokerURL: WS_BASE_URL,
       reconnectDelay: 5000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
