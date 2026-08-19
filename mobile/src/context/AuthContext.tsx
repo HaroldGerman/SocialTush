@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Platform } from 'react-native';
 import axios, { AxiosInstance } from 'axios';
-import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
+import { BACKEND_URL, api } from '../config/api';
+
+export { api };
 
 interface UserSession {
   userId: string;
@@ -23,21 +24,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const getBackendUrl = () => {
-  const hostUri = Constants.expoConfig?.hostUri || (Constants as any).manifest2?.extra?.expoGo?.developer?.manifest?.debuggerHost;
-  if (hostUri) {
-    const ip = hostUri.split(':')[0];
-    return `http://${ip}:8080/api/v1`;
-  }
-  return Platform.OS === 'android' ? 'http://10.0.2.2:8080/api/v1' : 'http://localhost:8080/api/v1';
-};
-
-const BACKEND_URL = getBackendUrl();
-
-export const api = axios.create({
-  baseURL: BACKEND_URL,
-});
 
 const REFRESH_TOKEN_KEY = 'socialtush_refresh_token';
 const USER_KEY = 'socialtush_user';

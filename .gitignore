@@ -2,6 +2,11 @@
 .env
 .env.local
 .env.*.local
+mobile/.env
+mobile/.env.local
+mobile/.env.*.local
+!.env.example
+!mobile/.env.example
 
 # Node.js
 node_modules/

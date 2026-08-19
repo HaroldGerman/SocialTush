@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { getWebSocketUrl } from '../config/api';
 import CallScreen from './CallScreen';
 
 interface Message {
@@ -52,10 +53,8 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
   useEffect(() => {
     fetchMessages();
 
-    // Establish pure WebSocket connection for mobile STOMP frames
-    const wsUrl = Platform.OS === 'android' 
-      ? 'ws://10.0.2.2:8080/ws/chat' 
-      : 'ws://localhost:8080/ws/chat';
+    // Establish WebSocket connection for mobile STOMP frames
+    const wsUrl = getWebSocketUrl();
       
     const socket = new WebSocket(wsUrl);
 
