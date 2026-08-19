@@ -8,6 +8,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
@@ -39,15 +40,21 @@ public class MinioStorageService implements StorageService {
     public void init() {
         try {
             if (endpoint != null && !endpoint.isBlank()) {
+                S3Configuration serviceConfiguration = S3Configuration.builder()
+                        .pathStyleAccessEnabled(true)
+                        .chunkedEncodingEnabled(false)
+                        .build();
+
                 this.s3Client = S3Client.builder()
                         .endpointOverride(URI.create(endpoint))
                         .credentialsProvider(StaticCredentialsProvider.create(
                                 AwsBasicCredentials.create(accessKey, secretKey)
                         ))
-                        .region(Region.US_EAST_1)
-                        .serviceConfiguration(b -> b.pathStyleAccessEnabled(true))
+                        .region(Region.of("auto"))
+                        .serviceConfiguration(serviceConfiguration)
                         .build();
-                log.info("Storage S3Client successfully initialized for endpoint: {}", endpoint);
+
+                log.info("Storage S3Client successfully initialized for R2/S3/MinIO with endpoint: {}", endpoint);
             }
         } catch (Exception e) {
             log.error("Failed to initialize S3Client with endpoint [{}]: {}", endpoint, e.getMessage());
@@ -72,7 +79,7 @@ public class MinioStorageService implements StorageService {
 
             String cleanPublicUrl = publicUrl != null ? publicUrl.replaceAll("/+$", "") : "";
             String finalUrl = cleanPublicUrl + "/" + filename;
-            log.info("File uploaded successfully to S3/MinIO: {}", finalUrl);
+            log.info("File uploaded successfully to S3/R2/MinIO: {}", finalUrl);
             return finalUrl;
         } catch (Exception e) {
             log.error("Storage upload error for file [{}] in bucket [{}]: {}", filename, bucketName, e.getMessage(), e);
@@ -89,7 +96,7 @@ public class MinioStorageService implements StorageService {
                         .key(filename)
                         .build();
                 s3Client.deleteObject(deleteRequest);
-                log.info("File deleted successfully from S3/MinIO: {}", filename);
+                log.info("File deleted successfully from S3/R2/MinIO: {}", filename);
             }
         } catch (Exception e) {
             log.error("Error deleting file [{}] from bucket [{}]: {}", filename, bucketName, e.getMessage());
