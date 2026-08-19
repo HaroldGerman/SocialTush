@@ -36,8 +36,8 @@ export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }:
         <View style={styles.logoBadge}>
           <Text style={styles.logoText}>S</Text>
         </View>
-        <Text style={styles.title}>Crear Cuenta</Text>
-        <Text style={styles.subtitle}>Regístrate en SocialTush</Text>
+        <Text style={styles.title}>Crear una cuenta</Text>
+        <Text style={styles.subtitle}>Únete a la comunidad de SocialTush</Text>
       </View>
 
       {error && (
@@ -52,8 +52,8 @@ export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }:
           <Text style={styles.label}>Nombre Público</Text>
           <TextInput
             style={styles.input}
-            placeholder="ej: Carlos Pérez"
-            placeholderTextColor="#3f3f46"
+            placeholder="Tu nombre visible"
+            placeholderTextColor="#64748b"
             value={displayName}
             onChangeText={setDisplayName}
           />
@@ -64,8 +64,8 @@ export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }:
           <Text style={styles.label}>Nombre de usuario</Text>
           <TextInput
             style={styles.input}
-            placeholder="ej: carlosp"
-            placeholderTextColor="#3f3f46"
+            placeholder="Usuario (ej: carlos)"
+            placeholderTextColor="#64748b"
             value={username}
             onChangeText={setUsername}
             autoCapitalize="none"
@@ -78,8 +78,8 @@ export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }:
           <Text style={styles.label}>Correo Electrónico</Text>
           <TextInput
             style={styles.input}
-            placeholder="ej: carlos@mail.com"
-            placeholderTextColor="#3f3f46"
+            placeholder="correo@ejemplo.com"
+            placeholderTextColor="#64748b"
             keyboardType="email-address"
             value={email}
             onChangeText={setEmail}
@@ -94,7 +94,7 @@ export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }:
           <TextInput
             style={styles.input}
             placeholder="Mínimo 6 caracteres"
-            placeholderTextColor="#3f3f46"
+            placeholderTextColor="#64748b"
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -107,12 +107,12 @@ export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }:
           style={styles.button} 
           onPress={handleRegister}
           disabled={isLoading}
-          activeOpacity={0.8}
+          activeOpacity={0.85}
         >
           {isLoading ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text style={styles.buttonText}>Registrarse</Text>
+            <Text style={styles.buttonText}>Crear cuenta</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -129,7 +129,7 @@ export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }:
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
     paddingHorizontal: 24,
     justifyContent: 'center',
   },
@@ -138,17 +138,19 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   logoBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: '#6366f1',
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#0f766e',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#14b8a650',
   },
   logoText: {
     color: '#ffffff',
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '900',
   },
   title: {
@@ -157,7 +159,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   subtitle: {
-    color: '#71717a',
+    color: '#94a3b8',
     fontSize: 12,
     textAlign: 'center',
     marginTop: 4,
@@ -165,13 +167,13 @@ const styles = StyleSheet.create({
   errorContainer: {
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
     padding: 10,
     borderRadius: 12,
     marginBottom: 16,
   },
   errorText: {
-    color: '#ef4444',
+    color: '#f87171',
     fontSize: 12,
     textAlign: 'center',
   },
@@ -182,23 +184,23 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   label: {
-    color: '#a1a1aa',
+    color: '#94a3b8',
     fontSize: 12,
     fontWeight: '600',
   },
   input: {
-    backgroundColor: '#18181b',
+    backgroundColor: '#0f172a',
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: '#1e293b',
     borderRadius: 12,
-    height: 44,
+    height: 46,
     paddingHorizontal: 16,
     color: '#ffffff',
     fontSize: 14,
   },
   button: {
-    backgroundColor: '#6366f1',
-    height: 46,
+    backgroundColor: '#0f766e',
+    height: 48,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -206,19 +208,19 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: 'bold',
   },
   footerLink: {
     marginTop: 20,
     alignItems: 'center',
   },
   footerText: {
-    color: '#71717a',
+    color: '#64748b',
     fontSize: 12,
   },
   loginText: {
-    color: '#6366f1',
+    color: '#14b8a6',
     fontWeight: 'bold',
   },
 });

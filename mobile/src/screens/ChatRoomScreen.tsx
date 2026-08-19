@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { getWebSocketUrl } from '../config/api';
+import { Ionicons } from '@expo/vector-icons';
 import CallScreen from './CallScreen';
 
 interface Message {
@@ -42,9 +43,9 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
   const fetchMessages = async () => {
     try {
       const res = await api.get(`/chat/conversations/${conversation.conversationId}/messages`);
-      setMessages(res.data);
+      setMessages(res.data || []);
     } catch (err) {
-      setMessages(getMockMessages(conversation.conversationId));
+      setMessages([]);
     } finally {
       setLoading(false);
     }
@@ -55,7 +56,6 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
 
     // Establish WebSocket connection for mobile STOMP frames
     const wsUrl = getWebSocketUrl();
-      
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
@@ -68,22 +68,17 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
       socket.send(subscribeFrame);
     };
 
-    socket.onmessage = (e) => {
-      // Simple parse of STOMP frame body
-      const dataStr = e.data as string;
-      if (dataStr.includes('MESSAGE')) {
-        const bodyStart = dataStr.indexOf('\n\n') + 2;
-        const bodyEnd = dataStr.lastIndexOf('\u0000');
-        if (bodyStart > 1 && bodyEnd > bodyStart) {
+    socket.onmessage = (event) => {
+      const rawData = event.data as string;
+      if (rawData.startsWith('MESSAGE')) {
+        const bodyIndex = rawData.indexOf('\n\n');
+        if (bodyIndex !== -1) {
+          const bodyStr = rawData.substring(bodyIndex + 2, rawData.length - 1);
           try {
-            const bodyJson = dataStr.substring(bodyStart, bodyEnd);
-            const newMessage = JSON.parse(bodyJson) as Message;
-            setMessages((prev) => {
-              if (prev.some((m) => m.messageId === newMessage.messageId)) return prev;
-              return [...prev, newMessage];
-            });
-          } catch (err) {
-            // JSON parsing error
+            const incomingMsg = JSON.parse(bodyStr);
+            setMessages((prev) => [...prev, incomingMsg]);
+          } catch (e) {
+            // Ignore parse errors
           }
         }
       }
@@ -92,71 +87,61 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
     ws.current = socket;
 
     return () => {
-      socket.close();
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
     };
-  }, [conversation]);
+  }, [conversation.conversationId]);
 
   const handleSend = () => {
-    if (!inputText.trim() || !user) return;
+    if (!inputText.trim()) return;
 
-    const payload = {
-      conversationId: conversation.conversationId,
-      senderUsername: user.username,
-      content: inputText.trim(),
-      messageType: 'TEXT'
+    const content = inputText.trim();
+    setInputText('');
+
+    // Optimistic append
+    const localMsg: Message = {
+      messageId: Date.now().toString(),
+      senderId: user?.userId || '',
+      senderUsername: user?.username || '',
+      senderDisplayName: user?.displayName || user?.username || '',
+      senderAvatarUrl: '',
+      content,
+      messageType: 'TEXT',
+      createdAt: new Date().toISOString()
     };
+    setMessages(prev => [...prev, localMsg]);
 
+    // Send via WebSocket STOMP SEND frame if connected
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      const sendFrame = `SEND\ndestination:/app/chat.sendMessage\ncontent-type:application/json\n\n${JSON.stringify(payload)}\u0000`;
+      const payload = JSON.stringify({
+        conversationId: conversation.conversationId,
+        content,
+        messageType: 'TEXT'
+      });
+      const sendFrame = `SEND\ndestination:/app/chat.sendMessage\ncontent-type:application/json\n\n${payload}\u0000`;
       ws.current.send(sendFrame);
     } else {
-      // Local simulated fallback
-      const localMsg: Message = {
-        messageId: Math.random().toString(),
-        senderId: user.userId,
-        senderUsername: user.username,
-        senderDisplayName: user.displayName,
-        senderAvatarUrl: '',
-        content: inputText.trim(),
-        messageType: 'TEXT',
-        createdAt: new Date().toISOString()
-      };
-      setMessages((prev) => [...prev, localMsg]);
-
-      // Simulate a reply after 1.5s
-      setTimeout(() => {
-        const replyMsg: Message = {
-          messageId: Math.random().toString(),
-          senderId: 'mock-reply',
-          senderUsername: 'sophia',
-          senderDisplayName: conversation.name,
-          senderAvatarUrl: '',
-          content: 'Mensaje recibido. Conexión local simulada.',
-          messageType: 'TEXT',
-          createdAt: new Date().toISOString()
-        };
-        setMessages((prev) => [...prev, replyMsg]);
-      }, 1500);
+      // Fallback via HTTP REST
+      api.post(`/chat/conversations/${conversation.conversationId}/messages`, {
+        content,
+        messageType: 'TEXT'
+      }).catch(() => {});
     }
-
-    setInputText('');
   };
 
   const renderMessageItem = ({ item }: { item: Message }) => {
-    const isOwn = item.senderUsername === user?.username;
+    const isOwn = item.senderUsername === user?.username || item.senderId === user?.userId;
     return (
       <View style={[styles.messageRow, isOwn ? styles.ownRow : styles.otherRow]}>
+        {!isOwn && (
+          <Text style={styles.senderName}>{item.senderDisplayName || item.senderUsername}</Text>
+        )}
         <View style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble]}>
-          {!isOwn && conversation.isGroup ? (
-            <Text style={styles.senderName}>@{item.senderUsername}</Text>
-          ) : null}
           <Text style={[styles.messageText, isOwn ? styles.ownText : styles.otherText]}>
             {item.content}
           </Text>
         </View>
-        <Text style={styles.timeText}>
-          {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </Text>
       </View>
     );
   };
@@ -165,7 +150,6 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
     return (
       <CallScreen 
         recipientUsername={conversation.name}
-        isIncoming={false}
         onHangUp={() => setActiveCall(false)}
       />
     );
@@ -174,7 +158,7 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <ActivityIndicator size="large" color="#14b8a6" />
       </View>
     );
   }
@@ -183,117 +167,99 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
     >
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>
-          <Text style={{ color: '#a1a1aa', fontSize: 13 }}>&lt; Atrás</Text>
+          <Ionicons name="arrow-back" size={22} color="#ffffff" />
         </TouchableOpacity>
         
         <View style={styles.headerInfo}>
           <Text style={styles.title}>{conversation.name}</Text>
-          <Text style={styles.status}>Online</Text>
+          <Text style={styles.status}>En línea</Text>
         </View>
 
-        <TouchableOpacity 
-          style={{ paddingHorizontal: 12, paddingVertical: 8 }} 
-          onPress={() => setActiveCall(true)}
-        >
-          <Text style={{ color: '#6366f1', fontSize: 13, fontWeight: 'bold' }}>Llamar</Text>
+        <TouchableOpacity onPress={() => setActiveCall(true)} style={styles.callBtn}>
+          <Ionicons name="call-outline" size={20} color="#14b8a6" />
         </TouchableOpacity>
       </View>
 
-      {/* List */}
+      {/* Messages */}
       <FlatList
         data={messages}
         keyExtractor={(item) => item.messageId}
         renderItem={renderMessageItem}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={messages.length === 0 ? styles.emptyContainer : { paddingHorizontal: 16, paddingVertical: 12 }}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Ionicons name="chatbubble-ellipses-outline" size={36} color="#64748b" />
+            <Text style={styles.emptyTitle}>Sin mensajes aún</Text>
+            <Text style={styles.emptySub}>Escribe el primer mensaje para comenzar la conversación.</Text>
+          </View>
+        }
       />
 
-      {/* Input row */}
+      {/* Input */}
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
           placeholder="Escribe un mensaje..."
-          placeholderTextColor="#71717a"
+          placeholderTextColor="#64748b"
           value={inputText}
           onChangeText={setInputText}
-          autoCorrect={false}
         />
         <TouchableOpacity style={styles.sendBtn} onPress={handleSend}>
-          <Text style={styles.sendBtnText}>Enviar</Text>
+          <Ionicons name="send" size={16} color="#ffffff" />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-function getMockMessages(conversationId: string): Message[] {
-  return [
-    {
-      messageId: 'm1',
-      senderId: 'mock-2',
-      senderUsername: 'sophia',
-      senderDisplayName: 'Sophia Loren',
-      senderAvatarUrl: '',
-      content: 'Hola. ¿Cómo va el avance del proyecto?',
-      messageType: 'TEXT',
-      createdAt: new Date(Date.now() - 60000).toISOString()
-    },
-    {
-      messageId: 'm2',
-      senderId: 'own-id',
-      senderUsername: 'alex_futurist',
-      senderDisplayName: 'Alex',
-      senderAvatarUrl: '',
-      content: 'Todo excelente. Ya integré la mensajería y bases de datos.',
-      messageType: 'TEXT',
-      createdAt: new Date().toISOString()
-    }
-  ];
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
   },
   center: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
     alignItems: 'center',
     justifyContent: 'center',
   },
   header: {
-    height: 60,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderColor: '#18181b',
+    borderColor: '#1e293b',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 8,
   },
   backBtn: {
-    paddingVertical: 8,
+    padding: 4,
   },
   headerInfo: {
     alignItems: 'center',
   },
   title: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
   },
   status: {
     color: '#10b981',
-    fontSize: 10,
-    marginTop: 2,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  callBtn: {
+    padding: 6,
+    backgroundColor: '#0f766e20',
+    borderRadius: 10,
   },
   messageRow: {
-    marginVertical: 6,
+    marginVertical: 4,
     maxWidth: '80%',
   },
   ownRow: {
@@ -306,70 +272,82 @@ const styles = StyleSheet.create({
   },
   bubble: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 16,
-    borderWidth: 1,
   },
   ownBubble: {
-    backgroundColor: '#6366f1',
-    borderColor: '#4f46e5',
-    borderTopRightRadius: 0,
+    backgroundColor: '#0f766e',
+    borderTopRightRadius: 2,
   },
   otherBubble: {
-    backgroundColor: '#18181b',
-    borderColor: '#27272a',
-    borderTopLeftRadius: 0,
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    borderTopLeftRadius: 2,
   },
   messageText: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 19,
   },
   ownText: {
     color: '#ffffff',
   },
   otherText: {
-    color: '#d4d4d8',
+    color: '#e2e8f0',
   },
   senderName: {
-    color: '#6366f1',
-    fontSize: 9,
+    color: '#14b8a6',
+    fontSize: 10,
     fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  timeText: {
-    color: '#3f3f46',
-    fontSize: 9,
-    marginTop: 4,
+    marginBottom: 2,
   },
   inputRow: {
     flexDirection: 'row',
-    padding: 16,
-    backgroundColor: '#18181b50',
+    padding: 12,
+    backgroundColor: '#0f172a',
     borderTopWidth: 1,
-    borderColor: '#18181b',
+    borderColor: '#1e293b',
     gap: 10,
   },
   input: {
     flex: 1,
-    height: 40,
-    backgroundColor: '#09090b',
+    height: 44,
+    backgroundColor: '#090d16',
     borderWidth: 1,
-    borderColor: '#27272a',
-    borderRadius: 10,
+    borderColor: '#1e293b',
+    borderRadius: 14,
     paddingHorizontal: 16,
     color: '#ffffff',
-    fontSize: 13,
+    fontSize: 14,
   },
   sendBtn: {
-    backgroundColor: '#6366f1',
-    paddingHorizontal: 16,
-    borderRadius: 10,
+    backgroundColor: '#0f766e',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnText: {
+  emptyContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: 'bold',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  emptySub: {
+    color: '#64748b',
+    fontSize: 12,
+    textAlign: 'center',
   },
 });

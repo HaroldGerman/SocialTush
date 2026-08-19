@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, ActivityIndicator, TouchableOpacity, ScrollView, Switch } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
 
 interface ProfileScreenProps {
   username: string;
@@ -64,7 +65,7 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
         } : null);
       }
     } catch (err) {
-      alert('Error en acción de seguimiento');
+      // Action error handled gracefully
     }
   };
 
@@ -78,14 +79,14 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
       });
       setProfile(prev => prev ? { ...prev, isPrivate: value } : null);
     } catch (err) {
-      alert('Error al actualizar privacidad');
+      // Privacy update error handled gracefully
     }
   };
 
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <ActivityIndicator size="large" color="#14b8a6" />
       </View>
     );
   }
@@ -93,7 +94,7 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
   if (error || !profile) {
     return (
       <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>{error || 'Error al cargar'}</Text>
+        <Text style={styles.errorText}>{error || 'Error al cargar perfil'}</Text>
         {onBack && (
           <TouchableOpacity style={styles.backButton} onPress={onBack}>
             <Text style={styles.backButtonText}>Volver</Text>
@@ -108,24 +109,26 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
-        {onBack && (
+        {onBack ? (
           <TouchableOpacity style={styles.iconButton} onPress={onBack}>
-            <Text style={{ color: '#a1a1aa' }}>Atrás</Text>
+            <Ionicons name="arrow-back" size={20} color="#94a3b8" />
           </TouchableOpacity>
+        ) : (
+          <View style={{ width: 24 }} />
         )}
         <Text style={styles.headerTitle}>@{profile.username}</Text>
-        <View style={{ width: 40 }} />
+        <View style={{ width: 24 }} />
       </View>
 
       {/* Main Profile Info */}
       <View style={styles.profileInfo}>
         <View style={styles.avatarPlaceholder}>
           <Text style={styles.avatarLetter}>
-            {profile.displayName.charAt(0).toUpperCase()}
+            {(profile.displayName || profile.username).charAt(0).toUpperCase()}
           </Text>
         </View>
 
-        <Text style={styles.displayName}>{profile.displayName}</Text>
+        <Text style={styles.displayName}>{profile.displayName || profile.username}</Text>
         <Text style={styles.username}>@{profile.username}</Text>
         
         {profile.bio ? (
@@ -136,7 +139,8 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
         <View style={styles.actionsRow}>
           {profile.isSelf ? (
             <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
-              <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
+              <Ionicons name="log-out-outline" size={16} color="#f87171" />
+              <Text style={styles.logoutButtonText}>Cerrar sesión</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity 
@@ -170,15 +174,15 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
       {/* Privacy Settings toggler if Self */}
       {profile.isSelf && (
         <View style={styles.privacySetting}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.privacyTitle}>Cuenta Privada</Text>
             <Text style={styles.privacySub}>Oculta tus publicaciones a no seguidores</Text>
           </View>
           <Switch
             value={profile.isPrivate}
             onValueChange={handlePrivacyToggle}
-            trackColor={{ false: '#27272a', true: '#4f46e5' }}
-            thumbColor={profile.isPrivate ? '#6366f1' : '#a1a1aa'}
+            trackColor={{ false: '#1e293b', true: '#0f766e' }}
+            thumbColor={profile.isPrivate ? '#14b8a6' : '#94a3b8'}
           />
         </View>
       )}
@@ -186,12 +190,14 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
       {/* Content boundary */}
       {showPrivateBoundary ? (
         <View style={styles.privateContainer}>
+          <Ionicons name="lock-closed-outline" size={32} color="#64748b" />
           <Text style={styles.privateTitle}>Esta cuenta es privada</Text>
           <Text style={styles.privateText}>Sigue a este usuario para ver su actividad.</Text>
         </View>
       ) : (
         <View style={styles.feedPlaceholder}>
-          <Text style={styles.feedText}>No hay publicaciones disponibles</Text>
+          <Ionicons name="images-outline" size={32} color="#334155" />
+          <Text style={styles.feedText}>Aún no hay publicaciones</Text>
         </View>
       )}
     </ScrollView>
@@ -201,15 +207,15 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
   },
   content: {
-    padding: 24,
-    paddingTop: 48,
+    padding: 20,
+    paddingTop: 16,
   },
   centerContainer: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
@@ -218,7 +224,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   headerTitle: {
     color: '#ffffff',
@@ -226,20 +232,22 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   iconButton: {
-    padding: 8,
+    padding: 4,
   },
   profileInfo: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 24,
   },
   avatarPlaceholder: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#27272a',
+    backgroundColor: '#0f766e',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#14b8a650',
   },
   avatarLetter: {
     color: '#ffffff',
@@ -252,17 +260,17 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   username: {
-    color: '#71717a',
-    fontSize: 12,
-    marginTop: 4,
+    color: '#94a3b8',
+    fontSize: 13,
+    marginTop: 2,
   },
   bio: {
-    color: '#a1a1aa',
+    color: '#cbd5e1',
     fontSize: 13,
     textAlign: 'center',
-    marginTop: 12,
+    marginTop: 10,
     lineHeight: 18,
-    maxWidth: '80%',
+    maxWidth: '85%',
   },
   actionsRow: {
     marginTop: 16,
@@ -270,10 +278,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   followButton: {
-    backgroundColor: '#6366f1',
+    backgroundColor: '#0f766e',
     paddingHorizontal: 32,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 12,
   },
   followButtonText: {
     color: '#ffffff',
@@ -281,35 +289,38 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   unfollowButton: {
-    backgroundColor: '#18181b',
+    backgroundColor: '#0f172a',
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: '#1e293b',
   },
   unfollowButtonText: {
-    color: '#a1a1aa',
+    color: '#94a3b8',
   },
   logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: '#ef444415',
     borderWidth: 1,
     borderColor: '#ef444430',
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 9,
+    borderRadius: 12,
   },
   logoutButtonText: {
-    color: '#ef4444',
-    fontSize: 12,
+    color: '#f87171',
+    fontSize: 13,
     fontWeight: '600',
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: '#18181b',
+    backgroundColor: '#0f172a',
     borderRadius: 16,
     paddingVertical: 16,
     borderWidth: 1,
-    borderColor: '#27272a',
-    marginBottom: 24,
+    borderColor: '#1e293b',
+    marginBottom: 20,
   },
   statBox: {
     alignItems: 'center',
@@ -320,20 +331,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   statLabel: {
-    color: '#71717a',
-    fontSize: 10,
-    marginTop: 4,
+    color: '#64748b',
+    fontSize: 11,
+    marginTop: 2,
     textTransform: 'uppercase',
   },
   privacySetting: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#18181b',
-    marginBottom: 24,
+    borderColor: '#1e293b',
+    marginBottom: 20,
   },
   privacyTitle: {
     color: '#ffffff',
@@ -341,46 +352,48 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   privacySub: {
-    color: '#71717a',
+    color: '#64748b',
     fontSize: 11,
     marginTop: 2,
   },
   privateContainer: {
     alignItems: 'center',
-    paddingVertical: 48,
+    paddingVertical: 40,
   },
   privateTitle: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
-    marginBottom: 6,
+    marginTop: 10,
+    marginBottom: 4,
   },
   privateText: {
-    color: '#71717a',
+    color: '#64748b',
     fontSize: 12,
   },
   feedPlaceholder: {
     alignItems: 'center',
-    paddingVertical: 48,
+    paddingVertical: 40,
   },
   feedText: {
-    color: '#3f3f46',
-    fontSize: 12,
-    fontWeight: '600',
+    color: '#64748b',
+    fontSize: 13,
+    marginTop: 8,
+    fontWeight: '500',
   },
   errorText: {
-    color: '#ef4444',
+    color: '#f87171',
     fontSize: 14,
     marginBottom: 16,
   },
   backButton: {
-    backgroundColor: '#18181b',
+    backgroundColor: '#0f172a',
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 10,
   },
   backButtonText: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 13,
   },
 });

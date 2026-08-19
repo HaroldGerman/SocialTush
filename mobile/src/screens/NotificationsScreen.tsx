@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Notification {
   notificationId: string;
@@ -14,25 +15,25 @@ interface Notification {
 }
 
 export default function NotificationsScreen() {
-  const { api, user } = useAuth();
+  const { api } = useAuth();
   
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       const res = await api.get('/notifications');
-      setNotifications(res.data);
+      setNotifications(res.data || []);
     } catch (err) {
-      setNotifications(getMockNotifications());
+      setNotifications([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [api]);
 
   useEffect(() => {
     fetchNotifications();
-  }, []);
+  }, [fetchNotifications]);
 
   const handleMarkRead = async (id: string) => {
     try {
@@ -50,7 +51,9 @@ export default function NotificationsScreen() {
       activeOpacity={0.8}
     >
       <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{item.senderDisplayName.charAt(0).toUpperCase()}</Text>
+        <Text style={styles.avatarText}>
+          {(item.senderDisplayName || item.senderUsername || 'U').charAt(0).toUpperCase()}
+        </Text>
       </View>
       <View style={styles.content}>
         <Text style={styles.text}>
@@ -59,8 +62,8 @@ export default function NotificationsScreen() {
           {item.notificationType === 'COMMENT' && 'comentó en tu post.'}
           {item.notificationType === 'FOLLOW' && 'comenzó a seguirte.'}
           {item.notificationType === 'FOLLOW_REQUEST' && 'te envió una solicitud de seguimiento.'}
+          {item.notificationType !== 'LIKE_POST' && item.notificationType !== 'COMMENT' && item.notificationType !== 'FOLLOW' && item.notificationType !== 'FOLLOW_REQUEST' && 'interactuó contigo.'}
         </Text>
-        <Text style={styles.time}>hace un momento</Text>
       </View>
       {!item.isRead && <View style={styles.unreadDot} />}
     </TouchableOpacity>
@@ -69,7 +72,7 @@ export default function NotificationsScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <ActivityIndicator size="large" color="#14b8a6" />
       </View>
     );
   }
@@ -84,10 +87,14 @@ export default function NotificationsScreen() {
         data={notifications}
         keyExtractor={(item) => item.notificationId}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingHorizontal: 16 }}
+        contentContainerStyle={notifications.length === 0 ? styles.emptyContainer : { paddingHorizontal: 16 }}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>Sin actividad reciente</Text>
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIconBox}>
+              <Ionicons name="notifications-outline" size={36} color="#64748b" />
+            </View>
+            <Text style={styles.emptyTitle}>Sin actividad reciente</Text>
+            <Text style={styles.emptySub}>Las interacciones con tus posts e historias aparecerán aquí.</Text>
           </View>
         }
       />
@@ -95,75 +102,47 @@ export default function NotificationsScreen() {
   );
 }
 
-function getMockNotifications(): Notification[] {
-  return [
-    {
-      notificationId: 'n1',
-      senderUsername: 'sophia',
-      senderDisplayName: 'Sophia Loren',
-      senderAvatarUrl: '',
-      notificationType: 'LIKE_POST',
-      targetId: 't1',
-      isRead: false,
-      createdAt: new Date().toISOString()
-    },
-    {
-      notificationId: 'n2',
-      senderUsername: 'alex_futurist',
-      senderDisplayName: 'Alex',
-      senderAvatarUrl: '',
-      notificationType: 'FOLLOW',
-      targetId: 't2',
-      isRead: true,
-      createdAt: new Date().toISOString()
-    }
-  ];
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
   },
   center: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
     alignItems: 'center',
     justifyContent: 'center',
   },
   header: {
-    height: 60,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderColor: '#18181b',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 8,
+    borderColor: '#1e293b',
   },
   headerTitle: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 22,
     fontWeight: 'bold',
   },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderColor: '#18181b',
+    borderColor: '#1e293b',
     gap: 12,
   },
   unreadCard: {
-    backgroundColor: '#6366f108',
+    backgroundColor: '#0f766e15',
   },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#18181b',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0f766e',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#27272a',
   },
   avatarText: {
     color: '#ffffff',
@@ -174,32 +153,48 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   text: {
-    color: '#d4d4d8',
-    fontSize: 12,
+    color: '#e2e8f0',
+    fontSize: 13,
     lineHeight: 18,
   },
   username: {
     color: '#ffffff',
     fontWeight: 'bold',
   },
-  time: {
-    color: '#71717a',
-    fontSize: 9,
-    marginTop: 2,
-  },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#6366f1',
+    backgroundColor: '#14b8a6',
   },
-  empty: {
+  emptyContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 64,
+    padding: 24,
   },
-  emptyText: {
-    color: '#3f3f46',
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#1e293b50',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 6,
+  },
+  emptySub: {
+    color: '#64748b',
     fontSize: 13,
-    fontWeight: '600',
+    textAlign: 'center',
   },
 });

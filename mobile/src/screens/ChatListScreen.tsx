@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Conversation {
   conversationId: string;
@@ -22,20 +23,20 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     try {
       const res = await api.get('/chat/conversations');
-      setConversations(res.data);
+      setConversations(res.data || []);
     } catch (err) {
-      setConversations(getMockConversations());
+      setConversations([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [api]);
 
   useEffect(() => {
     fetchConversations();
-  }, []);
+  }, [fetchConversations]);
 
   const handleStartConversation = async () => {
     if (!searchQuery.trim()) return;
@@ -57,7 +58,7 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
       };
       onSelectConversation(newConv);
     } catch (err) {
-      alert('Error al buscar usuario');
+      // User search error handled gracefully
     }
   };
 
@@ -68,18 +69,21 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
       activeOpacity={0.8}
     >
       <View style={styles.avatar}>
-        <Text style={styles.avatarText}>
-          {item.isGroup ? '👥' : item.name.charAt(0).toUpperCase()}
-        </Text>
+        {item.isGroup ? (
+          <Ionicons name="people" size={18} color="#ffffff" />
+        ) : (
+          <Text style={styles.avatarText}>
+            {(item.name || 'U').charAt(0).toUpperCase()}
+          </Text>
+        )}
       </View>
       
       <View style={styles.cardContent}>
         <View style={styles.cardHeader}>
           <Text style={styles.chatName}>{item.name}</Text>
-          <Text style={styles.chatTime}>hace un momento</Text>
         </View>
         <Text style={styles.latestMessage} numberOfLines={1}>
-          {item.latestMessage || 'Escribe tu primer mensaje'}
+          {item.latestMessage || 'Inicia la conversación...'}
         </Text>
       </View>
     </TouchableOpacity>
@@ -88,7 +92,7 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <ActivityIndicator size="large" color="#14b8a6" />
       </View>
     );
   }
@@ -105,13 +109,14 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
         <TextInput
           style={styles.searchInput}
           placeholder="Escribe un usuario para chatear..."
-          placeholderTextColor="#71717a"
+          placeholderTextColor="#64748b"
           value={searchQuery}
           onChangeText={setSearchQuery}
           autoCapitalize="none"
           autoCorrect={false}
         />
         <TouchableOpacity style={styles.searchBtn} onPress={handleStartConversation}>
+          <Ionicons name="paper-plane-outline" size={16} color="#ffffff" />
           <Text style={styles.searchBtnText}>Chat</Text>
         </TouchableOpacity>
       </View>
@@ -121,10 +126,14 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
         data={conversations}
         keyExtractor={(item) => item.conversationId}
         renderItem={renderConversationItem}
-        contentContainerStyle={{ paddingHorizontal: 16 }}
+        contentContainerStyle={conversations.length === 0 ? styles.emptyContainer : { paddingHorizontal: 16 }}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>No tienes chats abiertos</Text>
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIconBox}>
+              <Ionicons name="chatbubbles-outline" size={36} color="#64748b" />
+            </View>
+            <Text style={styles.emptyTitle}>No tienes conversaciones activas</Text>
+            <Text style={styles.emptySub}>Escribe un usuario arriba para iniciar un chat.</Text>
           </View>
         }
       />
@@ -132,50 +141,27 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
   );
 }
 
-// Fallback mocks
-function getMockConversations(): Conversation[] {
-  return [
-    {
-      conversationId: 'c-mock-1',
-      name: 'Sophia Loren',
-      avatarUrl: '',
-      isGroup: false,
-      latestMessage: '¡Hola! Nos vemos más tarde.',
-      updatedAt: new Date().toISOString()
-    },
-    {
-      conversationId: 'c-mock-2',
-      name: 'Grupo de Diseño',
-      avatarUrl: '',
-      isGroup: true,
-      latestMessage: 'Se actualizó la guía visual.',
-      updatedAt: new Date().toISOString()
-    }
-  ];
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
   },
   center: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
     alignItems: 'center',
     justifyContent: 'center',
   },
   header: {
-    height: 60,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderColor: '#18181b',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 8,
+    borderColor: '#1e293b',
   },
   headerTitle: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 22,
     fontWeight: 'bold',
   },
   searchSection: {
@@ -185,44 +171,44 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    height: 40,
-    backgroundColor: '#18181b',
+    height: 44,
+    backgroundColor: '#0f172a',
     borderWidth: 1,
-    borderColor: '#27272a',
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    borderColor: '#1e293b',
+    borderRadius: 12,
+    paddingHorizontal: 14,
     color: '#ffffff',
     fontSize: 13,
   },
   searchBtn: {
-    backgroundColor: '#6366f1',
-    paddingHorizontal: 16,
-    borderRadius: 10,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#0f766e',
+    paddingHorizontal: 16,
+    borderRadius: 12,
     justifyContent: 'center',
   },
   searchBtnText: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 'bold',
   },
   chatCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderColor: '#18181b',
-    gap: 12,
+    borderColor: '#1e293b',
+    gap: 14,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#18181b',
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#0f766e',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#27272a',
   },
   avatarText: {
     color: '#ffffff',
@@ -240,24 +226,41 @@ const styles = StyleSheet.create({
   },
   chatName: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
   },
-  chatTime: {
-    color: '#71717a',
-    fontSize: 9,
-  },
   latestMessage: {
-    color: '#71717a',
-    fontSize: 11,
+    color: '#94a3b8',
+    fontSize: 12,
   },
-  empty: {
+  emptyContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 64,
+    padding: 24,
   },
-  emptyText: {
-    color: '#3f3f46',
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#1e293b50',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 6,
+  },
+  emptySub: {
+    color: '#64748b',
     fontSize: 13,
-    fontWeight: '600',
+    textAlign: 'center',
   },
 });

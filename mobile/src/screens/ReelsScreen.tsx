@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, Image, Dimensions } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Reel {
   postId: string;
@@ -21,7 +22,7 @@ interface Reel {
 const { height: WINDOW_HEIGHT } = Dimensions.get('window');
 
 export default function ReelsScreen() {
-  const { api, user } = useAuth();
+  const { api } = useAuth();
   
   const [reels, setReels] = useState<Reel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,9 +30,9 @@ export default function ReelsScreen() {
   const fetchReels = async () => {
     try {
       const res = await api.get('/posts/reels?page=0&size=10');
-      setReels(res.data.posts);
+      setReels(res.data?.posts || []);
     } catch (err) {
-      setReels(getMockReels());
+      setReels([]);
     } finally {
       setLoading(false);
     }
@@ -52,35 +53,35 @@ export default function ReelsScreen() {
 
   const renderReelItem = ({ item }: { item: Reel }) => (
     <View style={styles.reelContainer}>
-      {/* Background Media Image Fallback for Compilability */}
-      <Image 
-        source={{ uri: item.mediaUrls[0] || 'https://picsum.photos/seed/reel/800/1200' }} 
-        style={styles.backgroundImage}
-        resizeMode="cover"
-      />
+      {item.mediaUrls && item.mediaUrls.length > 0 ? (
+        <Image 
+          source={{ uri: item.mediaUrls[0] }} 
+          style={styles.backgroundImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={styles.mediaPlaceholder}>
+          <Ionicons name="film-outline" size={48} color="#334155" />
+        </View>
+      )}
       
       {/* Overlay Darkner */}
       <View style={styles.darkOverlay} />
 
-      {/* Center Play Button Icon indicator */}
-      <View style={styles.centerPlay}>
-        <Text style={styles.playText}>▶</Text>
-      </View>
-
       {/* Right Side Social Actions Panel */}
       <View style={styles.actionsPanel}>
         <TouchableOpacity style={styles.actionBtn} onPress={() => handleLikeToggle(item.postId)}>
-          <Text style={styles.actionIcon}>{item.hasLiked ? '❤️' : '🤍'}</Text>
+          <Ionicons name={item.hasLiked ? "heart" : "heart-outline"} size={28} color={item.hasLiked ? "#ef4444" : "#ffffff"} />
           <Text style={styles.actionCount}>{item.likesCount}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.actionBtn}>
-          <Text style={styles.actionIcon}>💬</Text>
+          <Ionicons name="chatbubble-outline" size={26} color="#ffffff" />
           <Text style={styles.actionCount}>{item.commentsCount}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionBtn}>
-          <Text style={styles.actionIcon}>⭐️</Text>
+          <Ionicons name={item.isSaved ? "bookmark" : "bookmark-outline"} size={26} color={item.isSaved ? "#14b8a6" : "#ffffff"} />
         </TouchableOpacity>
       </View>
 
@@ -88,19 +89,21 @@ export default function ReelsScreen() {
       <View style={styles.bottomDetails}>
         <View style={styles.authorRow}>
           <View style={styles.authorAvatar}>
-            <Text style={styles.avatarText}>{item.displayName.charAt(0).toUpperCase()}</Text>
+            <Text style={styles.avatarText}>
+              {(item.displayName || item.username || 'U').charAt(0).toUpperCase()}
+            </Text>
           </View>
           <Text style={styles.username}>@{item.username}</Text>
-          <TouchableOpacity style={styles.followBtn}>
-            <Text style={styles.followText}>Seguir</Text>
-          </TouchableOpacity>
         </View>
 
-        <Text style={styles.caption} numberOfLines={2}>{item.caption}</Text>
+        {item.caption ? (
+          <Text style={styles.caption} numberOfLines={2}>{item.caption}</Text>
+        ) : null}
 
         {item.musicTitle ? (
           <View style={styles.musicRow}>
-            <Text style={styles.musicText}>🎵 {item.musicTitle}</Text>
+            <Ionicons name="musical-notes-outline" size={12} color="#14b8a6" />
+            <Text style={styles.musicText}>{item.musicTitle}</Text>
           </View>
         ) : null}
       </View>
@@ -110,7 +113,19 @@ export default function ReelsScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <ActivityIndicator size="large" color="#14b8a6" />
+      </View>
+    );
+  }
+
+  if (reels.length === 0) {
+    return (
+      <View style={styles.center}>
+        <View style={styles.emptyIconBox}>
+          <Ionicons name="film-outline" size={36} color="#64748b" />
+        </View>
+        <Text style={styles.emptyTitle}>No hay Reels disponibles</Text>
+        <Text style={styles.emptySub}>Vuelve más tarde para descubrir videos verticales.</Text>
       </View>
     );
   }
@@ -123,98 +138,56 @@ export default function ReelsScreen() {
         renderItem={renderReelItem}
         pagingEnabled={true}
         decelerationRate="fast"
-        snapToInterval={WINDOW_HEIGHT - 60} // Snaps vertically, adjusting for the bottom tab-bar
+        snapToInterval={WINDOW_HEIGHT - 64}
         showsVerticalScrollIndicator={false}
       />
     </View>
   );
 }
 
-function getMockReels(): Reel[] {
-  return [
-    {
-      postId: 'r1',
-      userId: 'mock-1',
-      username: 'neon_rider',
-      displayName: 'Neon Rider',
-      avatarUrl: '',
-      caption: 'Explorando las calles de Neo Tokyo de noche. Estética cyberpunk. 🌃 #reels #tokyo',
-      location: 'Tokyo, Japan',
-      musicTitle: 'Kavinsky - Nightcall',
-      mediaUrls: ['https://images.unsplash.com/photo-1540959733332-eab4deceeaf7?w=800&auto=format&fit=crop'],
-      likesCount: 520,
-      commentsCount: 14,
-      hasLiked: false,
-      isSaved: false
-    },
-    {
-      postId: 'r2',
-      userId: 'mock-2',
-      username: 'art_creative',
-      displayName: 'Sophia',
-      avatarUrl: '',
-      caption: 'La inmensidad del océano. Conectando con la naturaleza. 🌊 #nature #bali',
-      location: 'Bali, Indonesia',
-      musicTitle: 'Sunset Ride',
-      mediaUrls: ['https://images.unsplash.com/photo-1505118380757-91f5f5632de0?w=800&auto=format&fit=crop'],
-      likesCount: 910,
-      commentsCount: 22,
-      hasLiked: true,
-      isSaved: true
-    }
-  ];
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: '#090d16',
   },
   center: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: '#090d16',
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 24,
   },
   reelContainer: {
     width: '100%',
-    height: WINDOW_HEIGHT - 60, // Account for custom tab bar
+    height: WINDOW_HEIGHT - 64,
     position: 'relative',
-    backgroundColor: '#000000',
+    backgroundColor: '#090d16',
   },
   backgroundImage: {
     width: '100%',
     height: '100%',
     position: 'absolute',
   },
+  mediaPlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0f172a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   darkOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-  },
-  centerPlay: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: (WINDOW_HEIGHT - 120) / 2,
-    opacity: 0.3,
-  },
-  playText: {
-    fontSize: 64,
-    color: '#ffffff',
+    backgroundColor: 'rgba(9, 13, 22, 0.45)',
   },
   actionsPanel: {
     position: 'absolute',
     right: 16,
-    bottom: 120,
+    bottom: 110,
     alignItems: 'center',
     gap: 20,
     zIndex: 10,
   },
   actionBtn: {
     alignItems: 'center',
-  },
-  actionIcon: {
-    fontSize: 28,
-    color: '#ffffff',
   },
   actionCount: {
     color: '#ffffff',
@@ -236,50 +209,57 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   authorAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#27272a',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#0f766e',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   avatarText: {
     color: '#ffffff',
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 'bold',
   },
   username: {
     color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  followBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
-    borderRadius: 12,
-  },
-  followText: {
-    color: '#ffffff',
-    fontSize: 9,
+    fontSize: 14,
     fontWeight: 'bold',
   },
   caption: {
-    color: '#e4e4e7',
-    fontSize: 12,
+    color: '#e2e8f0',
+    fontSize: 13,
     lineHeight: 18,
   },
   musicRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    gap: 4,
+    marginTop: 2,
   },
   musicText: {
-    color: '#a1a1aa',
-    fontSize: 10,
+    color: '#14b8a6',
+    fontSize: 11,
     fontWeight: '600',
+  },
+  emptyIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#1e293b50',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 6,
+  },
+  emptySub: {
+    color: '#64748b',
+    fontSize: 13,
+    textAlign: 'center',
   },
 });

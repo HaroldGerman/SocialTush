@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl, Image } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Post {
   postId: string;
@@ -37,19 +38,19 @@ export default function FeedScreen() {
   const fetchFeed = useCallback(async (clear = false) => {
     try {
       const res = await api.get('/posts/feed?page=0&size=10');
-      setPosts(clear ? res.data.posts : [...posts, ...res.data.posts]);
+      const fetchedPosts = res.data?.posts || [];
+      setPosts(clear ? fetchedPosts : [...posts, ...fetchedPosts]);
     } catch (err) {
-      // Fallback
-      if (clear) setPosts(getMockPosts());
+      if (clear) setPosts([]);
     }
   }, [api, posts]);
 
   const fetchStories = useCallback(async () => {
     try {
       const res = await api.get('/stories/active');
-      setStories(res.data);
+      setStories(res.data || []);
     } catch (err) {
-      setStories(getMockStories());
+      setStories([]);
     }
   }, [api]);
 
@@ -94,10 +95,12 @@ export default function FeedScreen() {
       <View style={styles.postHeader}>
         <View style={styles.postAuthor}>
           <View style={styles.smallAvatar}>
-            <Text style={styles.avatarText}>{item.displayName.charAt(0).toUpperCase()}</Text>
+            <Text style={styles.avatarText}>
+              {(item.displayName || item.username || 'U').charAt(0).toUpperCase()}
+            </Text>
           </View>
           <View>
-            <Text style={styles.displayName}>{item.displayName}</Text>
+            <Text style={styles.displayName}>{item.displayName || item.username}</Text>
             {item.location ? (
               <Text style={styles.locationText}>{item.location}</Text>
             ) : null}
@@ -105,7 +108,7 @@ export default function FeedScreen() {
         </View>
       </View>
 
-      {/* Image */}
+      {/* Image / Media */}
       {item.mediaUrls && item.mediaUrls.length > 0 ? (
         <Image 
           source={{ uri: item.mediaUrls[0] }} 
@@ -114,7 +117,8 @@ export default function FeedScreen() {
         />
       ) : (
         <View style={styles.mediaPlaceholder}>
-          <Text style={{ color: '#3f3f46' }}>Sin Multimedia</Text>
+          <Ionicons name="image-outline" size={32} color="#334155" />
+          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>Sin Multimedia</Text>
         </View>
       )}
 
@@ -122,17 +126,28 @@ export default function FeedScreen() {
       <View style={styles.actionsBar}>
         <View style={styles.actionsLeft}>
           <TouchableOpacity onPress={() => handleLikeToggle(item.postId)} style={styles.actionBtn}>
+            <Ionicons 
+              name={item.hasLiked ? "heart" : "heart-outline"} 
+              size={20} 
+              color={item.hasLiked ? "#ef4444" : "#94a3b8"} 
+            />
             <Text style={[styles.actionLabel, item.hasLiked && styles.likedLabel]}>
-              ❤️ {item.likesCount}
+              {item.likesCount}
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity style={styles.actionBtn}>
-            <Text style={styles.actionLabel}>💬 {item.commentsCount}</Text>
+            <Ionicons name="chatbubble-outline" size={19} color="#94a3b8" />
+            <Text style={styles.actionLabel}>{item.commentsCount}</Text>
           </TouchableOpacity>
         </View>
-        
+
         <TouchableOpacity>
-          <Text style={styles.bookmarkLabel}>{item.isSaved ? '⭐️' : '☆'}</Text>
+          <Ionicons 
+            name={item.isSaved ? "bookmark" : "bookmark-outline"} 
+            size={19} 
+            color={item.isSaved ? "#14b8a6" : "#94a3b8"} 
+          />
         </TouchableOpacity>
       </View>
 
@@ -140,7 +155,7 @@ export default function FeedScreen() {
       {item.caption ? (
         <View style={styles.captionContainer}>
           <Text style={styles.captionText}>
-            <Text style={styles.captionUsername}>{item.username} </Text>
+            <Text style={styles.captionUsername}>@{item.username} </Text>
             {item.caption}
           </Text>
         </View>
@@ -151,13 +166,18 @@ export default function FeedScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <ActivityIndicator size="large" color="#14b8a6" />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      {/* Top Header Title */}
+      <View style={styles.topNav}>
+        <Text style={styles.topNavTitle}>SocialTush</Text>
+      </View>
+
       {/* Stories Bar */}
       <View style={styles.storiesBar}>
         <FlatList
@@ -168,7 +188,7 @@ export default function FeedScreen() {
           ListHeaderComponent={
             <TouchableOpacity style={styles.createStoryBtn}>
               <View style={styles.createStoryCircle}>
-                <Text style={{ color: '#a1a1aa', fontSize: 18 }}>+</Text>
+                <Ionicons name="add" size={20} color="#14b8a6" />
               </View>
               <Text style={styles.storyName}>Tu Historia</Text>
             </TouchableOpacity>
@@ -178,11 +198,11 @@ export default function FeedScreen() {
               <View style={styles.storyOuterCircle}>
                 <View style={styles.storyInnerCircle}>
                   <Text style={styles.storyAvatarText}>
-                    {item.displayName.charAt(0).toUpperCase()}
+                    {(item.displayName || item.username || 'U').charAt(0).toUpperCase()}
                   </Text>
                 </View>
               </View>
-              <Text style={styles.storyName}>{item.displayName}</Text>
+              <Text style={styles.storyName}>{item.displayName || item.username}</Text>
             </TouchableOpacity>
           )}
         />
@@ -197,85 +217,52 @@ export default function FeedScreen() {
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={handleRefresh} 
-            tintColor="#6366f1"
+            tintColor="#14b8a6"
           />
         }
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={posts.length === 0 ? styles.emptyContainer : { paddingBottom: 24 }}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIconBox}>
+              <Ionicons name="newspaper-outline" size={36} color="#64748b" />
+            </View>
+            <Text style={styles.emptyTitle}>Tu Feed está tranquilo</Text>
+            <Text style={styles.emptySub}>Conecta con más personas o crea tu primera publicación.</Text>
+          </View>
+        }
       />
     </View>
   );
 }
 
-// Resilient mocks
-function getMockPosts(): Post[] {
-  return [
-    {
-      postId: '1',
-      userId: 'mock-1',
-      username: 'alex_futurist',
-      displayName: 'Alex Futurist',
-      avatarUrl: '',
-      caption: 'Explorando las fronteras del diseño minimalista en SocialTush Mobile.',
-      location: 'Silicon Valley, CA',
-      musicTitle: 'Horizon',
-      mediaUrls: ['https://picsum.photos/seed/alex/800/800'],
-      likesCount: 142,
-      commentsCount: 3,
-      hasLiked: false,
-      isSaved: false
-    },
-    {
-      postId: '2',
-      userId: 'mock-2',
-      username: 'sophia_creative',
-      displayName: 'Sophia Loren',
-      avatarUrl: '',
-      caption: 'Contraste, luces y colores.',
-      location: 'Roma, Italia',
-      musicTitle: 'Sunset Ride',
-      mediaUrls: ['https://picsum.photos/seed/sophia/800/800'],
-      likesCount: 98,
-      commentsCount: 0,
-      hasLiked: true,
-      isSaved: true
-    }
-  ];
-}
-
-function getMockStories(): GroupedStory[] {
-  return [
-    {
-      userId: 'mock-1',
-      username: 'alex_futurist',
-      displayName: 'Alex',
-      avatarUrl: '',
-      stories: [{}]
-    },
-    {
-      userId: 'mock-2',
-      username: 'sophia_creative',
-      displayName: 'Sophia',
-      avatarUrl: '',
-      stories: [{}]
-    }
-  ];
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
   },
   center: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  topNav: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderColor: '#1e293b',
+  },
+  topNavTitle: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
   storiesBar: {
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: '#18181b',
+    borderColor: '#1e293b',
     paddingHorizontal: 16,
   },
   createStoryBtn: {
@@ -286,12 +273,12 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    borderWidth: 1,
-    borderColor: '#27272a',
+    borderWidth: 1.5,
+    borderColor: '#14b8a6',
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#18181b',
+    backgroundColor: '#0f172a',
   },
   storyBtn: {
     alignItems: 'center',
@@ -301,14 +288,14 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#6366f1',
+    backgroundColor: '#0f766e',
     padding: 2,
   },
   storyInnerCircle: {
     width: '100%',
     height: '100%',
     borderRadius: 24,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -318,14 +305,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   storyName: {
-    color: '#a1a1aa',
+    color: '#94a3b8',
     fontSize: 10,
     marginTop: 4,
   },
   postCard: {
-    backgroundColor: '#18181b30',
+    backgroundColor: '#0f172a60',
     borderBottomWidth: 1,
-    borderColor: '#18181b',
+    borderColor: '#1e293b',
     paddingVertical: 12,
   },
   postHeader: {
@@ -341,27 +328,27 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   smallAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#27272a',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#0f766e',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 'bold',
   },
   displayName: {
     color: '#ffffff',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 'bold',
   },
   locationText: {
-    color: '#71717a',
-    fontSize: 10,
-    marginTop: 2,
+    color: '#64748b',
+    fontSize: 11,
+    marginTop: 1,
   },
   postImage: {
     width: '100%',
@@ -369,8 +356,8 @@ const styles = StyleSheet.create({
   },
   mediaPlaceholder: {
     width: '100%',
-    height: 300,
-    backgroundColor: '#09090b',
+    height: 260,
+    backgroundColor: '#0f172a',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -384,34 +371,63 @@ const styles = StyleSheet.create({
   actionsLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 18,
   },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
   },
   actionLabel: {
-    color: '#a1a1aa',
-    fontSize: 12,
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '600',
   },
   likedLabel: {
     color: '#ef4444',
-  },
-  bookmarkLabel: {
-    color: '#a1a1aa',
-    fontSize: 16,
   },
   captionContainer: {
     paddingHorizontal: 16,
     paddingTop: 2,
   },
   captionText: {
-    color: '#d4d4d8',
-    fontSize: 12,
-    lineHeight: 18,
+    color: '#e2e8f0',
+    fontSize: 13,
+    lineHeight: 19,
   },
   captionUsername: {
     color: '#ffffff',
     fontWeight: 'bold',
+  },
+  emptyContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  emptyIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#1e293b50',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 6,
+  },
+  emptySub: {
+    color: '#64748b',
+    fontSize: 13,
+    textAlign: 'center',
   },
 });

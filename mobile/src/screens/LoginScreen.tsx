@@ -34,8 +34,8 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
         <View style={styles.logoBadge}>
           <Text style={styles.logoText}>S</Text>
         </View>
-        <Text style={styles.title}>Iniciar Sesión</Text>
-        <Text style={styles.subtitle}>Conéctate a la comunidad premium de SocialTush</Text>
+        <Text style={styles.title}>Iniciar sesión</Text>
+        <Text style={styles.subtitle}>Conéctate a tu cuenta de SocialTush</Text>
       </View>
 
       {error && (
@@ -50,8 +50,8 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
           <Text style={styles.label}>Usuario o Email</Text>
           <TextInput
             style={styles.input}
-            placeholder="ej: carlosp"
-            placeholderTextColor="#3f3f46"
+            placeholder="Usuario o correo"
+            placeholderTextColor="#64748b"
             value={usernameOrEmail}
             onChangeText={setUsernameOrEmail}
             autoCapitalize="none"
@@ -64,8 +64,8 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
           <Text style={styles.label}>Contraseña</Text>
           <TextInput
             style={styles.input}
-            placeholder="Introduce tu contraseña"
-            placeholderTextColor="#3f3f46"
+            placeholder="Tu contraseña"
+            placeholderTextColor="#64748b"
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -78,12 +78,12 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
           style={styles.button} 
           onPress={handleLogin}
           disabled={isLoading}
-          activeOpacity={0.8}
+          activeOpacity={0.85}
         >
           {isLoading ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text style={styles.buttonText}>Entrar</Text>
+            <Text style={styles.buttonText}>Iniciar sesión</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -100,7 +100,7 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#090d16',
     paddingHorizontal: 24,
     justifyContent: 'center',
   },
@@ -109,41 +109,43 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   logoBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: '#6366f1',
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: '#0f766e',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#14b8a650',
   },
   logoText: {
     color: '#ffffff',
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: '900',
   },
   title: {
     color: '#ffffff',
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
   },
   subtitle: {
-    color: '#71717a',
-    fontSize: 12,
+    color: '#94a3b8',
+    fontSize: 13,
     textAlign: 'center',
     marginTop: 6,
   },
   errorContainer: {
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
     padding: 12,
     borderRadius: 12,
     marginBottom: 20,
   },
   errorText: {
-    color: '#ef4444',
-    fontSize: 12,
+    color: '#f87171',
+    fontSize: 13,
     textAlign: 'center',
   },
   form: {
@@ -153,43 +155,43 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   label: {
-    color: '#a1a1aa',
-    fontSize: 12,
+    color: '#94a3b8',
+    fontSize: 13,
     fontWeight: '600',
   },
   input: {
-    backgroundColor: '#18181b',
+    backgroundColor: '#0f172a',
     borderWidth: 1,
-    borderColor: '#27272a',
-    borderRadius: 12,
-    height: 48,
+    borderColor: '#1e293b',
+    borderRadius: 14,
+    height: 50,
     paddingHorizontal: 16,
     color: '#ffffff',
     fontSize: 14,
   },
   button: {
-    backgroundColor: '#6366f1',
-    height: 48,
-    borderRadius: 12,
+    backgroundColor: '#0f766e',
+    height: 50,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
   },
   buttonText: {
     color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: 'bold',
   },
   footerLink: {
-    marginTop: 24,
+    marginTop: 28,
     alignItems: 'center',
   },
   footerText: {
-    color: '#71717a',
-    fontSize: 12,
+    color: '#64748b',
+    fontSize: 13,
   },
   signUpText: {
-    color: '#6366f1',
+    color: '#14b8a6',
     fontWeight: 'bold',
   },
 });
