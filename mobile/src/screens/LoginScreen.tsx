@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useAppTheme } from '../theme';
 
 interface LoginScreenProps {
   onNavigateToRegister: () => void;
@@ -9,6 +10,7 @@ interface LoginScreenProps {
 
 export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: LoginScreenProps) {
   const { login, isLoading } = useAuth();
+  const { theme } = useAppTheme();
   
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,13 +31,13 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
-        <View style={styles.logoBadge}>
+        <View style={[styles.logoBadge, { backgroundColor: theme.primary }]}>
           <Text style={styles.logoText}>S</Text>
         </View>
-        <Text style={styles.title}>Iniciar sesión</Text>
-        <Text style={styles.subtitle}>Conéctate a tu cuenta de SocialTush</Text>
+        <Text style={[styles.title, { color: theme.textPrimary }]}>Iniciar sesión</Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Conéctate a tu cuenta de SocialTush</Text>
       </View>
 
       {error && (
@@ -45,13 +47,12 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
       )}
 
       <View style={styles.form}>
-        {/* Username/Email */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Usuario o Email</Text>
+          <Text style={[styles.label, { color: theme.textSecondary }]}>Usuario o Email</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary }]}
             placeholder="Usuario o correo"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={theme.textMuted}
             value={usernameOrEmail}
             onChangeText={setUsernameOrEmail}
             autoCapitalize="none"
@@ -59,13 +60,12 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
           />
         </View>
 
-        {/* Password */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Contraseña</Text>
+          <Text style={[styles.label, { color: theme.textSecondary }]}>Contraseña</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary }]}
             placeholder="Tu contraseña"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={theme.textMuted}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -75,7 +75,7 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
         </View>
 
         <TouchableOpacity 
-          style={styles.button} 
+          style={[styles.button, { backgroundColor: theme.primary }]} 
           onPress={handleLogin}
           disabled={isLoading}
           activeOpacity={0.85}
@@ -89,8 +89,8 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
       </View>
 
       <TouchableOpacity onPress={onNavigateToRegister} style={styles.footerLink}>
-        <Text style={styles.footerText}>
-          ¿No tienes una cuenta? <Text style={styles.signUpText}>Regístrate</Text>
+        <Text style={[styles.footerText, { color: theme.textMuted }]}>
+          ¿No tienes una cuenta? <Text style={[styles.signUpText, { color: theme.accent }]}>Regístrate</Text>
         </Text>
       </TouchableOpacity>
     </View>
@@ -100,7 +100,6 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#090d16',
     paddingHorizontal: 24,
     justifyContent: 'center',
   },
@@ -112,7 +111,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 18,
-    backgroundColor: '#0f766e',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -125,12 +123,10 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   title: {
-    color: '#ffffff',
     fontSize: 26,
     fontWeight: 'bold',
   },
   subtitle: {
-    color: '#94a3b8',
     fontSize: 13,
     textAlign: 'center',
     marginTop: 6,
@@ -155,22 +151,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   label: {
-    color: '#94a3b8',
     fontSize: 13,
     fontWeight: '600',
   },
   input: {
-    backgroundColor: '#0f172a',
     borderWidth: 1,
-    borderColor: '#1e293b',
     borderRadius: 14,
     height: 50,
     paddingHorizontal: 16,
-    color: '#ffffff',
     fontSize: 14,
   },
   button: {
-    backgroundColor: '#0f766e',
     height: 50,
     borderRadius: 14,
     alignItems: 'center',
@@ -187,11 +178,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   footerText: {
-    color: '#64748b',
     fontSize: 13,
   },
   signUpText: {
-    color: '#14b8a6',
     fontWeight: 'bold',
   },
 });

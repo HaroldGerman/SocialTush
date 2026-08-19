@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TextInput, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../theme';
+import { useAppTheme } from '../theme';
 
 interface UserResult {
   username: string;
@@ -25,6 +25,8 @@ interface SearchScreenProps {
 
 export default function SearchScreen({ onSelectUser, onSelectCircle, onClose }: SearchScreenProps) {
   const { api } = useAuth();
+  const { theme } = useAppTheme();
+  
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UserResult[]>([]);
@@ -56,15 +58,15 @@ export default function SearchScreen({ onSelectUser, onSelectCircle, onClose }: 
   }, [query, api]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Header Bar with Search Input */}
-      <View style={styles.header}>
-        <View style={styles.searchInputBox}>
-          <Ionicons name="search-outline" size={18} color={theme.colors.textMuted} />
+      <View style={[styles.header, { borderBottomColor: theme.border }]}>
+        <View style={[styles.searchInputBox, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Ionicons name="search-outline" size={18} color={theme.textMuted} />
           <TextInput
-            style={styles.input}
+            style={[styles.input, { color: theme.textPrimary }]}
             placeholder="Buscar usuarios o círculos..."
-            placeholderTextColor={theme.colors.textMuted}
+            placeholderTextColor={theme.textMuted}
             value={query}
             onChangeText={setQuery}
             autoFocus
@@ -73,26 +75,26 @@ export default function SearchScreen({ onSelectUser, onSelectCircle, onClose }: 
           />
           {query.length > 0 && (
             <TouchableOpacity onPress={() => setQuery('')}>
-              <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+              <Ionicons name="close-circle" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           )}
         </View>
 
         <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-          <Text style={styles.closeBtnText}>Cancelar</Text>
+          <Text style={[styles.closeBtnText, { color: theme.accent }]}>Cancelar</Text>
         </TouchableOpacity>
       </View>
 
       {/* Results Content */}
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="small" color={theme.colors.accent} />
+          <ActivityIndicator size="small" color={theme.accent} />
         </View>
       ) : query.trim() && users.length === 0 && circles.length === 0 ? (
         <View style={styles.emptyState}>
-          <Ionicons name="search-outline" size={40} color={theme.colors.textMuted} />
-          <Text style={styles.emptyTitle}>Sin resultados</Text>
-          <Text style={styles.emptySub}>No encontramos ningún resultado para "{query}"</Text>
+          <Ionicons name="search-outline" size={40} color={theme.textMuted} />
+          <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Sin resultados</Text>
+          <Text style={[styles.emptySub, { color: theme.textMuted }]}>No encontramos ningún resultado para "{query}"</Text>
         </View>
       ) : (
         <FlatList
@@ -101,42 +103,44 @@ export default function SearchScreen({ onSelectUser, onSelectCircle, onClose }: 
             ...circles.map(c => ({ type: 'CIRCLE' as const, data: c }))
           ]}
           keyExtractor={(item, index) => `${item.type}-${index}`}
-          contentContainerStyle={{ padding: theme.spacing.lg }}
+          contentContainerStyle={{ padding: 16 }}
           renderItem={({ item }) => {
             if (item.type === 'USER') {
               const u = item.data as UserResult;
               return (
                 <TouchableOpacity 
-                  style={styles.resultCard}
+                  style={[styles.resultCard, { borderBottomColor: theme.border }]}
                   onPress={() => { onSelectUser(u.username); onClose(); }}
                 >
-                  <View style={styles.avatar}>
+                  <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
                     <Text style={styles.avatarText}>
                       {(u.displayName || u.username).charAt(0).toUpperCase()}
                     </Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.title}>{u.displayName || u.username}</Text>
-                    <Text style={styles.subtitle}>@{u.username}</Text>
+                    <Text style={[styles.title, { color: theme.textPrimary }]}>{u.displayName || u.username}</Text>
+                    <Text style={[styles.subtitle, { color: theme.textSecondary }]}>@{u.username}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
+                  <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
                 </TouchableOpacity>
               );
             } else {
               const c = item.data as CircleResult;
               return (
                 <TouchableOpacity 
-                  style={styles.resultCard}
+                  style={[styles.resultCard, { borderBottomColor: theme.border }]}
                   onPress={() => { onSelectCircle(c.slug); onClose(); }}
                 >
-                  <View style={[styles.avatar, { backgroundColor: theme.colors.surfaceSecondary }]}>
-                    <Ionicons name="people-outline" size={20} color={theme.colors.accent} />
+                  <View style={[styles.avatar, { backgroundColor: theme.surfaceSecondary }]}>
+                    <Ionicons name="people-outline" size={20} color={theme.accent} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.title}>{c.name}</Text>
-                    <Text style={styles.subtitle} numberOfLines={1}>{c.description || 'Círculo de la comunidad'}</Text>
+                    <Text style={[styles.title, { color: theme.textPrimary }]}>{c.name}</Text>
+                    <Text style={[styles.subtitle, { color: theme.textSecondary }]} numberOfLines={1}>
+                      {c.description || 'Círculo de la comunidad'}
+                    </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
+                  <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
                 </TouchableOpacity>
               );
             }
@@ -150,40 +154,34 @@ export default function SearchScreen({ onSelectUser, onSelectCircle, onClose }: 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderColor: theme.colors.border,
     gap: 12,
   },
   searchInputBox: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: 16,
     paddingHorizontal: 12,
     height: 44,
     gap: 8,
   },
   input: {
     flex: 1,
-    color: theme.colors.textPrimary,
     fontSize: 14,
   },
   closeBtn: {
     paddingVertical: 8,
   },
   closeBtnText: {
-    color: theme.colors.accent,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -197,14 +195,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: theme.colors.border,
     gap: 12,
   },
   avatar: {
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -214,12 +210,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   title: {
-    color: theme.colors.textPrimary,
     fontSize: 14,
     fontWeight: 'bold',
   },
   subtitle: {
-    color: theme.colors.textSecondary,
     fontSize: 12,
     marginTop: 1,
   },
@@ -227,16 +221,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: theme.spacing.xl,
+    padding: 24,
   },
   emptyTitle: {
-    color: theme.colors.textPrimary,
     fontSize: 16,
     fontWeight: 'bold',
     marginTop: 12,
   },
   emptySub: {
-    color: theme.colors.textMuted,
     fontSize: 13,
     textAlign: 'center',
     marginTop: 4,

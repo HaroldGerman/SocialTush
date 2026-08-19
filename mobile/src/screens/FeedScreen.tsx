@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl, Image, Share, Modal } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../theme';
+import { useAppTheme } from '../theme';
 import SearchScreen from './SearchScreen';
 
 interface Post {
@@ -39,12 +39,14 @@ interface FeedScreenProps {
 
 export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenUser, onOpenCircle }: FeedScreenProps) {
   const { api, user } = useAuth();
+  const { theme } = useAppTheme();
   
   const [posts, setPosts] = useState<Post[]>([]);
   const [stories, setStories] = useState<GroupedStory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [failedImageUrls, setFailedImageUrls] = useState<Record<string, boolean>>({});
 
   const fetchFeed = useCallback(async (clear = false) => {
     try {
@@ -110,7 +112,6 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
         return p;
       }));
     } catch (err) {
-      // Toggle locally on error
       setPosts(prev => prev.map(p => {
         if (p.postId === postId) {
           return { ...p, isSaved: !p.isSaved };
@@ -126,134 +127,148 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
         message: `${post.caption || 'Mira esta publicación en SocialTush'} - por @${post.username}`,
       });
     } catch (error) {
-      // Share cancelled or unavailable
+      // Share cancelled
     }
   };
 
-  const renderPostItem = ({ item }: { item: Post }) => (
-    <View style={styles.postCard}>
-      {/* Header Post: Avatar + Name + Username + Date */}
-      <View style={styles.postHeader}>
-        <TouchableOpacity 
-          style={styles.postAuthor} 
-          onPress={() => onOpenUser ? onOpenUser(item.username) : null}
-        >
-          <View style={styles.smallAvatar}>
-            <Text style={styles.avatarText}>
-              {(item.displayName || item.username || 'U').charAt(0).toUpperCase()}
-            </Text>
-          </View>
-          <View>
-            <Text style={styles.displayName}>{item.displayName || item.username}</Text>
-            <Text style={styles.usernameText}>@{item.username}</Text>
-          </View>
-        </TouchableOpacity>
-        
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          {item.location ? (
-            <Text style={styles.locationText}>{item.location}</Text>
-          ) : null}
-          <TouchableOpacity>
-            <Ionicons name="ellipsis-horizontal" size={18} color={theme.colors.textMuted} />
+  const renderPostItem = ({ item }: { item: Post }) => {
+    const hasMedia = item.mediaUrls && item.mediaUrls.length > 0;
+    const mediaUrl = hasMedia ? item.mediaUrls[0] : null;
+    const isMediaFailed = mediaUrl ? failedImageUrls[mediaUrl] : false;
+
+    return (
+      <View style={[styles.postCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        {/* Header Post */}
+        <View style={styles.postHeader}>
+          <TouchableOpacity 
+            style={styles.postAuthor} 
+            onPress={() => onOpenUser ? onOpenUser(item.username) : null}
+          >
+            <View style={[styles.smallAvatar, { backgroundColor: theme.primary }]}>
+              <Text style={styles.avatarText}>
+                {(item.displayName || item.username || 'U').charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <View>
+              <Text style={[styles.displayName, { color: theme.textPrimary }]}>{item.displayName || item.username}</Text>
+              <Text style={[styles.usernameText, { color: theme.textMuted }]}>@{item.username}</Text>
+            </View>
           </TouchableOpacity>
+          
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            {item.location ? (
+              <Text style={[styles.locationText, { color: theme.textMuted }]}>{item.location}</Text>
+            ) : null}
+            <TouchableOpacity>
+              <Ionicons name="ellipsis-horizontal" size={18} color={theme.textMuted} />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
 
-      {/* Caption Content */}
-      {item.caption ? (
-        <View style={styles.captionContainer}>
-          <Text style={styles.captionText}>{item.caption}</Text>
-        </View>
-      ) : null}
+        {/* Caption Content */}
+        {item.caption ? (
+          <View style={styles.captionContainer}>
+            <Text style={[styles.captionText, { color: theme.textPrimary }]}>{item.caption}</Text>
+          </View>
+        ) : null}
 
-      {/* Media: RENDER ONLY IF mediaUrls EXISTS AND IS NOT EMPTY! NO RESERVED HEIGHT IF EMPTY! */}
-      {item.mediaUrls && item.mediaUrls.length > 0 ? (
-        <View style={styles.mediaWrapper}>
-          <Image 
-            source={{ uri: item.mediaUrls[0] }} 
-            style={styles.postImage} 
-            resizeMode="cover"
-          />
-        </View>
-      ) : null}
+        {/* Media: RENDER ONLY IF MEDIA EXISTS & NOT FAILED! NO RESERVED HEIGHT IF NO MEDIA! */}
+        {hasMedia && mediaUrl ? (
+          <View style={styles.mediaWrapper}>
+            {isMediaFailed ? (
+              <View style={[styles.mediaFallback, { backgroundColor: theme.surfaceSecondary }]}>
+                <Ionicons name="image-outline" size={32} color={theme.textMuted} />
+                <Text style={[styles.mediaFallbackText, { color: theme.textMuted }]}>No se pudo cargar la imagen</Text>
+              </View>
+            ) : (
+              <Image 
+                source={{ uri: mediaUrl }} 
+                style={styles.postImage} 
+                resizeMode="cover"
+                onError={() => {
+                  setFailedImageUrls(prev => ({ ...prev, [mediaUrl]: true }));
+                }}
+              />
+            )}
+          </View>
+        ) : null}
 
-      {/* Post Actions Bar */}
-      <View style={styles.actionsBar}>
-        <View style={styles.actionsLeft}>
-          {/* Like */}
-          <TouchableOpacity onPress={() => handleLikeToggle(item.postId)} style={styles.actionBtn}>
+        {/* Post Actions Bar */}
+        <View style={styles.actionsBar}>
+          <View style={styles.actionsLeft}>
+            {/* Like */}
+            <TouchableOpacity onPress={() => handleLikeToggle(item.postId)} style={styles.actionBtn}>
+              <Ionicons 
+                name={item.hasLiked ? "heart" : "heart-outline"} 
+                size={22} 
+                color={item.hasLiked ? theme.like : theme.textSecondary} 
+              />
+              <Text style={[styles.actionLabel, { color: item.hasLiked ? theme.like : theme.textSecondary }]}>
+                {item.likesCount}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Comment */}
+            <TouchableOpacity style={styles.actionBtn}>
+              <Ionicons name="chatbubble-outline" size={20} color={theme.textSecondary} />
+              <Text style={[styles.actionLabel, { color: theme.textSecondary }]}>{item.commentsCount}</Text>
+            </TouchableOpacity>
+
+            {/* Share */}
+            <TouchableOpacity onPress={() => handleShare(item)} style={styles.actionBtn}>
+              <Ionicons name="share-outline" size={20} color={theme.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Save Bookmark */}
+          <TouchableOpacity onPress={() => handleSaveToggle(item.postId)}>
             <Ionicons 
-              name={item.hasLiked ? "heart" : "heart-outline"} 
-              size={22} 
-              color={item.hasLiked ? theme.colors.like : theme.colors.textSecondary} 
+              name={item.isSaved ? "bookmark" : "bookmark-outline"} 
+              size={20} 
+              color={item.isSaved ? theme.accent : theme.textSecondary} 
             />
-            <Text style={[styles.actionLabel, item.hasLiked && styles.likedLabel]}>
-              {item.likesCount}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Comment */}
-          <TouchableOpacity style={styles.actionBtn}>
-            <Ionicons name="chatbubble-outline" size={20} color={theme.colors.textSecondary} />
-            <Text style={styles.actionLabel}>{item.commentsCount}</Text>
-          </TouchableOpacity>
-
-          {/* Share */}
-          <TouchableOpacity onPress={() => handleShare(item)} style={styles.actionBtn}>
-            <Ionicons name="share-outline" size={20} color={theme.colors.textSecondary} />
           </TouchableOpacity>
         </View>
-
-        {/* Save Bookmark */}
-        <TouchableOpacity onPress={() => handleSaveToggle(item.postId)}>
-          <Ionicons 
-            name={item.isSaved ? "bookmark" : "bookmark-outline"} 
-            size={20} 
-            color={item.isSaved ? theme.colors.accent : theme.colors.textSecondary} 
-          />
-        </TouchableOpacity>
       </View>
-    </View>
-  );
+    );
+  };
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={theme.colors.accent} />
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.accent} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {/* Top Header Navigation Bar with Logo, Search, Notifications Bell & Profile */}
-      <View style={styles.topNav}>
-        {/* Left: Brand Logo */}
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Top Header Navigation Bar */}
+      <View style={[styles.topNav, { borderBottomColor: theme.border }]}>
         <View style={styles.brandContainer}>
-          <View style={styles.logoBadge}>
+          <View style={[styles.logoBadge, { backgroundColor: theme.primary }]}>
             <Text style={styles.logoText}>S</Text>
           </View>
-          <Text style={styles.topNavTitle}>SocialTush</Text>
+          <Text style={[styles.topNavTitle, { color: theme.textPrimary }]}>SocialTush</Text>
         </View>
 
-        {/* Right Header Actions */}
         <View style={styles.topNavActions}>
           <TouchableOpacity 
-            style={styles.navIconBtn} 
+            style={[styles.navIconBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} 
             onPress={() => setShowSearch(true)}
           >
-            <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} />
+            <Ionicons name="search-outline" size={20} color={theme.textSecondary} />
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.navIconBtn} 
+            style={[styles.navIconBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} 
             onPress={() => onOpenNotifications ? onOpenNotifications() : null}
           >
-            <Ionicons name="notifications-outline" size={20} color={theme.colors.textSecondary} />
+            <Ionicons name="notifications-outline" size={20} color={theme.textSecondary} />
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.avatarNavBtn} 
+            style={[styles.avatarNavBtn, { backgroundColor: theme.primary, borderColor: theme.accent }]} 
             onPress={() => onOpenProfile ? onOpenProfile() : null}
           >
             <Text style={styles.avatarNavText}>
@@ -264,7 +279,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
       </View>
 
       {/* Stories Bar */}
-      <View style={styles.storiesBar}>
+      <View style={[styles.storiesBar, { borderBottomColor: theme.border }]}>
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -272,22 +287,22 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
           keyExtractor={(item) => item.userId}
           ListHeaderComponent={
             <TouchableOpacity style={styles.createStoryBtn}>
-              <View style={styles.createStoryCircle}>
-                <Ionicons name="add" size={20} color={theme.colors.accent} />
+              <View style={[styles.createStoryCircle, { borderColor: theme.accent, backgroundColor: theme.surface }]}>
+                <Ionicons name="add" size={20} color={theme.accent} />
               </View>
-              <Text style={styles.storyName}>Tu Historia</Text>
+              <Text style={[styles.storyName, { color: theme.textSecondary }]}>Tu Historia</Text>
             </TouchableOpacity>
           }
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.storyBtn}>
-              <View style={styles.storyOuterCircle}>
-                <View style={styles.storyInnerCircle}>
+              <View style={[styles.storyOuterCircle, { backgroundColor: theme.primary }]}>
+                <View style={[styles.storyInnerCircle, { backgroundColor: theme.background }]}>
                   <Text style={styles.storyAvatarText}>
                     {(item.displayName || item.username || 'U').charAt(0).toUpperCase()}
                   </Text>
                 </View>
               </View>
-              <Text style={styles.storyName} numberOfLines={1}>{item.displayName || item.username}</Text>
+              <Text style={[styles.storyName, { color: theme.textSecondary }]} numberOfLines={1}>{item.displayName || item.username}</Text>
             </TouchableOpacity>
           )}
         />
@@ -317,17 +332,17 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={handleRefresh} 
-            tintColor={theme.colors.accent}
+            tintColor={theme.accent}
           />
         }
         contentContainerStyle={posts.length === 0 ? styles.emptyContainer : { paddingBottom: 24 }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <View style={styles.emptyIconBox}>
-              <Ionicons name="newspaper-outline" size={36} color={theme.colors.textMuted} />
+            <View style={[styles.emptyIconBox, { backgroundColor: theme.surfaceSecondary }]}>
+              <Ionicons name="newspaper-outline" size={36} color={theme.textMuted} />
             </View>
-            <Text style={styles.emptyTitle}>Tu Feed está listo</Text>
-            <Text style={styles.emptySub}>Conecta con personas o publica un momento para comenzar.</Text>
+            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Tu Feed está listo</Text>
+            <Text style={[styles.emptySub, { color: theme.textMuted }]}>Conecta con personas o publica un momento para comenzar.</Text>
           </View>
         }
       />
@@ -338,20 +353,17 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   center: {
     flex: 1,
-    backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
   topNav: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: 14,
+    paddingHorizontal: 16,
+    paddingTop: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderColor: theme.colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -365,7 +377,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -375,7 +386,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   topNavTitle: {
-    color: theme.colors.textPrimary,
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.3,
@@ -389,21 +399,17 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: theme.colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   avatarNavBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: theme.colors.accent,
   },
   avatarNavText: {
     color: '#ffffff',
@@ -413,8 +419,7 @@ const styles = StyleSheet.create({
   storiesBar: {
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: theme.colors.border,
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: 16,
   },
   createStoryBtn: {
     alignItems: 'center',
@@ -425,11 +430,9 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     borderWidth: 1.5,
-    borderColor: theme.colors.accent,
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.surface,
   },
   storyBtn: {
     alignItems: 'center',
@@ -440,14 +443,12 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: theme.colors.primary,
     padding: 2,
   },
   storyInnerCircle: {
     width: '100%',
     height: '100%',
     borderRadius: 24,
-    backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -457,14 +458,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   storyName: {
-    color: theme.colors.textSecondary,
     fontSize: 10,
     marginTop: 4,
   },
   postCard: {
-    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderColor: theme.colors.border,
     paddingVertical: 14,
     marginVertical: 4,
   },
@@ -472,7 +470,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: 16,
     paddingBottom: 8,
   },
   postAuthor: {
@@ -484,7 +482,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -494,25 +491,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   displayName: {
-    color: theme.colors.textPrimary,
     fontSize: 14,
     fontWeight: 'bold',
   },
   usernameText: {
-    color: theme.colors.textMuted,
     fontSize: 11,
     marginTop: 1,
   },
   locationText: {
-    color: theme.colors.textMuted,
     fontSize: 11,
   },
   captionContainer: {
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: 16,
     paddingVertical: 4,
   },
   captionText: {
-    color: theme.colors.textPrimary,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -523,13 +516,24 @@ const styles = StyleSheet.create({
   },
   postImage: {
     width: '100%',
-    height: 340,
+    height: 320,
+  },
+  mediaFallback: {
+    width: '100%',
+    height: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  mediaFallbackText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   actionsBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: 16,
     paddingTop: 10,
   },
   actionsLeft: {
@@ -543,12 +547,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actionLabel: {
-    color: theme.colors.textSecondary,
     fontSize: 13,
     fontWeight: '600',
-  },
-  likedLabel: {
-    color: theme.colors.like,
   },
   emptyContainer: {
     flexGrow: 1,
@@ -565,19 +565,16 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 20,
-    backgroundColor: theme.colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
   emptyTitle: {
-    color: theme.colors.textPrimary,
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 6,
   },
   emptySub: {
-    color: theme.colors.textMuted,
     fontSize: 13,
     textAlign: 'center',
   },

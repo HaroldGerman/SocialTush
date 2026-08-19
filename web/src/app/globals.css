@@ -13,6 +13,15 @@
   --accent-light-teal: #ccfbf1;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-main: #090d16;
+    --card-bg: #0f172a;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+  }
+}
+
 body {
   background-color: var(--bg-main);
   color: var(--text-main);
@@ -26,7 +35,7 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #e2e8f0;
+  background: var(--bg-main);
 }
 ::-webkit-scrollbar-thumb {
   background: #94a3b8;
@@ -38,7 +47,7 @@ body {
 
 /* Clean Card Shadows & Effects */
 .soft-card {
-  background: #ffffff;
+  background: var(--card-bg);
   border: 1px solid #e2e8f0;
   box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
   border-radius: 1.25rem;

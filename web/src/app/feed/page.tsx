@@ -62,6 +62,7 @@ export default function FeedPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [showMobilePublisherModal, setShowMobilePublisherModal] = useState(false);
+  const [failedWebImages, setFailedWebImages] = useState<Record<string, boolean>>({});
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -601,10 +602,22 @@ export default function FeedPage() {
                   </p>
                 ) : null}
 
-                {/* Media: RENDER ONLY IF mediaUrls EXISTS AND LENGTH > 0! NO RESERVED HEIGHT IF EMPTY! */}
+                {/* Media: RENDER ONLY IF mediaUrls EXISTS AND LENGTH > 0! ELEGANT FALLBACK ON ERROR */}
                 {post.mediaUrls && post.mediaUrls.length > 0 ? (
-                  <div className="rounded-2xl overflow-hidden max-h-96 border border-slate-800 bg-[#090d16]">
-                    <img src={post.mediaUrls[0]} alt="Media" className="w-full h-full object-cover" />
+                  <div className="rounded-2xl overflow-hidden max-h-96 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900">
+                    {failedWebImages[post.mediaUrls[0]] ? (
+                      <div className="w-full h-40 flex flex-col items-center justify-center gap-2 text-slate-400">
+                        <ImageIcon className="w-8 h-8 stroke-[1.5]" />
+                        <span className="text-xs font-semibold">No se pudo cargar el archivo multimedia</span>
+                      </div>
+                    ) : (
+                      <img 
+                        src={post.mediaUrls[0]} 
+                        alt="Media" 
+                        onError={() => setFailedWebImages(prev => ({ ...prev, [post.mediaUrls[0]]: true }))}
+                        className="w-full h-full object-cover" 
+                      />
+                    )}
                   </div>
                 ) : null}
 

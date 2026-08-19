@@ -6,12 +6,13 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import FeedScreen from './src/screens/FeedScreen';
 import ChatListScreen from './src/screens/ChatListScreen';
 import ChatRoomScreen from './src/screens/ChatRoomScreen';
-import ReelsScreen from './src/screens/ReelsScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import CirclesScreen from './src/screens/CirclesScreen';
-import { StyleSheet, Text, View, StatusBar, TouchableOpacity, Modal, Alert } from 'react-native';
+import CreatePostModal from './src/components/CreatePostModal';
+import { StyleSheet, Text, View, StatusBar, TouchableOpacity } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from './src/theme';
+import { useAppTheme } from './src/theme';
 
 interface Conversation {
   conversationId: string;
@@ -26,21 +27,30 @@ type TabType = 'INICIO' | 'CIRCULOS' | 'CREAR' | 'MENSAJES' | 'PERFIL' | 'NOTIFS
 
 function MainApp() {
   const { user, logout } = useAuth();
+  const { theme, isDark } = useAppTheme();
+  const insets = useSafeAreaInsets();
+
   const [screen, setScreen] = useState<'WELCOME' | 'LOGIN' | 'REGISTER'>('WELCOME');
   const [authTab, setAuthTab] = useState<TabType>('INICIO');
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [targetProfileUsername, setTargetProfileUsername] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const [feedRefreshKey, setFeedRefreshKey] = useState<number>(0);
 
   if (user) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-        <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <View style={[styles.mainWrapper, { backgroundColor: theme.background, paddingTop: insets.top }]}>
+        <StatusBar 
+          barStyle={isDark ? "light-content" : "dark-content"} 
+          backgroundColor={theme.background} 
+          translucent={true}
+        />
         
         {/* Main Content Screen */}
         <View style={{ flex: 1 }}>
           {authTab === 'INICIO' && (
             <FeedScreen 
+              key={feedRefreshKey}
               onOpenNotifications={() => setAuthTab('NOTIFS')}
               onOpenProfile={() => {
                 setTargetProfileUsername(user.username);
@@ -79,59 +89,18 @@ function MainApp() {
           )}
         </View>
 
-        {/* Create Action Modal */}
-        <Modal
+        {/* Real Create Post Modal */}
+        <CreatePostModal
           visible={showCreateModal}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setShowCreateModal(false)}
-        >
-          <TouchableOpacity 
-            style={styles.modalOverlay} 
-            activeOpacity={1} 
-            onPress={() => setShowCreateModal(false)}
-          >
-            <View style={styles.createModalContent}>
-              <Text style={styles.createModalTitle}>Crear en SocialTush</Text>
-              
-              <TouchableOpacity 
-                style={styles.createOption}
-                onPress={() => {
-                  setShowCreateModal(false);
-                  setAuthTab('INICIO');
-                  Alert.alert('Crear Publicación', 'Utiliza la barra de crear momento en tu feed.');
-                }}
-              >
-                <View style={[styles.createIconBox, { backgroundColor: '#0f766e20' }]}>
-                  <Ionicons name="image-outline" size={24} color={theme.colors.accent} />
-                </View>
-                <View>
-                  <Text style={styles.createOptionTitle}>Nueva Publicación</Text>
-                  <Text style={styles.createOptionSub}>Comparte momentos con la comunidad</Text>
-                </View>
-              </TouchableOpacity>
+          onClose={() => setShowCreateModal(false)}
+          onPostCreated={() => {
+            setAuthTab('INICIO');
+            setFeedRefreshKey(prev => prev + 1);
+          }}
+        />
 
-              <TouchableOpacity 
-                style={styles.createOption}
-                onPress={() => {
-                  setShowCreateModal(false);
-                  Alert.alert('Nueva Historia', 'Pulsa + en el carrusel de historias de tu feed.');
-                }}
-              >
-                <View style={[styles.createIconBox, { backgroundColor: '#10b98120' }]}>
-                  <Ionicons name="camera-outline" size={24} color={theme.colors.emerald} />
-                </View>
-                <View>
-                  <Text style={styles.createOptionTitle}>Nueva Historia</Text>
-                  <Text style={styles.createOptionSub}>Momento efímero de 24 horas</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </Modal>
-
-        {/* Modern 5-Tab Navigation Bar */}
-        <View style={styles.tabBar}>
+        {/* Dynamic Theme 5-Tab Navigation Bar */}
+        <View style={[styles.tabBar, { backgroundColor: theme.surface, borderColor: theme.border, paddingBottom: Math.max(insets.bottom, 4) }]}>
           {/* 1. Inicio */}
           <TouchableOpacity 
             style={styles.tabItem} 
@@ -144,9 +113,11 @@ function MainApp() {
             <Ionicons 
               name={authTab === 'INICIO' ? 'home' : 'home-outline'} 
               size={22} 
-              color={authTab === 'INICIO' ? theme.colors.accent : theme.colors.textMuted} 
+              color={authTab === 'INICIO' ? theme.accent : theme.textMuted} 
             />
-            <Text style={[styles.tabText, authTab === 'INICIO' && styles.tabTextActive]}>Inicio</Text>
+            <Text style={[styles.tabText, { color: theme.textMuted }, authTab === 'INICIO' && { color: theme.accent, fontWeight: 'bold' }]}>
+              Inicio
+            </Text>
           </TouchableOpacity>
 
           {/* 2. Círculos */}
@@ -161,9 +132,11 @@ function MainApp() {
             <Ionicons 
               name={authTab === 'CIRCULOS' ? 'people' : 'people-outline'} 
               size={22} 
-              color={authTab === 'CIRCULOS' ? theme.colors.accent : theme.colors.textMuted} 
+              color={authTab === 'CIRCULOS' ? theme.accent : theme.textMuted} 
             />
-            <Text style={[styles.tabText, authTab === 'CIRCULOS' && styles.tabTextActive]}>Círculos</Text>
+            <Text style={[styles.tabText, { color: theme.textMuted }, authTab === 'CIRCULOS' && { color: theme.accent, fontWeight: 'bold' }]}>
+              Círculos
+            </Text>
           </TouchableOpacity>
 
           {/* 3. Crear (Featured Middle Button) */}
@@ -172,10 +145,10 @@ function MainApp() {
             onPress={() => setShowCreateModal(true)}
             activeOpacity={0.85}
           >
-            <View style={styles.createBtnCircle}>
+            <View style={[styles.createBtnCircle, { backgroundColor: theme.primary }]}>
               <Ionicons name="add" size={28} color="#ffffff" />
             </View>
-            <Text style={styles.tabTextCreate}>Crear</Text>
+            <Text style={[styles.tabTextCreate, { color: theme.accent }]}>Crear</Text>
           </TouchableOpacity>
 
           {/* 4. Mensajes */}
@@ -189,9 +162,11 @@ function MainApp() {
             <Ionicons 
               name={authTab === 'MENSAJES' ? 'chatbubbles' : 'chatbubbles-outline'} 
               size={22} 
-              color={authTab === 'MENSAJES' ? theme.colors.accent : theme.colors.textMuted} 
+              color={authTab === 'MENSAJES' ? theme.accent : theme.textMuted} 
             />
-            <Text style={[styles.tabText, authTab === 'MENSAJES' && styles.tabTextActive]}>Mensajes</Text>
+            <Text style={[styles.tabText, { color: theme.textMuted }, authTab === 'MENSAJES' && { color: theme.accent, fontWeight: 'bold' }]}>
+              Mensajes
+            </Text>
           </TouchableOpacity>
 
           {/* 5. Perfil */}
@@ -206,9 +181,11 @@ function MainApp() {
             <Ionicons 
               name={authTab === 'PERFIL' ? 'person' : 'person-outline'} 
               size={22} 
-              color={authTab === 'PERFIL' ? theme.colors.accent : theme.colors.textMuted} 
+              color={authTab === 'PERFIL' ? theme.accent : theme.textMuted} 
             />
-            <Text style={[styles.tabText, authTab === 'PERFIL' && styles.tabTextActive]}>Perfil</Text>
+            <Text style={[styles.tabText, { color: theme.textMuted }, authTab === 'PERFIL' && { color: theme.accent, fontWeight: 'bold' }]}>
+              Perfil
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -217,44 +194,48 @@ function MainApp() {
 
   if (screen === 'LOGIN') {
     return (
-      <LoginScreen 
-        onNavigateToRegister={() => setScreen('REGISTER')}
-        onLoginSuccess={() => {}}
-      />
+      <View style={{ flex: 1, backgroundColor: theme.background, paddingTop: insets.top }}>
+        <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.background} />
+        <LoginScreen 
+          onNavigateToRegister={() => setScreen('REGISTER')}
+          onLoginSuccess={() => {}}
+        />
+      </View>
     );
   }
 
   if (screen === 'REGISTER') {
     return (
-      <RegisterScreen 
-        onNavigateToLogin={() => setScreen('LOGIN')}
-        onRegisterSuccess={() => {}}
-      />
+      <View style={{ flex: 1, backgroundColor: theme.background, paddingTop: insets.top }}>
+        <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.background} />
+        <RegisterScreen 
+          onNavigateToLogin={() => setScreen('LOGIN')}
+          onRegisterSuccess={() => {}}
+        />
+      </View>
     );
   }
 
   // Unauthenticated Public Welcome Screen
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+    <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top }]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.background} />
       
-      {/* Decorative Glow */}
-      <View style={styles.ambientGlow} />
+      {/* Ambient Glow */}
+      <View style={[styles.ambientGlow, { backgroundColor: isDark ? '#0f766e15' : '#0f766e10' }]} />
 
       {/* Main Branding Card */}
-      <View style={styles.welcomeCard}>
-        {/* Large Logo Badge */}
-        <View style={styles.logoBadge}>
+      <View style={[styles.welcomeCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={[styles.logoBadge, { backgroundColor: theme.primary }]}>
           <Text style={styles.logoText}>S</Text>
         </View>
 
-        <Text style={styles.appName}>SocialTush</Text>
-        <Text style={styles.appTagline}>Conecta. Comparte. Descubre.</Text>
+        <Text style={[styles.appName, { color: theme.textPrimary }]}>SocialTush</Text>
+        <Text style={[styles.appTagline, { color: theme.accent }]}>Conecta. Comparte. Descubre.</Text>
 
-        {/* Action Buttons */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity 
-            style={styles.primaryButton} 
+            style={[styles.primaryButton, { backgroundColor: theme.primary }]} 
             activeOpacity={0.85}
             onPress={() => setScreen('LOGIN')}
           >
@@ -262,11 +243,11 @@ function MainApp() {
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={styles.secondaryButton} 
+            style={[styles.secondaryButton, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]} 
             activeOpacity={0.85}
             onPress={() => setScreen('REGISTER')}
           >
-            <Text style={styles.secondaryButtonText}>Crear una cuenta</Text>
+            <Text style={[styles.secondaryButtonText, { color: theme.textPrimary }]}>Crear una cuenta</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -276,19 +257,23 @@ function MainApp() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <MainApp />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  mainWrapper: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: theme.spacing.xl,
+    paddingHorizontal: 24,
   },
   ambientGlow: {
     position: 'absolute',
@@ -296,27 +281,23 @@ const styles = StyleSheet.create({
     width: 300,
     height: 300,
     borderRadius: 150,
-    backgroundColor: '#0f766e15',
   },
   welcomeCard: {
     width: '100%',
-    backgroundColor: '#0f172a80',
-    borderRadius: theme.borderRadius.xl,
-    padding: theme.spacing.xxl,
+    borderRadius: 28,
+    padding: 32,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   logoBadge: {
     width: 80,
     height: 80,
-    borderRadius: theme.borderRadius.xl,
-    backgroundColor: theme.colors.primary,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#14b8a650',
-    marginBottom: theme.spacing.lg,
+    marginBottom: 20,
   },
   logoText: {
     color: '#ffffff',
@@ -324,13 +305,11 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   appName: {
-    color: theme.colors.textPrimary,
     fontSize: 32,
     fontWeight: 'bold',
     letterSpacing: 0.5,
   },
   appTagline: {
-    color: theme.colors.accent,
     fontSize: 15,
     fontWeight: '600',
     marginTop: 8,
@@ -343,8 +322,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     width: '100%',
     height: 52,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.primary,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -356,110 +334,51 @@ const styles = StyleSheet.create({
   secondaryButton: {
     width: '100%',
     height: 52,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.background,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: theme.colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   secondaryButtonText: {
-    color: theme.colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
   },
   tabBar: {
-    height: 64,
+    minHeight: 60,
     flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
     borderTopWidth: 1,
-    borderColor: theme.colors.border,
     alignItems: 'center',
     justifyContent: 'space-around',
-    paddingBottom: 4,
+    paddingTop: 6,
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100%',
   },
   tabItemCreate: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100%',
   },
   createBtnCircle: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#14b8a660',
-    marginTop: -12,
+    marginTop: -14,
   },
   tabText: {
-    color: theme.colors.textMuted,
     fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
   },
-  tabTextActive: {
-    color: theme.colors.accent,
-    fontWeight: 'bold',
-  },
   tabTextCreate: {
-    color: theme.colors.accent,
     fontSize: 10,
     fontWeight: 'bold',
-    marginTop: 2,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: '#00000080',
-    justifyContent: 'flex-end',
-  },
-  createModalContent: {
-    backgroundColor: theme.colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  createModalTitle: {
-    color: theme.colors.textPrimary,
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  createOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  createIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createOptionTitle: {
-    color: theme.colors.textPrimary,
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  createOptionSub: {
-    color: theme.colors.textSecondary,
-    fontSize: 12,
     marginTop: 2,
   },
 });

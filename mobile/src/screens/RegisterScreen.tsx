@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useAppTheme } from '../theme';
 
 interface RegisterScreenProps {
   onNavigateToLogin: () => void;
@@ -9,6 +10,7 @@ interface RegisterScreenProps {
 
 export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }: RegisterScreenProps) {
   const { register, isLoading } = useAuth();
+  const { theme } = useAppTheme();
   
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -26,18 +28,18 @@ export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }:
       await register(email.trim(), username.trim(), displayName.trim(), password);
       onRegisterSuccess();
     } catch (err: any) {
-      setError(err.message || 'Error al crear cuenta');
+      setError(err.message || 'Error al crear la cuenta');
     }
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView contentContainerStyle={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
-        <View style={styles.logoBadge}>
+        <View style={[styles.logoBadge, { backgroundColor: theme.primary }]}>
           <Text style={styles.logoText}>S</Text>
         </View>
-        <Text style={styles.title}>Crear una cuenta</Text>
-        <Text style={styles.subtitle}>Únete a la comunidad de SocialTush</Text>
+        <Text style={[styles.title, { color: theme.textPrimary }]}>Crear cuenta</Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Únete a la comunidad de SocialTush</Text>
       </View>
 
       {error && (
@@ -47,64 +49,61 @@ export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }:
       )}
 
       <View style={styles.form}>
-        {/* Name */}
+        {/* Email */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Nombre Público</Text>
+          <Text style={[styles.label, { color: theme.textSecondary }]}>Correo Electrónico</Text>
           <TextInput
-            style={styles.input}
-            placeholder="Tu nombre visible"
-            placeholderTextColor="#64748b"
-            value={displayName}
-            onChangeText={setDisplayName}
+            style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary }]}
+            placeholder="ejemplo@correo.com"
+            placeholderTextColor={theme.textMuted}
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
           />
         </View>
 
         {/* Username */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Nombre de usuario</Text>
+          <Text style={[styles.label, { color: theme.textSecondary }]}>Nombre de Usuario</Text>
           <TextInput
-            style={styles.input}
-            placeholder="Usuario (ej: carlos)"
-            placeholderTextColor="#64748b"
+            style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary }]}
+            placeholder="usuario_123"
+            placeholderTextColor={theme.textMuted}
             value={username}
             onChangeText={setUsername}
             autoCapitalize="none"
-            autoCorrect={false}
           />
         </View>
 
-        {/* Email */}
+        {/* Display Name */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Correo Electrónico</Text>
+          <Text style={[styles.label, { color: theme.textSecondary }]}>Nombre Visible</Text>
           <TextInput
-            style={styles.input}
-            placeholder="correo@ejemplo.com"
-            placeholderTextColor="#64748b"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            autoCorrect={false}
+            style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary }]}
+            placeholder="Tu Nombre Real"
+            placeholderTextColor={theme.textMuted}
+            value={displayName}
+            onChangeText={setDisplayName}
           />
         </View>
 
         {/* Password */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Contraseña</Text>
+          <Text style={[styles.label, { color: theme.textSecondary }]}>Contraseña</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary }]}
             placeholder="Mínimo 6 caracteres"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={theme.textMuted}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
             autoCapitalize="none"
-            autoCorrect={false}
           />
         </View>
 
         <TouchableOpacity 
-          style={styles.button} 
+          style={[styles.button, { backgroundColor: theme.primary }]} 
           onPress={handleRegister}
           disabled={isLoading}
           activeOpacity={0.85}
@@ -118,19 +117,19 @@ export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }:
       </View>
 
       <TouchableOpacity onPress={onNavigateToLogin} style={styles.footerLink}>
-        <Text style={styles.footerText}>
-          ¿Ya tienes una cuenta? <Text style={styles.loginText}>Inicia sesión</Text>
+        <Text style={[styles.footerText, { color: theme.textMuted }]}>
+          ¿Ya tienes una cuenta? <Text style={[styles.signUpText, { color: theme.accent }]}>Inicia sesión</Text>
         </Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: '#090d16',
+    flexGrow: 1,
     paddingHorizontal: 24,
+    paddingVertical: 32,
     justifyContent: 'center',
   },
   header: {
@@ -138,73 +137,65 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   logoBadge: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: '#0f766e',
+    width: 56,
+    height: 56,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#14b8a650',
   },
   logoText: {
     color: '#ffffff',
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '900',
   },
   title: {
-    color: '#ffffff',
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
   },
   subtitle: {
-    color: '#94a3b8',
-    fontSize: 12,
+    fontSize: 13,
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: 6,
   },
   errorContainer: {
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.3)',
-    padding: 10,
+    padding: 12,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   errorText: {
     color: '#f87171',
-    fontSize: 12,
+    fontSize: 13,
     textAlign: 'center',
   },
   form: {
-    gap: 12,
+    gap: 14,
   },
   inputGroup: {
-    gap: 4,
+    gap: 6,
   },
   label: {
-    color: '#94a3b8',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
   input: {
-    backgroundColor: '#0f172a',
     borderWidth: 1,
-    borderColor: '#1e293b',
-    borderRadius: 12,
-    height: 46,
+    borderRadius: 14,
+    height: 50,
     paddingHorizontal: 16,
-    color: '#ffffff',
     fontSize: 14,
   },
   button: {
-    backgroundColor: '#0f766e',
-    height: 48,
-    borderRadius: 12,
+    height: 50,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 10,
   },
   buttonText: {
     color: '#ffffff',
@@ -212,15 +203,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   footerLink: {
-    marginTop: 20,
+    marginTop: 24,
     alignItems: 'center',
   },
   footerText: {
-    color: '#64748b',
-    fontSize: 12,
+    fontSize: 13,
   },
-  loginText: {
-    color: '#14b8a6',
+  signUpText: {
     fontWeight: 'bold',
   },
 });

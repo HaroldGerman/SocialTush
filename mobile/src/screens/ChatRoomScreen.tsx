@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, Keyboard
 import { useAuth } from '../context/AuthContext';
 import { getWebSocketUrl } from '../config/api';
 import { Ionicons } from '@expo/vector-icons';
+import { useAppTheme } from '../theme';
 import CallScreen from './CallScreen';
 
 interface Message {
@@ -32,6 +33,7 @@ interface ChatRoomScreenProps {
 
 export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenProps) {
   const { api, user } = useAuth();
+  const { theme } = useAppTheme();
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -54,32 +56,29 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
   useEffect(() => {
     fetchMessages();
 
-    // Establish WebSocket connection for mobile STOMP frames
     const wsUrl = getWebSocketUrl();
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
-      // Send CONNECT frame
       const connectFrame = 'CONNECT\naccept-version:1.1,1.2\nheart-beat:10000,10000\n\n\u0000';
       socket.send(connectFrame);
 
-      // Send SUBSCRIBE frame
       const subscribeFrame = `SUBSCRIBE\nid:sub-0\ndestination:/topic/conversation.${conversation.conversationId}\n\n\u0000`;
       socket.send(subscribeFrame);
     };
 
-    socket.onmessage = (event) => {
-      const rawData = event.data as string;
-      if (rawData.startsWith('MESSAGE')) {
-        const bodyIndex = rawData.indexOf('\n\n');
-        if (bodyIndex !== -1) {
-          const bodyStr = rawData.substring(bodyIndex + 2, rawData.length - 1);
+    socket.onmessage = (e) => {
+      const data = e.data;
+      if (typeof data === 'string' && data.includes('MESSAGE')) {
+        const bodyMatch = data.match(/\n\n([\s\S]*)\u0000$/);
+        if (bodyMatch && bodyMatch[1]) {
           try {
-            const incomingMsg = JSON.parse(bodyStr);
-            setMessages((prev) => [...prev, incomingMsg]);
-          } catch (e) {
-            // Ignore parse errors
-          }
+            const parsed = JSON.parse(bodyMatch[1]);
+            setMessages((prev) => {
+              if (prev.some((m) => m.messageId === parsed.messageId)) return prev;
+              return [...prev, parsed];
+            });
+          } catch (err) {}
         }
       }
     };
@@ -87,58 +86,59 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
     ws.current = socket;
 
     return () => {
-      if (socket.readyState === WebSocket.OPEN) {
+      if (socket) {
         socket.close();
       }
     };
   }, [conversation.conversationId]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputText.trim()) return;
 
-    const content = inputText.trim();
+    const contentToSend = inputText.trim();
     setInputText('');
 
-    // Optimistic append
-    const localMsg: Message = {
-      messageId: Date.now().toString(),
-      senderId: user?.userId || '',
-      senderUsername: user?.username || '',
-      senderDisplayName: user?.displayName || user?.username || '',
-      senderAvatarUrl: '',
-      content,
-      messageType: 'TEXT',
-      createdAt: new Date().toISOString()
-    };
-    setMessages(prev => [...prev, localMsg]);
-
-    // Send via WebSocket STOMP SEND frame if connected
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      const payload = JSON.stringify({
-        conversationId: conversation.conversationId,
-        content,
+    try {
+      const res = await api.post(`/chat/conversations/${conversation.conversationId}/messages`, {
+        content: contentToSend,
         messageType: 'TEXT'
       });
-      const sendFrame = `SEND\ndestination:/app/chat.sendMessage\ncontent-type:application/json\n\n${payload}\u0000`;
-      ws.current.send(sendFrame);
-    } else {
-      // Fallback via HTTP REST
-      api.post(`/chat/conversations/${conversation.conversationId}/messages`, {
-        content,
-        messageType: 'TEXT'
-      }).catch(() => {});
+
+      const newMsg: Message = res.data;
+      setMessages((prev) => {
+        if (prev.some((m) => m.messageId === newMsg.messageId)) return prev;
+        return [...prev, newMsg];
+      });
+    } catch (err) {
+      const mockMsg: Message = {
+        messageId: 'temp-' + Date.now(),
+        senderId: user?.userId || '1',
+        senderUsername: user?.username || 'yo',
+        senderDisplayName: user?.displayName || 'Yo',
+        senderAvatarUrl: '',
+        content: contentToSend,
+        messageType: 'TEXT',
+        createdAt: new Date().toISOString()
+      };
+      setMessages((prev) => [...prev, mockMsg]);
     }
   };
 
   const renderMessageItem = ({ item }: { item: Message }) => {
     const isOwn = item.senderUsername === user?.username || item.senderId === user?.userId;
+
     return (
       <View style={[styles.messageRow, isOwn ? styles.ownRow : styles.otherRow]}>
         {!isOwn && (
-          <Text style={styles.senderName}>{item.senderDisplayName || item.senderUsername}</Text>
+          <Text style={[styles.senderName, { color: theme.accent }]}>@{item.senderUsername}</Text>
         )}
-        <View style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble]}>
-          <Text style={[styles.messageText, isOwn ? styles.ownText : styles.otherText]}>
+        <View style={[
+          styles.bubble, 
+          isOwn 
+            ? [styles.ownBubble, { backgroundColor: theme.primary }] 
+            : [styles.otherBubble, { backgroundColor: theme.surface, borderColor: theme.border }]
+        ]}>
+          <Text style={[styles.messageText, isOwn ? styles.ownText : [styles.otherText, { color: theme.textPrimary }]]}>
             {item.content}
           </Text>
         </View>
@@ -157,30 +157,30 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#14b8a6" />
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.accent} />
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView 
-      style={styles.container} 
+      style={[styles.container, { backgroundColor: theme.background }]} 
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: theme.border }]}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>
-          <Ionicons name="arrow-back" size={22} color="#ffffff" />
+          <Ionicons name="arrow-back" size={22} color={theme.textPrimary} />
         </TouchableOpacity>
         
         <View style={styles.headerInfo}>
-          <Text style={styles.title}>{conversation.name}</Text>
-          <Text style={styles.status}>En línea</Text>
+          <Text style={[styles.title, { color: theme.textPrimary }]}>{conversation.name}</Text>
+          <Text style={[styles.status, { color: theme.emerald }]}>En línea</Text>
         </View>
 
-        <TouchableOpacity onPress={() => setActiveCall(true)} style={styles.callBtn}>
-          <Ionicons name="call-outline" size={20} color="#14b8a6" />
+        <TouchableOpacity onPress={() => setActiveCall(true)} style={[styles.callBtn, { backgroundColor: theme.surfaceSecondary }]}>
+          <Ionicons name="call-outline" size={20} color={theme.accent} />
         </TouchableOpacity>
       </View>
 
@@ -192,23 +192,23 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
         contentContainerStyle={messages.length === 0 ? styles.emptyContainer : { paddingHorizontal: 16, paddingVertical: 12 }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Ionicons name="chatbubble-ellipses-outline" size={36} color="#64748b" />
-            <Text style={styles.emptyTitle}>Sin mensajes aún</Text>
-            <Text style={styles.emptySub}>Escribe el primer mensaje para comenzar la conversación.</Text>
+            <Ionicons name="chatbubble-ellipses-outline" size={36} color={theme.textMuted} />
+            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Sin mensajes aún</Text>
+            <Text style={[styles.emptySub, { color: theme.textMuted }]}>Escribe el primer mensaje para comenzar la conversación.</Text>
           </View>
         }
       />
 
       {/* Input */}
-      <View style={styles.inputRow}>
+      <View style={[styles.inputRow, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.textPrimary }]}
           placeholder="Escribe un mensaje..."
-          placeholderTextColor="#64748b"
+          placeholderTextColor={theme.textMuted}
           value={inputText}
           onChangeText={setInputText}
         />
-        <TouchableOpacity style={styles.sendBtn} onPress={handleSend}>
+        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme.primary }]} onPress={handleSend}>
           <Ionicons name="send" size={16} color="#ffffff" />
         </TouchableOpacity>
       </View>
@@ -219,11 +219,9 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#090d16',
   },
   center: {
     flex: 1,
-    backgroundColor: '#090d16',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -232,7 +230,6 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderColor: '#1e293b',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -244,18 +241,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    color: '#ffffff',
     fontSize: 15,
     fontWeight: 'bold',
   },
   status: {
-    color: '#10b981',
     fontSize: 11,
     marginTop: 1,
   },
   callBtn: {
     padding: 6,
-    backgroundColor: '#0f766e20',
     borderRadius: 10,
   },
   messageRow: {
@@ -276,13 +270,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   ownBubble: {
-    backgroundColor: '#0f766e',
     borderTopRightRadius: 2,
   },
   otherBubble: {
-    backgroundColor: '#0f172a',
     borderWidth: 1,
-    borderColor: '#1e293b',
     borderTopLeftRadius: 2,
   },
   messageText: {
@@ -292,11 +283,8 @@ const styles = StyleSheet.create({
   ownText: {
     color: '#ffffff',
   },
-  otherText: {
-    color: '#e2e8f0',
-  },
+  otherText: {},
   senderName: {
-    color: '#14b8a6',
     fontSize: 10,
     fontWeight: 'bold',
     marginBottom: 2,
@@ -304,24 +292,18 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     padding: 12,
-    backgroundColor: '#0f172a',
     borderTopWidth: 1,
-    borderColor: '#1e293b',
     gap: 10,
   },
   input: {
     flex: 1,
     height: 44,
-    backgroundColor: '#090d16',
     borderWidth: 1,
-    borderColor: '#1e293b',
     borderRadius: 14,
     paddingHorizontal: 16,
-    color: '#ffffff',
     fontSize: 14,
   },
   sendBtn: {
-    backgroundColor: '#0f766e',
     width: 44,
     height: 44,
     borderRadius: 14,
@@ -339,14 +321,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyTitle: {
-    color: '#ffffff',
     fontSize: 15,
     fontWeight: 'bold',
     marginTop: 10,
     marginBottom: 4,
   },
   emptySub: {
-    color: '#64748b',
     fontSize: 12,
     textAlign: 'center',
   },
