@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl, Image } from 'react-native';
+import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl, Image, Share, Modal } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import { theme } from '../theme';
+import SearchScreen from './SearchScreen';
 
 interface Post {
   postId: string;
@@ -10,13 +12,14 @@ interface Post {
   displayName: string;
   avatarUrl: string;
   caption: string;
-  location: string;
-  musicTitle: string;
+  location?: string;
+  musicTitle?: string;
   mediaUrls: string[];
   likesCount: number;
   commentsCount: number;
   hasLiked: boolean;
-  isSaved: boolean;
+  isSaved?: boolean;
+  createdAt: string;
 }
 
 interface GroupedStory {
@@ -27,18 +30,26 @@ interface GroupedStory {
   stories: any[];
 }
 
-export default function FeedScreen() {
+interface FeedScreenProps {
+  onOpenNotifications?: () => void;
+  onOpenProfile?: () => void;
+  onOpenUser?: (username: string) => void;
+  onOpenCircle?: (slug: string) => void;
+}
+
+export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenUser, onOpenCircle }: FeedScreenProps) {
   const { api, user } = useAuth();
   
   const [posts, setPosts] = useState<Post[]>([]);
   const [stories, setStories] = useState<GroupedStory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   const fetchFeed = useCallback(async (clear = false) => {
     try {
       const res = await api.get('/posts/feed?page=0&size=10');
-      const fetchedPosts = res.data?.posts || [];
+      const fetchedPosts = res.data?.posts || res.data?.content || (Array.isArray(res.data) ? res.data : []);
       setPosts(clear ? fetchedPosts : [...posts, ...fetchedPosts]);
     } catch (err) {
       if (clear) setPosts([]);
@@ -89,11 +100,44 @@ export default function FeedScreen() {
     }
   };
 
+  const handleSaveToggle = async (postId: string) => {
+    try {
+      const res = await api.post(`/posts/${postId}/save`);
+      setPosts(prev => prev.map(p => {
+        if (p.postId === postId) {
+          return { ...p, isSaved: res.data.saved };
+        }
+        return p;
+      }));
+    } catch (err) {
+      // Toggle locally on error
+      setPosts(prev => prev.map(p => {
+        if (p.postId === postId) {
+          return { ...p, isSaved: !p.isSaved };
+        }
+        return p;
+      }));
+    }
+  };
+
+  const handleShare = async (post: Post) => {
+    try {
+      await Share.share({
+        message: `${post.caption || 'Mira esta publicación en SocialTush'} - por @${post.username}`,
+      });
+    } catch (error) {
+      // Share cancelled or unavailable
+    }
+  };
+
   const renderPostItem = ({ item }: { item: Post }) => (
     <View style={styles.postCard}>
-      {/* Header */}
+      {/* Header Post: Avatar + Name + Username + Date */}
       <View style={styles.postHeader}>
-        <View style={styles.postAuthor}>
+        <TouchableOpacity 
+          style={styles.postAuthor} 
+          onPress={() => onOpenUser ? onOpenUser(item.username) : null}
+        >
           <View style={styles.smallAvatar}>
             <Text style={styles.avatarText}>
               {(item.displayName || item.username || 'U').charAt(0).toUpperCase()}
@@ -101,81 +145,122 @@ export default function FeedScreen() {
           </View>
           <View>
             <Text style={styles.displayName}>{item.displayName || item.username}</Text>
-            {item.location ? (
-              <Text style={styles.locationText}>{item.location}</Text>
-            ) : null}
+            <Text style={styles.usernameText}>@{item.username}</Text>
           </View>
+        </TouchableOpacity>
+        
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          {item.location ? (
+            <Text style={styles.locationText}>{item.location}</Text>
+          ) : null}
+          <TouchableOpacity>
+            <Ionicons name="ellipsis-horizontal" size={18} color={theme.colors.textMuted} />
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Image / Media */}
-      {item.mediaUrls && item.mediaUrls.length > 0 ? (
-        <Image 
-          source={{ uri: item.mediaUrls[0] }} 
-          style={styles.postImage} 
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={styles.mediaPlaceholder}>
-          <Ionicons name="image-outline" size={32} color="#334155" />
-          <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>Sin Multimedia</Text>
+      {/* Caption Content */}
+      {item.caption ? (
+        <View style={styles.captionContainer}>
+          <Text style={styles.captionText}>{item.caption}</Text>
         </View>
-      )}
+      ) : null}
 
-      {/* Actions */}
+      {/* Media: RENDER ONLY IF mediaUrls EXISTS AND IS NOT EMPTY! NO RESERVED HEIGHT IF EMPTY! */}
+      {item.mediaUrls && item.mediaUrls.length > 0 ? (
+        <View style={styles.mediaWrapper}>
+          <Image 
+            source={{ uri: item.mediaUrls[0] }} 
+            style={styles.postImage} 
+            resizeMode="cover"
+          />
+        </View>
+      ) : null}
+
+      {/* Post Actions Bar */}
       <View style={styles.actionsBar}>
         <View style={styles.actionsLeft}>
+          {/* Like */}
           <TouchableOpacity onPress={() => handleLikeToggle(item.postId)} style={styles.actionBtn}>
             <Ionicons 
               name={item.hasLiked ? "heart" : "heart-outline"} 
-              size={20} 
-              color={item.hasLiked ? "#ef4444" : "#94a3b8"} 
+              size={22} 
+              color={item.hasLiked ? theme.colors.like : theme.colors.textSecondary} 
             />
             <Text style={[styles.actionLabel, item.hasLiked && styles.likedLabel]}>
               {item.likesCount}
             </Text>
           </TouchableOpacity>
 
+          {/* Comment */}
           <TouchableOpacity style={styles.actionBtn}>
-            <Ionicons name="chatbubble-outline" size={19} color="#94a3b8" />
+            <Ionicons name="chatbubble-outline" size={20} color={theme.colors.textSecondary} />
             <Text style={styles.actionLabel}>{item.commentsCount}</Text>
+          </TouchableOpacity>
+
+          {/* Share */}
+          <TouchableOpacity onPress={() => handleShare(item)} style={styles.actionBtn}>
+            <Ionicons name="share-outline" size={20} color={theme.colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity>
+        {/* Save Bookmark */}
+        <TouchableOpacity onPress={() => handleSaveToggle(item.postId)}>
           <Ionicons 
             name={item.isSaved ? "bookmark" : "bookmark-outline"} 
-            size={19} 
-            color={item.isSaved ? "#14b8a6" : "#94a3b8"} 
+            size={20} 
+            color={item.isSaved ? theme.colors.accent : theme.colors.textSecondary} 
           />
         </TouchableOpacity>
       </View>
-
-      {/* Caption */}
-      {item.caption ? (
-        <View style={styles.captionContainer}>
-          <Text style={styles.captionText}>
-            <Text style={styles.captionUsername}>@{item.username} </Text>
-            {item.caption}
-          </Text>
-        </View>
-      ) : null}
     </View>
   );
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#14b8a6" />
+        <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Top Header Title */}
+      {/* Top Header Navigation Bar with Logo, Search, Notifications Bell & Profile */}
       <View style={styles.topNav}>
-        <Text style={styles.topNavTitle}>SocialTush</Text>
+        {/* Left: Brand Logo */}
+        <View style={styles.brandContainer}>
+          <View style={styles.logoBadge}>
+            <Text style={styles.logoText}>S</Text>
+          </View>
+          <Text style={styles.topNavTitle}>SocialTush</Text>
+        </View>
+
+        {/* Right Header Actions */}
+        <View style={styles.topNavActions}>
+          <TouchableOpacity 
+            style={styles.navIconBtn} 
+            onPress={() => setShowSearch(true)}
+          >
+            <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.navIconBtn} 
+            onPress={() => onOpenNotifications ? onOpenNotifications() : null}
+          >
+            <Ionicons name="notifications-outline" size={20} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.avatarNavBtn} 
+            onPress={() => onOpenProfile ? onOpenProfile() : null}
+          >
+            <Text style={styles.avatarNavText}>
+              {(user?.displayName || user?.username || 'U').charAt(0).toUpperCase()}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Stories Bar */}
@@ -188,7 +273,7 @@ export default function FeedScreen() {
           ListHeaderComponent={
             <TouchableOpacity style={styles.createStoryBtn}>
               <View style={styles.createStoryCircle}>
-                <Ionicons name="add" size={20} color="#14b8a6" />
+                <Ionicons name="add" size={20} color={theme.colors.accent} />
               </View>
               <Text style={styles.storyName}>Tu Historia</Text>
             </TouchableOpacity>
@@ -202,11 +287,26 @@ export default function FeedScreen() {
                   </Text>
                 </View>
               </View>
-              <Text style={styles.storyName}>{item.displayName || item.username}</Text>
+              <Text style={styles.storyName} numberOfLines={1}>{item.displayName || item.username}</Text>
             </TouchableOpacity>
           )}
         />
       </View>
+
+      {/* Search Modal */}
+      <Modal visible={showSearch} animationType="slide">
+        <SearchScreen
+          onSelectUser={(username) => {
+            setShowSearch(false);
+            if (onOpenUser) onOpenUser(username);
+          }}
+          onSelectCircle={(slug) => {
+            setShowSearch(false);
+            if (onOpenCircle) onOpenCircle(slug);
+          }}
+          onClose={() => setShowSearch(false)}
+        />
+      </Modal>
 
       {/* Feed List */}
       <FlatList
@@ -217,17 +317,17 @@ export default function FeedScreen() {
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={handleRefresh} 
-            tintColor="#14b8a6"
+            tintColor={theme.colors.accent}
           />
         }
         contentContainerStyle={posts.length === 0 ? styles.emptyContainer : { paddingBottom: 24 }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <View style={styles.emptyIconBox}>
-              <Ionicons name="newspaper-outline" size={36} color="#64748b" />
+              <Ionicons name="newspaper-outline" size={36} color={theme.colors.textMuted} />
             </View>
-            <Text style={styles.emptyTitle}>Tu Feed está tranquilo</Text>
-            <Text style={styles.emptySub}>Conecta con más personas o crea tu primera publicación.</Text>
+            <Text style={styles.emptyTitle}>Tu Feed está listo</Text>
+            <Text style={styles.emptySub}>Conecta con personas o publica un momento para comenzar.</Text>
           </View>
         }
       />
@@ -238,32 +338,83 @@ export default function FeedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#090d16',
+    backgroundColor: theme.colors.background,
   },
   center: {
     flex: 1,
-    backgroundColor: '#090d16',
+    backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
   topNav: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: 14,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: theme.colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  brandContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  logoBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '900',
   },
   topNavTitle: {
+    color: theme.colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  topNavActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  navIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  avatarNavBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.accent,
+  },
+  avatarNavText: {
     color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: 0.5,
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   storiesBar: {
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: '#1e293b',
-    paddingHorizontal: 16,
+    borderColor: theme.colors.border,
+    paddingHorizontal: theme.spacing.lg,
   },
   createStoryBtn: {
     alignItems: 'center',
@@ -274,28 +425,29 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     borderWidth: 1.5,
-    borderColor: '#14b8a6',
+    borderColor: theme.colors.accent,
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#0f172a',
+    backgroundColor: theme.colors.surface,
   },
   storyBtn: {
     alignItems: 'center',
     marginRight: 16,
+    maxWidth: 64,
   },
   storyOuterCircle: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#0f766e',
+    backgroundColor: theme.colors.primary,
     padding: 2,
   },
   storyInnerCircle: {
     width: '100%',
     height: '100%',
     borderRadius: 24,
-    backgroundColor: '#090d16',
+    backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -305,22 +457,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   storyName: {
-    color: '#94a3b8',
+    color: theme.colors.textSecondary,
     fontSize: 10,
     marginTop: 4,
   },
   postCard: {
-    backgroundColor: '#0f172a60',
+    backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
-    borderColor: '#1e293b',
-    paddingVertical: 12,
+    borderColor: theme.colors.border,
+    paddingVertical: 14,
+    marginVertical: 4,
   },
   postHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: 8,
   },
   postAuthor: {
     flexDirection: 'row',
@@ -328,76 +481,74 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   smallAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#0f766e',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
     color: '#ffffff',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  displayName: {
-    color: '#ffffff',
     fontSize: 14,
     fontWeight: 'bold',
   },
-  locationText: {
-    color: '#64748b',
+  displayName: {
+    color: theme.colors.textPrimary,
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  usernameText: {
+    color: theme.colors.textMuted,
     fontSize: 11,
     marginTop: 1,
   },
+  locationText: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+  },
+  captionContainer: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: 4,
+  },
+  captionText: {
+    color: theme.colors.textPrimary,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  mediaWrapper: {
+    marginTop: 8,
+    marginBottom: 4,
+    width: '100%',
+  },
   postImage: {
     width: '100%',
-    height: 380,
-  },
-  mediaPlaceholder: {
-    width: '100%',
-    height: 260,
-    backgroundColor: '#0f172a',
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: 340,
   },
   actionsBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: 10,
   },
   actionsLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 18,
+    gap: 20,
   },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
   },
   actionLabel: {
-    color: '#94a3b8',
+    color: theme.colors.textSecondary,
     fontSize: 13,
     fontWeight: '600',
   },
   likedLabel: {
-    color: '#ef4444',
-  },
-  captionContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 2,
-  },
-  captionText: {
-    color: '#e2e8f0',
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  captionUsername: {
-    color: '#ffffff',
-    fontWeight: 'bold',
+    color: theme.colors.like,
   },
   emptyContainer: {
     flexGrow: 1,
@@ -414,19 +565,19 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 20,
-    backgroundColor: '#1e293b50',
+    backgroundColor: theme.colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
   emptyTitle: {
-    color: '#ffffff',
+    color: theme.colors.textPrimary,
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 6,
   },
   emptySub: {
-    color: '#64748b',
+    color: theme.colors.textMuted,
     fontSize: 13,
     textAlign: 'center',
   },

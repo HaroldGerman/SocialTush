@@ -6,6 +6,8 @@ import { WS_BASE_URL } from '@/config/api';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Client } from '@stomp/stompjs';
+import NotificationBell from '@/components/NotificationBell';
+import MobileBottomBar from '@/components/MobileBottomBar';
 import CallModal from '@/components/CallModal';
 import { 
   Search, Plus, Send, Smile, Paperclip, Phone, Video, Info, User, ChevronLeft, LogOut, CheckCheck, 
@@ -1005,6 +1007,8 @@ function ChatContent() {
           }}
         />
       )}
+      {/* Mobile Bottom Navigation Bar */}
+      <MobileBottomBar />
     </main>
   );
 }

@@ -7,6 +7,7 @@ import {
   Users, Sparkles, Plus, Search, MapPin, Globe, Compass, 
   MessageCircle, Flame, Shield, ArrowRight, CheckCircle2, UserPlus, Layers, Heart
 } from 'lucide-react';
+import MobileBottomBar from '@/components/MobileBottomBar';
 
 interface CircleItem {
   id: string;
@@ -391,6 +392,8 @@ export default function CirclesPage() {
           </div>
         </div>
       )}
+      {/* Mobile Bottom Navigation Bar */}
+      <MobileBottomBar />
     </div>
   );
 }

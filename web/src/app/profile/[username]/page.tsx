@@ -5,6 +5,7 @@ import { useAuth, api } from '@/context/AuthContext';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import NotificationBell from '@/components/NotificationBell';
+import MobileBottomBar from '@/components/MobileBottomBar';
 import { 
   User, Lock, Settings, LogOut, Grid, Bookmark, Users, ChevronLeft, Check, Plus, Edit2, ShieldAlert, Sparkles, MessageSquare, MapPin, Radio, Calendar, Home, Compass, Search, Bell, Heart, Activity, Award
 } from 'lucide-react';
@@ -599,6 +600,8 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
+      {/* Mobile Bottom Navigation Bar */}
+      <MobileBottomBar />
     </div>
   );
 }

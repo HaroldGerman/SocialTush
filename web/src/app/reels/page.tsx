@@ -4,8 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth, api } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import MobileBottomBar from '@/components/MobileBottomBar';
 import { 
-  Heart, MessageCircle, Bookmark, Music, Play, Pause, Volume2, VolumeX, ArrowLeft, MoreVertical, Compass
+  Heart, MessageCircle, Bookmark, Music, Play, Pause, Volume2, VolumeX, ArrowLeft, MoreVertical, Compass, Sparkles
 } from 'lucide-react';
 
 interface ReelDto {
@@ -44,14 +45,14 @@ export default function ReelsPage() {
     }
   }, [user, isLoading, router]);
 
-  // Load reels
+  // Load reels from backend
   useEffect(() => {
     const fetchReels = async () => {
       try {
         const res = await api.get('/posts/reels?page=0&size=10');
-        setReels(res.data.posts);
+        setReels(res.data?.posts || []);
       } catch (err) {
-        setReels(getMockReels());
+        setReels([]);
       } finally {
         setLoading(false);
       }
@@ -71,7 +72,6 @@ export default function ReelsPage() {
           vid.play().catch(() => {});
         } else {
           vid.pause();
-          vid.currentTime = 0;
         }
       }
     });
@@ -79,227 +79,183 @@ export default function ReelsPage() {
 
   const handleScroll = () => {
     if (!containerRef.current) return;
-    const scrollPos = containerRef.current.scrollTop;
-    const itemHeight = containerRef.current.clientHeight || 500;
-    const newIndex = Math.round(scrollPos / itemHeight);
-    if (newIndex !== activeIndex && newIndex >= 0 && newIndex < reels.length) {
-      setActiveIndex(newIndex);
+    const scrollPosition = containerRef.current.scrollTop;
+    const itemHeight = containerRef.current.clientHeight;
+    const index = Math.round(scrollPosition / itemHeight);
+    if (index !== activeIndex && index >= 0 && index < reels.length) {
+      setActiveIndex(index);
     }
   };
 
   const handleLikeToggle = async (postId: string) => {
     try {
       const res = await api.post(`/likes/${postId}`);
-      setReels(prev => prev.map(r => {
-        if (r.postId === postId) {
-          return {
-            ...r,
-            hasLiked: res.data.liked,
-            likesCount: res.data.count
-          };
-        }
-        return r;
-      }));
+      setReels(prev => prev.map(r => r.postId === postId ? { ...r, hasLiked: res.data.liked, likesCount: res.data.count } : r));
     } catch (err) {
-      setReels(prev => prev.map(r => {
-        if (r.postId === postId) {
-          return {
-            ...r,
-            hasLiked: !r.hasLiked,
-            likesCount: r.hasLiked ? r.likesCount - 1 : r.likesCount + 1
-          };
-        }
-        return r;
-      }));
+      setReels(prev => prev.map(r => r.postId === postId ? { ...r, hasLiked: !r.hasLiked, likesCount: r.hasLiked ? r.likesCount - 1 : r.likesCount + 1 } : r));
     }
   };
 
   const handleSaveToggle = async (postId: string) => {
     try {
       const res = await api.post(`/posts/${postId}/save`);
-      setReels(prev => prev.map(r => {
-        if (r.postId === postId) {
-          return { ...r, isSaved: res.data.saved };
-        }
-        return r;
-      }));
+      setReels(prev => prev.map(r => r.postId === postId ? { ...r, isSaved: res.data.saved } : r));
     } catch (err) {
-      setReels(prev => prev.map(r => {
-        if (r.postId === postId) {
-          return { ...r, isSaved: !r.isSaved };
-        }
-        return r;
-      }));
+      setReels(prev => prev.map(r => r.postId === postId ? { ...r, isSaved: !r.isSaved } : r));
     }
   };
 
-  if (isLoading || !user) {
+  if (loading || isLoading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <ActivityIndicator size="large" color="#6366f1" />
+      <div className="min-h-screen bg-[#090d16] flex items-center justify-center">
+        <div className="animate-pulse flex flex-col items-center gap-3">
+          <div className="h-10 w-10 bg-teal-700 rounded-xl" />
+          <span className="text-teal-400 text-sm font-semibold">Cargando Reels...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (reels.length === 0) {
+    return (
+      <div className="min-h-screen bg-[#090d16] text-white flex flex-col items-center justify-center p-6 pb-20">
+        <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center mb-4">
+          <Sparkles className="w-8 h-8 text-teal-400" />
+        </div>
+        <h3 className="text-lg font-extrabold mb-1">No hay Reels disponibles</h3>
+        <p className="text-xs text-slate-400 text-center max-w-sm mb-6">
+          Sé el primero en compartir un video o explorar más tarde.
+        </p>
+        <Link href="/feed" className="px-5 py-2.5 bg-teal-700 hover:bg-teal-600 rounded-xl text-xs font-bold text-white shadow-md">
+          Volver al Feed
+        </Link>
+        <MobileBottomBar />
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-black text-zinc-100 flex flex-col items-center justify-center relative">
-      {/* Top Header floating */}
-      <div className="absolute top-4 left-4 z-40 flex items-center gap-3">
-        <Link href="/" className="p-2.5 rounded-full bg-zinc-900/60 border border-zinc-800 text-white backdrop-blur-md hover:bg-zinc-800 transition-colors">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <span className="text-xs font-bold bg-zinc-900/60 border border-zinc-800 px-3.5 py-2 rounded-full backdrop-blur-md">
+    <div className="min-h-screen bg-[#090d16] text-white flex flex-col items-center justify-center relative overflow-hidden font-sans pb-16 md:pb-0">
+      {/* Top Controls Overlay */}
+      <div className="absolute top-4 left-4 right-4 z-40 flex items-center justify-between max-w-md mx-auto">
+        <button 
+          onClick={() => router.back()}
+          className="p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white hover:bg-black/60 transition-all border border-white/10"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+
+        <span className="font-extrabold text-sm tracking-wider uppercase text-teal-400 drop-shadow-md">
           Reels
         </span>
-      </div>
 
-      <div className="absolute top-4 right-4 z-40">
         <button 
           onClick={() => setMuted(!muted)}
-          className="p-2.5 rounded-full bg-zinc-900/60 border border-zinc-800 text-white backdrop-blur-md hover:bg-zinc-800 transition-colors"
+          className="p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white hover:bg-black/60 transition-all border border-white/10"
         >
-          {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+          {muted ? <VolumeX className="w-5 h-5 text-rose-400" /> : <Volume2 className="w-5 h-5 text-emerald-400" />}
         </button>
       </div>
 
-      {/* Vertical Reels Container */}
+      {/* Main Snap Reel Feed */}
       <div 
         ref={containerRef}
         onScroll={handleScroll}
-        className="w-full max-w-sm h-screen md:h-[85vh] overflow-y-scroll snap-y snap-mandatory scrollbar-none flex flex-col md:rounded-2xl border-0 md:border border-zinc-900/60 shadow-2xl relative"
+        className="w-full max-w-md h-screen overflow-y-scroll snap-y snap-mandatory scrollbar-none relative"
       >
-        {reels.map((reel, idx) => (
+        {reels.map((reel, index) => (
           <div 
             key={reel.postId}
-            className="w-full h-full min-h-full flex-shrink-0 snap-start relative flex items-center justify-center bg-zinc-950"
+            className="w-full h-full snap-start relative bg-slate-900 flex items-center justify-center overflow-hidden"
           >
-            {/* Video Player */}
-            {reel.mediaUrls && reel.mediaUrls.length > 0 ? (
-              <video 
-                ref={el => { videoRefs.current[reel.postId] = el; }}
-                src={reel.mediaUrls[0]}
-                loop
-                muted={muted}
-                playsInline
-                className="w-full h-full object-cover pointer-events-none"
-                onClick={() => {
-                  const vid = videoRefs.current[reel.postId];
-                  if (vid) {
-                    if (vid.paused) vid.play().catch(() => {});
-                    else vid.pause();
-                  }
-                }}
-              />
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-zinc-700 bg-zinc-950">
-                <Compass className="h-8 w-8 text-zinc-800 animate-spin" />
-                <span className="text-xs font-semibold">Video no cargado</span>
-              </div>
+            {/* Background Video / Image Player */}
+            {reel.mediaUrls && reel.mediaUrls.length > 0 && (
+              reel.mediaUrls[0].endsWith('.mp4') || reel.mediaUrls[0].includes('video') ? (
+                <video 
+                  ref={(el) => { videoRefs.current[reel.postId] = el; }}
+                  src={reel.mediaUrls[0]}
+                  loop
+                  muted={muted}
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <img 
+                  src={reel.mediaUrls[0]}
+                  alt="Reel"
+                  className="w-full h-full object-cover"
+                />
+              )
             )}
 
-            {/* Dark gradient overlay bottom */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none" />
+            {/* Dark Gradient Overlay for Readability */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80 z-10 pointer-events-none" />
 
-            {/* Side Social Actions panel */}
-            <div className="absolute right-3.5 bottom-24 flex flex-col items-center gap-5 z-20">
+            {/* Right Side Social Actions Panel */}
+            <div className="absolute right-4 bottom-24 z-30 flex flex-col items-center gap-6">
+              {/* Like */}
               <button 
                 onClick={() => handleLikeToggle(reel.postId)}
-                className={`flex flex-col items-center gap-1.5 transition-transform active:scale-90 ${
-                  reel.hasLiked ? 'text-rose-500' : 'text-white'
-                }`}
+                className="flex flex-col items-center gap-1 group"
               >
-                <Heart className={`h-6 w-6 ${reel.hasLiked ? 'fill-current' : ''}`} />
-                <span className="text-[10px] font-bold">{reel.likesCount}</span>
+                <div className="p-3 bg-black/40 backdrop-blur-md rounded-full border border-white/10 group-hover:scale-110 transition-transform">
+                  <Heart className={`w-6 h-6 ${reel.hasLiked ? 'fill-rose-500 text-rose-500' : 'text-white'}`} />
+                </div>
+                <span className="text-[11px] font-bold drop-shadow">{reel.likesCount}</span>
               </button>
 
-              <button className="flex flex-col items-center gap-1.5 text-white transition-transform active:scale-90">
-                <MessageCircle className="h-6 w-6" />
-                <span className="text-[10px] font-bold">{reel.commentsCount}</span>
+              {/* Comment */}
+              <button className="flex flex-col items-center gap-1 group">
+                <div className="p-3 bg-black/40 backdrop-blur-md rounded-full border border-white/10 group-hover:scale-110 transition-transform">
+                  <MessageCircle className="w-6 h-6 text-white" />
+                </div>
+                <span className="text-[11px] font-bold drop-shadow">{reel.commentsCount}</span>
               </button>
 
+              {/* Bookmark Save */}
               <button 
                 onClick={() => handleSaveToggle(reel.postId)}
-                className={`flex flex-col items-center gap-1.5 transition-transform active:scale-90 ${
-                  reel.isSaved ? 'text-indigo-400' : 'text-white'
-                }`}
+                className="flex flex-col items-center gap-1 group"
               >
-                <Bookmark className={`h-6 w-6 ${reel.isSaved ? 'fill-current' : ''}`} />
+                <div className="p-3 bg-black/40 backdrop-blur-md rounded-full border border-white/10 group-hover:scale-110 transition-transform">
+                  <Bookmark className={`w-6 h-6 ${reel.isSaved ? 'fill-teal-400 text-teal-400' : 'text-white'}`} />
+                </div>
               </button>
             </div>
 
-            {/* Bottom Details panel */}
-            <div className="absolute left-4 bottom-6 right-16 z-20 flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <div className="h-7 w-7 rounded-full bg-zinc-800 flex items-center justify-center font-bold text-[10px] text-white border border-white/20">
-                  {reel.displayName.charAt(0).toUpperCase()}
-                </div>
-                <span className="text-xs font-bold text-white">@{reel.username}</span>
-                <button className="px-2.5 py-0.5 border border-white/40 hover:border-white text-[9px] font-bold text-white rounded-full transition-colors">
-                  Seguir
-                </button>
+            {/* Bottom Info Details overlay */}
+            <div className="absolute left-4 right-16 bottom-20 z-30 space-y-3">
+              {/* Author Row */}
+              <div className="flex items-center gap-3">
+                <Link href={`/profile/${reel.username}`} className="w-10 h-10 rounded-full bg-teal-800 text-white font-bold flex items-center justify-center text-xs border border-white/20 shadow-md">
+                  {(reel.displayName || reel.username || 'U').charAt(0).toUpperCase()}
+                </Link>
+                <Link href={`/profile/${reel.username}`} className="font-extrabold text-sm text-white drop-shadow hover:underline">
+                  @{reel.username}
+                </Link>
               </div>
 
-              <p className="text-[11px] text-zinc-300 leading-relaxed font-sans line-clamp-2">
-                {reel.caption}
-              </p>
+              {/* Caption */}
+              {reel.caption ? (
+                <p className="text-xs text-slate-100 font-medium line-clamp-2 drop-shadow-md">
+                  {reel.caption}
+                </p>
+              ) : null}
 
-              {reel.musicTitle && (
-                <div className="flex items-center gap-1.5 mt-1">
-                  <Music className="h-3 w-3 text-indigo-400 animate-spin" />
-                  <span className="text-[9px] text-zinc-400 font-semibold">{reel.musicTitle}</span>
+              {/* Music Title Track */}
+              {reel.musicTitle ? (
+                <div className="flex items-center gap-2 text-teal-300 text-xs font-semibold drop-shadow">
+                  <Music className="w-3.5 h-3.5 animate-spin" />
+                  <span className="truncate max-w-[200px]">{reel.musicTitle}</span>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         ))}
       </div>
-    </main>
-  );
-}
 
-function ActivityIndicator({ size, color }: { size: string; color: string }) {
-  return (
-    <div className="flex flex-col items-center gap-3">
-      <div className="h-10 w-10 bg-indigo-500 rounded-xl animate-pulse" />
-      <span className="text-zinc-500 text-sm font-semibold">Cargando Reels...</span>
+      {/* Mobile Bottom Navigation Bar */}
+      <MobileBottomBar />
     </div>
   );
-}
-
-// Resilient fallback short videos
-function getMockReels(): ReelDto[] {
-  return [
-    {
-      postId: 'r1',
-      userId: 'mock-1',
-      username: 'neon_rider',
-      displayName: 'Neon Rider',
-      avatarUrl: '',
-      caption: 'Prueba de reproducción vertical premium de Reels en SocialTush. 🚀 #reels #design',
-      location: 'Tokyo, Japan',
-      musicTitle: 'Kavinsky - Nightcall',
-      mediaUrls: ['https://assets.mixkit.co/videos/preview/mixkit-urban-street-lights-at-night-vertical-shot-41909-large.mp4'],
-      likesCount: 520,
-      commentsCount: 14,
-      hasLiked: false,
-      isSaved: false,
-      createdAt: new Date().toISOString()
-    },
-    {
-      postId: 'r2',
-      userId: 'mock-2',
-      username: 'art_creative',
-      displayName: 'Sophia',
-      avatarUrl: '',
-      caption: 'Explorando olas y naturaleza salvaje. 🌊 #nature #adventure',
-      location: 'Bali, Indonesia',
-      musicTitle: 'Ocean Breeze - Relaxing Sound',
-      mediaUrls: ['https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-waves-crashing-on-a-beach-vertical-41604-large.mp4'],
-      likesCount: 910,
-      commentsCount: 22,
-      hasLiked: true,
-      isSaved: true,
-      createdAt: new Date().toISOString()
-    }
-  ];
 }
