@@ -13,6 +13,7 @@ import com.socialtush.modules.chat.entity.Message;
 import com.socialtush.modules.chat.repository.ConversationParticipantRepository;
 import com.socialtush.modules.chat.repository.ConversationRepository;
 import com.socialtush.modules.chat.repository.MessageRepository;
+import com.socialtush.modules.chat.service.ChatService;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.users.entity.User;
@@ -30,7 +31,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import com.socialtush.modules.notifications.repository.NotificationRepository;
-import com.socialtush.modules.notifications.service.NotificationService;
 
 @RestController
 @RequestMapping("/api/v1/chat")
@@ -42,8 +42,8 @@ public class ChatController {
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
-    private final NotificationService notificationService;
     private final NotificationRepository notificationRepository;
+    private final ChatService chatService;
 
     @GetMapping("/conversations")
     public ResponseEntity<?> getConversations(@AuthenticationPrincipal User currentUser) {
@@ -197,31 +197,8 @@ public class ChatController {
                 ));
             }
 
-            // Create New Private Chat
-            Conversation unsavedPrivate = Conversation.builder()
-                    .isGroup(false)
-                    .createdBy(currentUser)
-                    .build();
-            final Conversation conversation = conversationRepository.save(unsavedPrivate);
-
-            ConversationParticipant part1 = ConversationParticipant.builder()
-                    .conversation(conversation)
-                    .user(currentUser)
-                    .role("MEMBER")
-                    .build();
-            ConversationParticipant part2 = ConversationParticipant.builder()
-                    .conversation(conversation)
-                    .user(recipient)
-                    .role("MEMBER")
-                    .build();
-            
-            participantRepository.save(part1);
-            participantRepository.save(part2);
-
-            return ResponseEntity.ok(Map.of(
-                    "conversationId", conversation.getId(),
-                    "isGroup", false,
-                    "message", "Chat iniciado con éxito"
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "message", "La conversación se crea al enviar el primer mensaje"
             ));
         }
     }
@@ -237,13 +214,15 @@ public class ChatController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
 
-        // Verify participant boundary
-        if (!participantRepository.existsByConversationIdAndUserId(conversationId, currentUser.getId())) {
+        Optional<ConversationParticipant> participant = participantRepository.findByConversationIdAndUserId(conversationId, currentUser.getId());
+        if (participant.isEmpty()) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "No eres miembro de esta conversación"));
         }
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        Page<Message> messagePage = messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable);
+        Page<Message> messagePage = participant.get().getClearedAt() == null
+                ? messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
+                : messageRepository.findByConversationIdAndCreatedAtAfterOrderByCreatedAtDesc(conversationId, participant.get().getClearedAt(), pageable);
 
         List<MessageResponseDto> dtos = messagePage.getContent().stream().map(m -> {
             Profile profile = profileRepository.findById(m.getSender().getId()).orElse(null);
@@ -275,56 +254,9 @@ public class ChatController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
 
-        Conversation conversation = conversationRepository.findById(conversationId).orElse(null);
-        if (conversation == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Conversación no encontrada"));
-        }
-
-        if (!participantRepository.existsByConversationIdAndUserId(conversationId, currentUser.getId())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "No eres miembro de esta conversación"));
-        }
-
-        if (request == null || request.getContent() == null || request.getContent().trim().isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("message", "El mensaje no puede estar vacío"));
-        }
-
-        Message message = Message.builder()
-                .conversation(conversation)
-                .sender(currentUser)
-                .content(request.getContent().trim())
-                .messageType(request.getMessageType() != null ? request.getMessageType() : "TEXT")
-                .storyPreviewId(request.getStoryPreviewId())
-                .build();
-
-        message = messageRepository.save(message);
-
-        // Notify other participants
-        List<ConversationParticipant> participants = participantRepository.findByConversationId(conversationId);
-        for (ConversationParticipant part : participants) {
-            if (!part.getUser().getId().equals(currentUser.getId())) {
-                notificationService.createNotification(
-                        part.getUser(),
-                        currentUser,
-                        "MESSAGE",
-                        conversation.getId()
-                );
-            }
-        }
-
-        Profile senderProfile = profileRepository.findById(currentUser.getId()).orElse(null);
-        MessageResponseDto dto = MessageResponseDto.builder()
-                .messageId(message.getId())
-                .senderId(currentUser.getId())
-                .senderUsername(currentUser.getUsername())
-                .senderDisplayName(senderProfile != null ? senderProfile.getDisplayName() : currentUser.getUsername())
-                .senderAvatarUrl(senderProfile != null ? senderProfile.getAvatarUrl() : "")
-                .content(message.getContent())
-                .messageType(message.getMessageType())
-                .storyPreviewId(message.getStoryPreviewId())
-                .createdAt(message.getCreatedAt().toString())
-                .build();
-
-        return ResponseEntity.ok(dto);
+        if (request == null) return ResponseEntity.badRequest().body(Map.of("message", "El mensaje no puede estar vacío"));
+        return ResponseEntity.ok(toMessageDto(chatService.sendMessage(currentUser, conversationId,
+                request.getContent(), request.getMessageType(), request.getStoryPreviewId())));
     }
 
     @RequestMapping(value = "/conversations/{conversationId}/read", method = {RequestMethod.POST, RequestMethod.PATCH, RequestMethod.PUT})
@@ -338,6 +270,53 @@ public class ChatController {
 
         notificationRepository.markConversationMessagesAsRead(currentUser, conversationId);
         return ResponseEntity.ok(Map.of("message", "Conversación marcada como leída"));
+    }
+
+    @PostMapping("/direct/{username}/messages")
+    public ResponseEntity<?> sendDirectMessage(
+            @PathVariable String username,
+            @RequestBody CreateMessageRequest request,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+
+        if (request == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "El mensaje no puede estar vacío"));
+        }
+        ChatService.SendResult result = chatService.sendDirectMessage(currentUser, username, request.getContent(),
+                request.getMessageType(), request.getStoryPreviewId());
+
+        return ResponseEntity.ok(Map.of(
+            "conversationId", result.conversation().getId(),
+            "message", toMessageDto(result.message())
+        ));
+    }
+
+    @DeleteMapping("/conversations/{conversationId}")
+    public ResponseEntity<?> deleteConversation(
+            @PathVariable UUID conversationId,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+
+        chatService.clearConversation(currentUser, conversationId);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
+    private MessageResponseDto toMessageDto(Message message) {
+        Profile senderProfile = profileRepository.findById(message.getSender().getId()).orElse(null);
+        return MessageResponseDto.builder()
+                .messageId(message.getId()).senderId(message.getSender().getId())
+                .senderUsername(message.getSender().getUsername())
+                .senderDisplayName(senderProfile != null ? senderProfile.getDisplayName() : message.getSender().getUsername())
+                .senderAvatarUrl(senderProfile != null && senderProfile.getAvatarUrl() != null ? senderProfile.getAvatarUrl() : "")
+                .content(message.getContent()).messageType(message.getMessageType())
+                .storyPreviewId(message.getStoryPreviewId())
+                .createdAt((message.getCreatedAt() != null ? message.getCreatedAt() : java.time.Instant.now()).toString()).build();
     }
 
     @Data

@@ -163,26 +163,32 @@ public class PostControllerIntegrationTest {
     }
 
     @Test
-    void chat_creatingConversationTwice_returnsSameConversation() throws Exception {
+    void chat_openingDoesNotCreateAndMessagesReuseConversation() throws Exception {
         String requestBody = "{\"recipientUsername\": \"other_user\", \"isGroup\": false}";
 
-        // First call to create conversation
-        String response1 = mockMvc.perform(post("/api/v1/chat/conversations")
+        mockMvc.perform(post("/api/v1/chat/conversations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(get("/api/v1/chat/conversations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+
+        String messageBody = "{\"content\": \"Hola\", \"messageType\": \"TEXT\"}";
+        String response1 = mockMvc.perform(post("/api/v1/chat/direct/other_user/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(messageBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.conversationId").exists())
                 .andReturn().getResponse().getContentAsString();
 
-        // Second call to create conversation with same recipient
-        String response2 = mockMvc.perform(post("/api/v1/chat/conversations")
+        String response2 = mockMvc.perform(post("/api/v1/chat/direct/OTHER_USER/messages")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody))
+                        .content(messageBody))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.conversationId").exists())
                 .andReturn().getResponse().getContentAsString();
 
-        // Check both responses returned same ID
         org.json.JSONObject obj1 = new org.json.JSONObject(response1);
         org.json.JSONObject obj2 = new org.json.JSONObject(response2);
         org.junit.jupiter.api.Assertions.assertEquals(

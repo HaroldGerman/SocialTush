@@ -17,7 +17,8 @@ import {
 } from 'lucide-react';
 
 interface Conversation {
-  conversationId: string;
+  conversationId: string | null;
+  isDraft?: boolean;
   name: string;
   avatarUrl: string;
   isGroup: boolean;
@@ -56,6 +57,10 @@ function ChatContent() {
   const [showRightPanel, setShowRightPanel] = useState(false);
   const [activeTab, setActiveTab] = useState<'directos' | 'circulos' | 'nodos'>('directos');
   const [filterCategory, setFilterCategory] = useState<'todos' | 'noleidos' | 'recientes'>('todos');
+  const [chatError, setChatError] = useState('');
+  const [conversationMenuId, setConversationMenuId] = useState<string | null>(null);
+  const [deleteConversationId, setDeleteConversationId] = useState<string | null>(null);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
 
   // Call states
   const [activeCallUsername, setActiveCallUsername] = useState<string | null>(null);
@@ -110,46 +115,42 @@ function ChatContent() {
     }
   }, []);
 
+  const createDraft = useCallback(async (username: string): Promise<Conversation> => {
+    const normalized = username.trim();
+    const profileRes = await api.get(`/profiles/${encodeURIComponent(normalized)}`);
+    const profile = profileRes.data;
+    return {
+      conversationId: null,
+      isDraft: true,
+      name: profile.displayName || profile.username,
+      avatarUrl: profile.avatarUrl || '',
+      isGroup: false,
+      latestMessage: '',
+      updatedAt: new Date().toISOString(),
+      otherUserId: profile.userId,
+      otherUsername: profile.username
+    };
+  }, []);
+
   // Load conversations and handle query parameters
   useEffect(() => {
     if (!user) return;
 
     const initConversations = async () => {
-      if (targetUsername) {
-        try {
-          const createRes = await api.post('/chat/conversations', {
-            recipientUsername: targetUsername.trim(),
-            isGroup: false
-          });
-          const conversationId = createRes.data.conversationId;
-          const currentConvs = await fetchConversations();
-          const existing = currentConvs.find(c => c.conversationId === conversationId);
-          
-          if (existing) {
-            setActiveConversation(existing);
-          } else {
-            const newConv: Conversation = {
-              conversationId,
-              name: targetUsername,
-              avatarUrl: '',
-              isGroup: false,
-              latestMessage: '',
-              updatedAt: new Date().toISOString()
-            };
-            setConversations(prev => [newConv, ...prev]);
-            setActiveConversation(newConv);
-          }
-        } catch (err) {
-          console.error('Error al iniciar o recuperar conversación desde URL', err);
-          await fetchConversations();
-        }
-      } else {
-        await fetchConversations();
+      const currentConvs = await fetchConversations();
+      if (!targetUsername) return;
+      const existing = currentConvs.find(c => c.otherUsername?.toLowerCase() === targetUsername.trim().toLowerCase());
+      if (existing) return setActiveConversation(existing);
+      try {
+        setActiveConversation(await createDraft(targetUsername));
+      } catch (err) {
+        console.error('Error al cargar perfil para el borrador de chat:', err);
+        setChatError('No pudimos abrir este chat. Verifica el usuario.');
       }
     };
 
     initConversations();
-  }, [user, targetUsername, fetchConversations]);
+  }, [user, targetUsername, fetchConversations, createDraft]);
 
   // Connect to STOMP WebSocket
   useEffect(() => {
@@ -193,15 +194,16 @@ function ChatContent() {
 
   // Load messages when active conversation changes
   useEffect(() => {
-    if (!activeConversation) return;
+    if (!activeConversation || activeConversation.isDraft || !activeConversation.conversationId) {
+      setMessages([]);
+      return;
+    }
 
     const loadMessages = async () => {
       try {
         const res = await api.get(`/chat/conversations/${activeConversation.conversationId}/messages`);
         const list = res.data?.content || res.data || [];
-        // The API returns messages ordered descending (newest first). Let's reverse to show oldest first.
-        const sorted = [...list].reverse();
-        setMessages(sorted);
+        setMessages(list);
         scrollToBottom();
       } catch (err) {
         console.error('Error al cargar mensajes:', err);
@@ -265,7 +267,7 @@ function ChatContent() {
   };
 
   const sendTypingSignal = (state: boolean) => {
-    if (stompClient.current && stompConnected && activeConversation) {
+    if (stompClient.current && stompConnected && activeConversation?.conversationId && !activeConversation.isDraft) {
       stompClient.current.publish({
         destination: `/app/chat.typing`,
         body: JSON.stringify({
@@ -282,18 +284,27 @@ function ChatContent() {
     if (!inputText.trim() || !activeConversation) return;
 
     const content = inputText.trim();
-    setInputText('');
     setIsTyping(false);
     sendTypingSignal(false);
+    setChatError('');
 
     try {
-      await api.post(`/chat/conversations/${activeConversation.conversationId}/messages`, {
-        content: content,
-        messageType: 'TEXT'
-      });
-      // STOMP subscription handles displaying the message.
-    } catch (err) {
+      if (activeConversation.isDraft || !activeConversation.conversationId) {
+        const res = await api.post(`/chat/direct/${encodeURIComponent(activeConversation.otherUsername || '')}/messages`, { content, messageType: 'TEXT' });
+        const conversationId = res.data.conversationId as string;
+        setMessages([res.data.message]);
+        setInputText('');
+        const refreshed = await fetchConversations();
+        const real = refreshed.find(c => c.conversationId === conversationId);
+        if (real) setActiveConversation(real);
+      } else {
+        const res = await api.post(`/chat/conversations/${activeConversation.conversationId}/messages`, { content, messageType: 'TEXT' });
+        setInputText('');
+        setMessages(prev => prev.some(m => m.messageId === res.data.messageId) ? prev : [...prev, res.data]);
+      }
+    } catch (err: any) {
       console.error('Error al enviar mensaje:', err);
+      setChatError(err.response?.data?.message || 'No se pudo enviar el mensaje. Puedes reintentar.');
     }
   };
 
@@ -302,23 +313,11 @@ function ChatContent() {
     if (!searchUsername.trim()) return;
 
     try {
-      const res = await api.post('/chat/conversations', {
-        recipientUsername: searchUsername.toLowerCase().trim(),
-        isGroup: false
-      });
+      const existing = conversations.find(c => c.otherUsername?.toLowerCase() === searchUsername.trim().toLowerCase());
+      const next = existing || await createDraft(searchUsername);
       setIsNewChatModalOpen(false);
       setSearchUsername('');
-      await fetchConversations();
-      
-      const createdChatId = res.data.conversationId;
-      setActiveConversation({
-        conversationId: createdChatId,
-        name: searchUsername.trim(),
-        avatarUrl: '',
-        isGroup: false,
-        latestMessage: '',
-        updatedAt: new Date().toISOString()
-      });
+      setActiveConversation(next);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Error al iniciar conversación');
     }
@@ -358,9 +357,30 @@ function ChatContent() {
   };
 
   const triggerCall = () => {
-    if (!activeConversation) return;
-    setActiveCallUsername(activeConversation.name);
+    if (!activeConversation || activeConversation.isDraft || !activeConversation.conversationId) return;
+    setActiveCallUsername(activeConversation.otherUsername || null);
     setIsIncomingCall(false);
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!deleteConversationId) return;
+    setIsDeletingConversation(true);
+    setChatError('');
+    try {
+      await api.delete(`/chat/conversations/${deleteConversationId}`);
+      setConversations(prev => prev.filter(c => c.conversationId !== deleteConversationId));
+      if (activeConversation?.conversationId === deleteConversationId) {
+        setActiveConversation(null);
+        setMessages([]);
+      }
+      setDeleteConversationId(null);
+      setConversationMenuId(null);
+    } catch (err: any) {
+      console.error('Error al eliminar chat:', err);
+      setChatError(err.response?.data?.message || 'No se pudo eliminar el chat.');
+    } finally {
+      setIsDeletingConversation(false);
+    }
   };
 
   const totalUnreadAll = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
@@ -527,7 +547,7 @@ function ChatContent() {
                 }
 
                 return (
-                  <div 
+                  <div
                     key={c.conversationId}
                     onClick={() => setActiveConversation(c)}
                     className={`p-3 rounded-2xl cursor-pointer transition-all flex items-center gap-3 border ${
@@ -562,6 +582,10 @@ function ChatContent() {
                         )}
                       </div>
                     </div>
+                    <div className="relative">
+                      <button type="button" onClick={(event) => { event.stopPropagation(); setConversationMenuId(conversationMenuId === c.conversationId ? null : c.conversationId); }} className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white" aria-label="Opciones del chat"><MoreVertical className="h-4 w-4" /></button>
+                      {conversationMenuId === c.conversationId && <button type="button" onClick={(event) => { event.stopPropagation(); setDeleteConversationId(c.conversationId); }} className="absolute right-0 top-7 z-30 whitespace-nowrap rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-[11px] font-bold text-rose-600 shadow-xl">Eliminar chat</button>}
+                    </div>
                   </div>
                 );
               })}
@@ -584,16 +608,14 @@ function ChatContent() {
               <div className="p-3.5 px-5 border-b border-slate-205 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-sm flex items-center justify-between z-10">
                 <div className="flex items-center gap-3">
                   <button 
-                    onClick={() => setActiveConversation(null)}
+                    onClick={() => { setActiveConversation(null); setMessages([]); setChatError(''); }}
                     className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 md:hidden text-slate-600 dark:text-slate-300 hover:text-slate-900"
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </button>
 
                   <div className="relative">
-                    <div className="h-10 w-10 rounded-full bg-teal-700 flex items-center justify-center font-extrabold text-white text-xs shadow-sm">
-                      {activeConversation.isGroup ? <Users className="h-5 w-5 text-teal-100" /> : activeConversation.name.charAt(0).toUpperCase()}
-                    </div>
+                    {activeConversation.avatarUrl ? <img src={activeConversation.avatarUrl} alt="" className="h-10 w-10 rounded-full object-cover" /> : <div className="h-10 w-10 rounded-full bg-teal-700 flex items-center justify-center font-extrabold text-white text-xs shadow-sm">{activeConversation.isGroup ? <Users className="h-5 w-5 text-teal-100" /> : activeConversation.name.charAt(0).toUpperCase()}</div>}
                     <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
                   </div>
 
@@ -609,20 +631,22 @@ function ChatContent() {
                         `${activeConversation.isGroup ? 'Círculo activo' : 'Conexión directa'} · En línea`
                       )}
                     </span>
+                    {!activeConversation.isGroup && activeConversation.otherUsername && <span className="text-[9px] text-slate-400">@{activeConversation.otherUsername}</span>}
                   </div>
                 </div>
 
                 {/* Right Action Icons */}
                 <div className="flex items-center gap-2">
-                  <button onClick={triggerCall} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-colors" title="Llamada de voz">
+                  <button disabled={activeConversation.isDraft} onClick={triggerCall} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-colors" title="Llamada de voz">
                     <Phone className="h-4 w-4" />
                   </button>
-                  <button onClick={triggerCall} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-colors" title="Videollamada">
+                  <button disabled={activeConversation.isDraft} onClick={triggerCall} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-colors" title="Videollamada">
                     <Video className="h-4 w-4" />
                   </button>
                   <button onClick={() => setShowRightPanel(!showRightPanel)} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-colors" title="Detalles">
                     <Info className="h-4 w-4" />
                   </button>
+                  {!activeConversation.isDraft && <button onClick={() => setDeleteConversationId(activeConversation.conversationId)} className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-rose-600" title="Opciones"><MoreVertical className="h-4 w-4" /></button>}
                 </div>
               </div>
 
@@ -673,6 +697,7 @@ function ChatContent() {
               </div>
 
               {/* Chat Input Bar */}
+              {chatError && <div role="alert" className="mx-4 mb-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">{chatError}</div>}
               <div 
                 className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-sm flex items-center gap-3"
                 style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
@@ -868,6 +893,20 @@ function ChatContent() {
                 Crear Círculo
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {deleteConversationId && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={() => !isDeletingConversation && setDeleteConversationId(null)}>
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-5 space-y-4 shadow-2xl" onClick={event => event.stopPropagation()}>
+            <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">¿Eliminar este chat?</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Se eliminará de tus mensajes. La otra persona conservará su conversación.</p>
+            {chatError && <p role="alert" className="text-xs text-rose-600">{chatError}</p>}
+            <div className="flex gap-3">
+              <button disabled={isDeletingConversation} onClick={() => setDeleteConversationId(null)} className="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 py-2.5 text-xs font-bold">Cancelar</button>
+              <button disabled={isDeletingConversation} onClick={handleDeleteConversation} className="flex-1 rounded-xl bg-rose-600 py-2.5 text-xs font-bold text-white disabled:opacity-50">{isDeletingConversation ? 'Eliminando...' : 'Eliminar'}</button>
+            </div>
           </div>
         </div>
       )}

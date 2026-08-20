@@ -41,6 +41,12 @@ public class ConversationParticipant {
     @Column(name = "last_read_message_id")
     private UUID lastReadMessageId;
 
+    @Column(name = "cleared_at")
+    private Instant clearedAt;
+
+    @Column(name = "hidden_at")
+    private Instant hiddenAt;
+
     @CreationTimestamp
     @Column(name = "joined_at", nullable = false, updatable = false)
     private Instant joinedAt;

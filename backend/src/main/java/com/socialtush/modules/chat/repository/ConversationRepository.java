@@ -13,7 +13,15 @@ import java.util.UUID;
 @Repository
 public interface ConversationRepository extends JpaRepository<Conversation, UUID> {
     
-    @Query("SELECT c FROM Conversation c JOIN c.participants p WHERE p.user = :user ORDER BY c.updatedAt DESC")
+    @Query("SELECT DISTINCT c FROM Conversation c " +
+           "JOIN c.participants p " +
+           "WHERE p.user = :user " +
+           "AND p.hiddenAt IS NULL " +
+           "AND (c.isGroup = true OR EXISTS (" +
+           "  SELECT m FROM Message m WHERE m.conversation = c " +
+           "  AND (p.clearedAt IS NULL OR m.createdAt > p.clearedAt)" +
+           ")) " +
+           "ORDER BY c.updatedAt DESC")
     List<Conversation> findUserConversations(@Param("user") User user);
 
     @Query("SELECT c FROM Conversation c WHERE c.isGroup = false AND " +
