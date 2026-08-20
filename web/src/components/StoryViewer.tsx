@@ -32,7 +32,14 @@ interface StoryViewerProps {
   onStoriesChange?: (stories: GroupedStory[]) => void;
 }
 
-interface StoryViewerItem { userId: string; username: string; displayName: string; avatarUrl?: string; viewedAt: string }
+interface StoryViewerItem {
+  userId: string;
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+  viewedAt: string;
+  resonance?: string | null;
+}
 
 export default function StoryViewer({ groupedStories, initialUserIndex, onClose, onStoriesChange }: StoryViewerProps) {
   const { user } = useAuth();
@@ -51,6 +58,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
   const [viewersLoading, setViewersLoading] = useState(false);
   const [viewersError, setViewersError] = useState('');
   const [videoDuration, setVideoDuration] = useState(5);
+  const [selectedResonance, setSelectedResonance] = useState<string | null>(null);
 
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
   const storyVideoRef = useRef<HTMLVideoElement>(null);
@@ -67,20 +75,21 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     )
   );
 
-  // Reset story index when user index changes
   useEffect(() => {
     setStoryIndex(0);
     setProgress(0);
   }, [userIndex]);
 
-  // Record view automatically
+  useEffect(() => {
+    setSelectedResonance(null);
+  }, [currentStory?.storyId]);
+
   useEffect(() => {
     if (currentStory && !isOwnStory) {
       api.post(`/stories/${currentStory.storyId}/view`).catch(() => {});
     }
   }, [currentStory, isOwnStory]);
 
-  // Handle automatic progress timer (5 seconds per story)
   useEffect(() => {
     if (isPaused || isMenuOpen || isDeleteOpen || isViewersOpen || !currentStory) return;
 
@@ -112,9 +121,14 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     setIsViewersOpen(true);
     setViewersLoading(true);
     setViewersError('');
-    try { const response = await api.get(`/stories/${currentStory.storyId}/viewers`); setViewers(response.data || []); }
-    catch (error: any) { setViewersError(error.response?.data?.message || 'No se pudieron cargar las vistas.'); }
-    finally { setViewersLoading(false); }
+    try {
+      const response = await api.get(`/stories/${currentStory.storyId}/viewers`);
+      setViewers(response.data || []);
+    } catch (error: any) {
+      setViewersError(error.response?.data?.message || 'No se pudieron cargar las vistas.');
+    } finally {
+      setViewersLoading(false);
+    }
   };
 
   const handleNextStory = () => {
@@ -134,7 +148,6 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
       setProgress(0);
     } else if (userIndex > 0) {
       setUserIndex(userIndex - 1);
-      // Set to last story of previous user
       setTimeout(() => {
         setStoryIndex(stories[userIndex - 1].stories.length - 1);
       }, 50);
@@ -191,7 +204,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     e.preventDefault();
     if (!replyText.trim() || !currentStory) return;
     if (isOwnStory) {
-      alert("Es tu propio momento.");
+      alert('Es tu propio momento.');
       return;
     }
     const textToSend = replyText.trim();
@@ -211,12 +224,13 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     }
   };
 
-  const handleSendEmojiReaction = async (emojiType: string) => {
-    if (!currentStory) return;
+  const handleResonate = async (emojiType: string) => {
+    if (!currentStory || isOwnStory) return;
     try {
       await api.post(`/stories/${currentStory.storyId}/reaction`, { reactionType: emojiType });
+      setSelectedResonance(emojiType);
     } catch (err) {
-      console.error('Error enviando reacción:', err);
+      console.error('Error enviando resonancia:', err);
     }
   };
 
@@ -224,33 +238,27 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between items-center animate-fade-in select-none h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-      {/* Visual background wrapper */}
       <div className="absolute inset-0 z-0 opacity-40 blur-2xl scale-125 bg-cover bg-center pointer-events-none"
            style={{ backgroundImage: currentStory.mediaUrl ? `url(${currentStory.mediaUrl})` : 'none', background: currentStory.mediaUrl ? undefined : (currentStory.backgroundColor || '#09090b') }} />
 
-      {/* Story Content Card */}
-      <div 
+      <div
         className="w-full max-w-lg h-full max-h-[85vh] md:max-h-[90vh] md:mt-4 bg-zinc-950 md:rounded-2xl overflow-hidden relative border border-zinc-900/60 z-10 flex flex-col items-center justify-center"
         onMouseDown={handleTouchStart}
         onMouseUp={handleTouchEnd}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Progress Bars */}
         <div className="absolute top-3 left-3 right-3 z-30 flex gap-1">
           {currentUserStories.stories.map((s, idx) => (
             <div key={s.storyId} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden">
-              <div 
+              <div
                 className="h-full bg-teal-500 rounded-full transition-all duration-75"
-                style={{ 
-                  width: idx < storyIndex ? '100%' : idx === storyIndex ? `${progress}%` : '0%' 
-                }}
+                style={{ width: idx < storyIndex ? '100%' : idx === storyIndex ? `${progress}%` : '0%' }}
               />
             </div>
           ))}
         </div>
 
-        {/* Top bar details (User Avatar, display name, options and controls) */}
         <div className="absolute top-6 left-4 right-4 z-30 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <UserAvatar avatarUrl={currentUserStories.avatarUrl} name={currentUserStories.displayName} className="h-9 w-9 rounded-full text-xs border border-white/20" />
@@ -274,19 +282,13 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
           </div>
         </div>
 
-        {/* Dynamic Story render */}
         <div className="w-full h-full flex items-center justify-center relative">
-          {/* L/R Border Click Zones */}
           <div className="absolute top-0 bottom-0 left-0 w-1/4 z-20 cursor-pointer" onClick={(e) => { e.stopPropagation(); handlePrevStory(); }} />
           <div className="absolute top-0 bottom-0 right-0 w-1/4 z-20 cursor-pointer" onClick={(e) => { e.stopPropagation(); handleNextStory(); }} />
 
           {currentStory.mediaType === 'IMAGE' && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img 
-              src={currentStory.mediaUrl} 
-              alt="story-media" 
-              className="w-full h-full object-contain pointer-events-none"
-            />
+            <img src={currentStory.mediaUrl} alt="story-media" className="w-full h-full object-contain pointer-events-none" />
           )}
 
           {currentStory.mediaType === 'VIDEO' && (
@@ -294,17 +296,11 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
           )}
 
           {currentStory.mediaType === 'TEXT' && (
-            <div 
-              style={{ background: currentStory.backgroundColor || '#6366f1' }}
-              className="w-full h-full flex items-center justify-center p-8 text-center"
-            >
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white leading-relaxed font-sans max-w-sm">
-                {currentStory.textContent}
-              </h2>
+            <div style={{ background: currentStory.backgroundColor || '#6366f1' }} className="w-full h-full flex items-center justify-center p-8 text-center">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white leading-relaxed font-sans max-w-sm">{currentStory.textContent}</h2>
             </div>
           )}
 
-          {/* Overlays Rendering */}
           {(() => {
             let parsedOverlays: any[] = [];
             if ((currentStory as any).overlayData) {
@@ -313,24 +309,12 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
               } catch (e) {}
             }
             return parsedOverlays.map((o: any) => (
-              <div
-                key={o.id}
-                className="absolute pointer-events-none select-none origin-center z-20"
-                style={{
-                  left: `${o.x * 100}%`,
-                  top: `${o.y * 100}%`,
-                  transform: `translate(-50%, -50%) scale(${o.scale})`,
-                  color: o.color || '#ffffff'
-                }}
-              >
-                <div className={`px-3 py-1.5 rounded-xl font-bold text-center ${o.bg ? 'bg-black/75 text-white' : ''}`}>
-                  {o.value}
-                </div>
+              <div key={o.id} className="absolute pointer-events-none select-none origin-center z-20" style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, transform: `translate(-50%, -50%) scale(${o.scale})`, color: o.color || '#ffffff' }}>
+                <div className={`px-3 py-1.5 rounded-xl font-bold text-center ${o.bg ? 'bg-black/75 text-white' : ''}`}>{o.value}</div>
               </div>
             ));
           })()}
 
-          {/* Music Tag overlay */}
           {currentStory.musicTitle && (
             <div className="absolute bottom-6 left-4 bg-black/60 border border-zinc-800 px-3 py-1.5 rounded-full text-xs text-white flex items-center gap-1.5 backdrop-blur-md">
               <span className="animate-spin text-indigo-400">🎵</span>
@@ -340,16 +324,16 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
         </div>
       </div>
 
-      {/* Bottom quick action chat reply & reactions */}
       {!isOwnStory && <div className="w-full max-w-lg p-4 bg-zinc-950 border-t border-zinc-900 z-20 flex flex-col gap-2">
-        {/* Quick Emoji Reactions */}
         <div className="flex items-center justify-around py-1 text-lg">
-          {['❤️', '😂', '😮', '😢', '🔥'].map((emoji, idx) => (
+          {['❤️', '😂', '😮', '😢', '🔥'].map((emoji) => (
             <button
-              key={idx}
+              key={emoji}
               type="button"
-              onClick={() => handleSendEmojiReaction(emoji)}
-              className="hover:scale-125 transition-transform p-1"
+              aria-label={`Resonar ${emoji} con el momento`}
+              title="Resonar con este momento"
+              onClick={() => void handleResonate(emoji)}
+              className={`rounded-full p-2 transition-transform ${selectedResonance === emoji ? 'scale-125 bg-white/10' : 'hover:scale-125'}`}
             >
               {emoji}
             </button>
@@ -365,10 +349,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
             onChange={(e) => setReplyText(e.target.value)}
             className="flex-grow px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-teal-500/80 transition-all placeholder-zinc-500"
           />
-          <button 
-            type="submit"
-            className="p-2.5 bg-teal-800 hover:bg-teal-900 text-white rounded-xl active:scale-95 transition-all flex items-center justify-center font-bold text-xs"
-          >
+          <button type="submit" className="p-2.5 bg-teal-800 hover:bg-teal-900 text-white rounded-xl active:scale-95 transition-all flex items-center justify-center font-bold text-xs">
             <Send className="h-4 w-4" />
           </button>
         </form>
@@ -392,7 +373,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
         </div>
       </div>}
 
-      {isViewersOpen && <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/65 md:items-center" onClick={() => setIsViewersOpen(false)}><div className="max-h-[70vh] w-full max-w-md overflow-hidden rounded-t-3xl border border-zinc-700 bg-zinc-950 md:rounded-3xl" onClick={event => event.stopPropagation()}><div className="flex items-center justify-between border-b border-zinc-800 p-4"><div><h3 className="font-bold text-white">Vistas del momento</h3><p className="text-xs text-zinc-400">{viewers.length} {viewers.length === 1 ? 'persona' : 'personas'}</p></div><button onClick={() => setIsViewersOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-white"><X className="h-4 w-4"/></button></div><div className="max-h-[55vh] overflow-y-auto p-3">{viewersLoading ? <p className="p-6 text-center text-sm text-zinc-400">Cargando vistas…</p> : viewersError ? <div className="p-6 text-center"><p className="text-sm text-rose-400">{viewersError}</p><button onClick={() => void openViewers()} className="mt-3 text-xs font-bold text-teal-400">Reintentar</button></div> : viewers.length ? viewers.map(viewer => <div key={viewer.userId} className="flex items-center gap-3 rounded-2xl p-3 hover:bg-zinc-900"><UserAvatar avatarUrl={viewer.avatarUrl} name={viewer.displayName || viewer.username} className="h-11 w-11 rounded-full text-xs"/><div className="min-w-0"><p className="truncate text-sm font-bold text-white">{viewer.displayName || viewer.username}</p><p className="text-xs text-zinc-400">@{viewer.username}{formatRelativeTime(viewer.viewedAt)}</p></div></div>) : <p className="p-8 text-center text-sm text-zinc-400">Aún nadie ha visto este momento.</p>}</div></div></div>}
+      {isViewersOpen && <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/65 md:items-center" onClick={() => setIsViewersOpen(false)}><div className="max-h-[70vh] w-full max-w-md overflow-hidden rounded-t-3xl border border-zinc-700 bg-zinc-950 md:rounded-3xl" onClick={event => event.stopPropagation()}><div className="flex items-center justify-between border-b border-zinc-800 p-4"><div><h3 className="font-bold text-white">Vistas del momento</h3><p className="text-xs text-zinc-400">{viewers.length} {viewers.length === 1 ? 'persona' : 'personas'}</p></div><button onClick={() => setIsViewersOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-white"><X className="h-4 w-4"/></button></div><div className="max-h-[55vh] overflow-y-auto p-3">{viewersLoading ? <p className="p-6 text-center text-sm text-zinc-400">Cargando vistas…</p> : viewersError ? <div className="p-6 text-center"><p className="text-sm text-rose-400">{viewersError}</p><button onClick={() => void openViewers()} className="mt-3 text-xs font-bold text-teal-400">Reintentar</button></div> : viewers.length ? viewers.map(viewer => <div key={viewer.userId} className="flex items-center gap-3 rounded-2xl p-3 hover:bg-zinc-900"><UserAvatar avatarUrl={viewer.avatarUrl} name={viewer.displayName || viewer.username} className="h-11 w-11 rounded-full text-xs"/><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-white">{viewer.displayName || viewer.username}</p><p className="text-xs text-zinc-400">@{viewer.username}{formatRelativeTime(viewer.viewedAt)}</p></div>{viewer.resonance ? <div className="ml-auto flex min-w-12 flex-col items-center"><span className="text-2xl leading-none" aria-label={`Resonó ${viewer.resonance}`}>{viewer.resonance}</span><span className="mt-1 text-[9px] font-bold uppercase tracking-wide text-teal-400">Resonó</span></div> : null}</div>) : <p className="p-8 text-center text-sm text-zinc-400">Aún nadie ha visto este momento.</p>}</div></div></div>}
     </div>
   );
 }
