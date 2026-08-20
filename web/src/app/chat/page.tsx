@@ -146,6 +146,33 @@ function ChatContent() {
   const activeUsernameRef = useRef<string | undefined>();
   useEffect(() => { activeUsernameRef.current = activeConversation?.otherUsername; }, [activeConversation?.otherUsername]);
 
+  // Lock the document scroll while this page is mounted. Without this, mobile
+  // browsers scroll the whole <body> instead of just the messages list, which
+  // makes the chat header/input drift out of view along with the messages.
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyPosition = body.style.position;
+    const prevBodyWidth = body.style.width;
+    const prevBodyHeight = body.style.height;
+
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.width = '100%';
+    body.style.height = '100%';
+
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      body.style.position = prevBodyPosition;
+      body.style.width = prevBodyWidth;
+      body.style.height = prevBodyHeight;
+    };
+  }, []);
+
   // Redirect if not logged in
   useEffect(() => {
     if (!isLoading && !user) {
@@ -777,8 +804,8 @@ function ChatContent() {
   };
 
   return (
-    <main className="min-h-[100dvh] h-[100dvh] bg-[#eef4f4] dark:bg-[#061217] text-slate-800 dark:text-slate-100 flex items-stretch justify-stretch p-0 select-none overflow-hidden font-sans transition-colors duration-200 lg:p-4">
-      <div className="mx-auto w-full h-full max-w-[1500px] border-none overflow-hidden flex relative bg-white dark:bg-[#07151d] lg:rounded-[28px] lg:border lg:border-slate-200 lg:dark:border-cyan-950/70 lg:shadow-2xl">
+    <main className="min-h-[100dvh] h-[100dvh] bg-[#eef4f4] dark:bg-[#061217] text-slate-800 dark:text-slate-100 flex items-stretch justify-stretch p-0 select-none overflow-hidden overscroll-none font-sans transition-colors duration-200 lg:p-4">
+      <div className="mx-auto w-full h-full min-h-0 max-w-[1500px] border-none overflow-hidden flex relative bg-white dark:bg-[#07151d] lg:rounded-[28px] lg:border lg:border-slate-200 lg:dark:border-cyan-950/70 lg:shadow-2xl">
         
         {/* ================= FAR LEFT MINI NAVIGATION ================= */}
         <aside className="hidden lg:flex w-60 bg-white dark:bg-[#0f172a] border-r border-slate-200 dark:border-slate-800 flex-col justify-between p-4 flex-shrink-0 z-20 shadow-sm">
