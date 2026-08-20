@@ -75,6 +75,16 @@ public class AdminController {
         return target == null ? notFound() : ResponseEntity.ok(toDto(target));
     }
 
+    @GetMapping("/audit")
+    public ResponseEntity<?> getAudit(@RequestParam(defaultValue = "0") int page,
+                                      @RequestParam(defaultValue = "30") int size) {
+        Page<AdminAuditLog> result = auditLogRepository.findAll(PageRequest.of(
+                Math.max(0, page), Math.min(100, Math.max(1, size)), Sort.by("createdAt").descending()));
+        return ResponseEntity.ok(Map.of(
+                "logs", result.getContent(), "currentPage", result.getNumber(),
+                "totalItems", result.getTotalElements(), "totalPages", result.getTotalPages()));
+    }
+
     @PatchMapping("/users/{userId}")
     @Transactional
     public ResponseEntity<?> updateUser(@PathVariable UUID userId, @Valid @RequestBody AdminUpdateUserRequest request,

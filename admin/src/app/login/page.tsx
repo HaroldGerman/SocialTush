@@ -1,0 +1,12 @@
+'use client';
+
+import { FormEvent, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Lock, ShieldCheck, User } from 'lucide-react';
+import { useAdminAuth } from '@/context/AdminAuthContext';
+
+export default function AdminLogin(){const {user,loading,login}=useAdminAuth();const router=useRouter();const [identifier,setIdentifier]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[submitting,setSubmitting]=useState(false);
+  useEffect(()=>{if(!loading&&user)router.replace('/');},[loading,user,router]);
+  const submit=async(event:FormEvent)=>{event.preventDefault();setError('');setSubmitting(true);try{await login(identifier.trim(),password);router.replace('/');}catch(reason:any){setError(reason.response?.data?.message||reason.message||'No se pudo iniciar sesión.');}finally{setSubmitting(false);}};
+  return <main className="grid min-h-screen place-items-center bg-zinc-950 p-5 text-zinc-100"><section className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl"><div className="mb-8 text-center"><div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-indigo-600"><ShieldCheck/></div><h1 className="text-2xl font-black">Lifonk Admin</h1><p className="mt-1 text-sm text-zinc-400">Acceso administrativo</p></div>{error&&<div role="alert" className="mb-5 rounded-xl border border-rose-900 bg-rose-950/40 p-3 text-xs text-rose-300">{error}</div>}<form onSubmit={submit} className="space-y-4"><label className="block text-xs text-zinc-400">Usuario o email<div className="relative mt-1"><User className="absolute left-3 top-3 h-4 w-4"/><input required autoComplete="username" value={identifier} onChange={e=>setIdentifier(e.target.value)} className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-indigo-500"/></div></label><label className="block text-xs text-zinc-400">Contraseña<div className="relative mt-1"><Lock className="absolute left-3 top-3 h-4 w-4"/><input required type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-indigo-500"/></div></label><button disabled={submitting} className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-bold disabled:opacity-50">{submitting?'Verificando…':'Iniciar sesión'}</button></form></section></main>;
+}

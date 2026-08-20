@@ -17,6 +17,9 @@ yarn-error.log*
 # Next.js
 web/.next/
 web/out/
+admin/.next/
+admin/out/
+admin/node_modules/
 *.tsbuildinfo
 
 # Expo / Mobile

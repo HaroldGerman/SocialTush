@@ -68,6 +68,16 @@ class AdminControllerIntegrationTest {
                 .andExpect(jsonPath("$.totalItems").value(1));
     }
 
+    @Test void auditEndpointIsAdminOnlyAndReturnsPersistedActions() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/audit")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/admin/audit").with(auth(member))).andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/admin/users/" + member.getId() + "/toggle-block").with(auth(admin)))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/admin/audit").with(auth(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.logs[0].action").value("ADMIN_BLOCK_USER"));
+    }
+
     @Test void adminEditPersistsAllowedFieldsAndRejectsDuplicates() throws Exception {
         mockMvc.perform(patch("/api/v1/admin/users/" + member.getId()).with(auth(admin)).contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("username","member_updated","email","member-updated@example.com","displayName","Nombre Actualizado","bio","Bio actualizada","isPrivate",true))))
