@@ -23,11 +23,11 @@ export default function Home() {
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden">
         <div className="absolute w-[500px] h-[500px] bg-teal-500/10 rounded-full blur-[140px] pointer-events-none animate-pulse" />
         <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-teal-500 via-emerald-600 to-teal-800 flex items-center justify-center shadow-xl shadow-teal-950/50 animate-bounce">
-          <span className="font-black text-white text-2xl tracking-tighter">S</span>
+          <span className="font-black text-white text-2xl tracking-tighter">L</span>
         </div>
         <div className="mt-4 flex items-center gap-2 text-slate-400 text-sm font-medium">
           <span className="h-2 w-2 rounded-full bg-teal-500 animate-ping" />
-          <span>Cargando SocialTush...</span>
+          <span>Cargando Lifonk...</span>
         </div>
       </div>
     );
@@ -52,10 +52,10 @@ export default function Home() {
       <header className="w-full max-w-6xl mx-auto px-6 py-6 flex items-center justify-between relative z-10">
         <div className="flex items-center gap-2.5">
           <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-teal-500 via-emerald-600 to-teal-800 flex items-center justify-center shadow-lg shadow-teal-900/40">
-            <span className="font-black text-white text-lg tracking-tighter">S</span>
+            <span className="font-black text-white text-lg tracking-tighter">L</span>
           </div>
           <span className="font-extrabold text-lg tracking-tight text-white">
-            SocialTush
+            Lifonk
           </span>
         </div>
       </header>
@@ -68,12 +68,12 @@ export default function Home() {
 
           {/* Large Brand Icon */}
           <div className="h-20 w-20 rounded-3xl bg-gradient-to-br from-teal-500 via-emerald-600 to-teal-800 flex items-center justify-center shadow-2xl shadow-teal-900/60 mb-6 border border-teal-400/30">
-            <span className="font-black text-white text-4xl tracking-tighter">S</span>
+            <span className="font-black text-white text-4xl tracking-tighter">L</span>
           </div>
 
           {/* SocialTush Name */}
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white mb-2">
-            SocialTush
+            Lifonk
           </h1>
 
           {/* Short Tagline */}
@@ -114,7 +114,7 @@ export default function Home() {
 
       {/* Minimalist Footer */}
       <footer className="w-full max-w-5xl mx-auto px-6 py-6 relative z-10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 border-t border-slate-900/80">
-        <p>&copy; {new Date().getFullYear()} SocialTush. Todos los derechos reservados.</p>
+        <p>&copy; {new Date().getFullYear()} Lifonk. Todos los derechos reservados.</p>
         
         <div className="flex items-center gap-6 font-medium">
           <Link href="/privacy" className="hover:text-teal-400 transition-colors">

@@ -44,7 +44,7 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
         userId: currentUser?.userId || '1',
         username: targetUsername || 'usuario',
         displayName: currentUser?.displayName || targetUsername || 'Usuario',
-        bio: 'Miembro activo de SocialTush.',
+        bio: 'Miembro activo de Lifonk.',
         avatarUrl: '',
         isPrivate: false,
         onboardingCompleted: true,

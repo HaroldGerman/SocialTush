@@ -55,7 +55,7 @@ export default function CirclesScreen() {
       <View style={styles.info}>
         <Text style={[styles.name, { color: theme.textPrimary }]}>{item.name}</Text>
         <Text style={[styles.description, { color: theme.textSecondary }]} numberOfLines={2}>
-          {item.description || 'Comunidad en SocialTush'}
+          {item.description || 'Comunidad en Lifonk'}
         </Text>
         <View style={styles.statsRow}>
           <Ionicons name="people-outline" size={12} color={theme.accent} />

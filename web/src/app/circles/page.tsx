@@ -127,7 +127,7 @@ export default function CirclesPage() {
           <div className="flex items-center gap-3">
             <Link href="/feed" className="flex items-center gap-2 group">
               <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-teal-600 to-emerald-500 flex items-center justify-center text-white font-black text-xl shadow-md group-hover:scale-105 transition-transform">
-                S
+                L
               </div>
               <span className="font-bold text-xl tracking-tight text-teal-950 dark:text-white">
                 Social<span className="text-teal-600">Tush</span>

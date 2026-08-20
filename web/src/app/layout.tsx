@@ -5,7 +5,7 @@ import { CreateHubProvider } from "@/context/CreateHubContext";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SocialTush - Premium Social Network & Chat",
+  title: "Lifonk - Premium Social Network & Chat",
   description: "Connect, chat, share posts and stories in a premium, ultra-fast platform.",
 };
 

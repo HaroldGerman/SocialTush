@@ -302,7 +302,7 @@ export default function ProfilePage() {
       <div className="min-h-screen bg-[#f4f6f9] dark:bg-[#090d16] flex items-center justify-center">
         <div className="animate-pulse flex flex-col items-center gap-3">
           <div className="h-10 w-10 bg-teal-800 rounded-2xl" />
-          <span className="text-slate-500 text-xs font-semibold">Cargando perfil SocialTush...</span>
+          <span className="text-slate-500 text-xs font-semibold">Cargando perfil...</span>
         </div>
       </div>
     );
@@ -328,10 +328,10 @@ export default function ProfilePage() {
         <div className="max-w-[1600px] mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/feed')}>
             <div className="h-9 w-9 rounded-xl bg-teal-800 flex items-center justify-center text-white font-black shadow-md shadow-teal-900/20">
-              S
+              L
             </div>
             <span className="font-extrabold text-xl tracking-tight text-slate-800 dark:text-white">
-              SocialTush
+              Lifonk
             </span>
           </div>
 

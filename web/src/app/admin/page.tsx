@@ -113,7 +113,7 @@ export default function AdminPage() {
           </Link>
           <div>
             <h2 className="text-base font-bold text-white block">Panel de Administración</h2>
-            <span className="text-[10px] text-zinc-500 block">Moderación General de SocialTush</span>
+            <span className="text-[10px] text-zinc-500 block">Moderación General de Lifonk</span>
           </div>
         </div>
 

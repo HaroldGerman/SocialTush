@@ -71,7 +71,7 @@ public class DataInitializer implements CommandLineRunner {
         Profile profile = Profile.builder()
                 .user(user)
                 .displayName(displayName)
-                .bio("¡Hola! Soy " + displayName + " en SocialTush 🚀")
+                .bio("¡Hola! Soy " + displayName + " en Lifonk 🚀")
                 .isPrivate(false)
                 .build();
         profileRepository.save(profile);

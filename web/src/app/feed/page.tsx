@@ -240,8 +240,8 @@ export default function FeedPage() {
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
         await navigator.share({
-          title: 'SocialTush',
-          text: post.caption || 'Mira esta publicación en SocialTush',
+          title: 'Lifonk',
+          text: post.caption || 'Mira esta publicación en Lifonk',
           url: window.location.href,
         });
       } catch (e) {
@@ -316,10 +316,10 @@ export default function FeedPage() {
           {/* Logo */}
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/')}>
             <div className="h-9 w-9 rounded-xl bg-teal-700 flex items-center justify-center text-white font-black shadow-md shadow-teal-900/30">
-              S
+              L
             </div>
             <span className="font-extrabold text-xl tracking-tight text-slate-900 dark:text-white">
-              SocialTush
+              Lifonk
             </span>
           </div>
 

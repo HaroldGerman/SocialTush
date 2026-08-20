@@ -118,7 +118,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
   const handleShare = async (post: Post) => {
     try {
       await Share.share({
-        message: `${post.caption || 'Mira esta publicación en SocialTush'} - por @${post.username}`,
+        message: `${post.caption || 'Mira esta publicación en Lifonk'} - por @${post.username}`,
       });
     } catch (error) {
       // Share cancelled
@@ -242,9 +242,9 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
       <View style={[styles.topNav, { borderBottomColor: theme.border }]}>
         <View style={styles.brandContainer}>
           <View style={[styles.logoBadge, { backgroundColor: theme.primary }]}>
-            <Text style={styles.logoText}>S</Text>
+            <Text style={styles.logoText}>L</Text>
           </View>
-          <Text style={[styles.topNavTitle, { color: theme.textPrimary }]}>SocialTush</Text>
+          <Text style={[styles.topNavTitle, { color: theme.textPrimary }]}>Lifonk</Text>
         </View>
 
         <View style={styles.topNavActions}>

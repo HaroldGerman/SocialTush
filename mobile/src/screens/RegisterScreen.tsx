@@ -36,10 +36,10 @@ export default function RegisterScreen({ onNavigateToLogin, onRegisterSuccess }:
     <ScrollView contentContainerStyle={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
         <View style={[styles.logoBadge, { backgroundColor: theme.primary }]}>
-          <Text style={styles.logoText}>S</Text>
+          <Text style={styles.logoText}>L</Text>
         </View>
         <Text style={[styles.title, { color: theme.textPrimary }]}>Crear cuenta</Text>
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Únete a la comunidad de SocialTush</Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Únete a la comunidad de Lifonk</Text>
       </View>
 
       {error && (

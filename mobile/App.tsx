@@ -238,10 +238,10 @@ function MainApp() {
       {/* Main Branding Card */}
       <View style={[styles.welcomeCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={[styles.logoBadge, { backgroundColor: theme.primary }]}>
-          <Text style={styles.logoText}>S</Text>
+          <Text style={styles.logoText}>L</Text>
         </View>
 
-        <Text style={[styles.appName, { color: theme.textPrimary }]}>SocialTush</Text>
+        <Text style={[styles.appName, { color: theme.textPrimary }]}>Lifonk</Text>
         <Text style={[styles.appTagline, { color: theme.accent }]}>Conecta. Comparte. Descubre.</Text>
 
         <View style={styles.buttonContainer}>

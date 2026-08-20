@@ -88,10 +88,10 @@ export default function OnboardingPage() {
       <header className="max-w-4xl mx-auto w-full flex items-center justify-between py-4 border-b border-slate-200">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-2xl bg-teal-800 flex items-center justify-center text-white font-black shadow-md shadow-teal-900/20">
-            S
+            L
           </div>
           <div>
-            <span className="font-extrabold text-xl tracking-tight text-slate-800 block">SocialTush</span>
+            <span className="font-extrabold text-xl tracking-tight text-slate-800 block">Lifonk</span>
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block -mt-1">Bienvenida Personalizada</span>
           </div>
         </div>
@@ -205,7 +205,7 @@ export default function OnboardingPage() {
             <div className="space-y-6 animate-fade-in">
               <div>
                 <span className="text-xs font-bold uppercase text-teal-800 tracking-wider">Paso 3 de 4</span>
-                <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1">Personas sugeridas en SocialTush 👥</h2>
+                <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1">Personas sugeridas en Lifonk 👥</h2>
                 <p className="text-xs text-slate-500 font-semibold mt-1">
                   Miembros activos compartiendo código, proyectos e ideas en tu comunidad.
                 </p>
@@ -242,7 +242,7 @@ export default function OnboardingPage() {
             <div className="space-y-6 animate-fade-in">
               <div>
                 <span className="text-xs font-bold uppercase text-teal-800 tracking-wider">Paso 4 de 4</span>
-                <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1">¿Qué buscas en SocialTush? 🎯</h2>
+                <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1">¿Qué buscas en Lifonk? 🎯</h2>
                 <p className="text-xs text-slate-500 font-semibold mt-1">
                   Esto configurará tu algoritmo social para mostrarte el contenido más valioso.
                 </p>
@@ -295,7 +295,7 @@ export default function OnboardingPage() {
                 disabled={submitting}
                 className="px-8 py-3 bg-teal-800 hover:bg-teal-900 text-white text-xs font-bold rounded-xl shadow-lg shadow-teal-800/25 flex items-center gap-2 transition-all"
               >
-                <span>{submitting ? 'Guardando...' : 'Comenzar en SocialTush'}</span>
+                <span>{submitting ? 'Guardando...' : 'Comenzar en Lifonk'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}
@@ -306,7 +306,7 @@ export default function OnboardingPage() {
 
       {/* Footer */}
       <footer className="max-w-4xl mx-auto w-full text-center py-4 text-xs text-slate-400 font-medium">
-        SocialTush &bull; Tu comunidad, tu gente, tus momentos.
+        Lifonk &bull; Tu comunidad, tu gente, tus momentos.
       </footer>
     </div>
   );

@@ -597,10 +597,10 @@ function ChatContent() {
             {/* SocialTush Brand Logo */}
             <Link href="/feed" className="flex items-center gap-3 px-2 py-1 group">
               <div className="h-10 w-10 rounded-2xl bg-teal-700 flex items-center justify-center text-white font-extrabold shadow-md shadow-teal-700/20 group-hover:scale-105 transition-transform">
-                <span className="text-xl">S</span>
+                <span className="text-xl">L</span>
               </div>
               <span className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
-                SocialTush
+                Lifonk
               </span>
             </Link>
 
@@ -986,7 +986,7 @@ function ChatContent() {
                 <MessageSquare className="h-8 w-8 animate-pulse" />
               </div>
               <div>
-                <h3 className="text-base font-extrabold text-slate-900 dark:text-white mb-1">Tus Conexiones SocialTush</h3>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white mb-1">Tus Conexiones Lifonk</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm leading-relaxed">
                   Selecciona una conversación en el centro de conexiones o inicia un nuevo chat para enviar mensajes.
                 </p>
@@ -1138,7 +1138,7 @@ export default function ChatPage() {
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] flex items-center justify-center">
         <div className="animate-pulse flex flex-col items-center gap-3">
           <div className="h-10 w-10 bg-teal-700 rounded-xl" />
-          <span className="text-teal-800 dark:text-teal-400 text-sm font-semibold">Cargando SocialTush Chat...</span>
+          <span className="text-teal-800 dark:text-teal-400 text-sm font-semibold">Cargando Lifonk Chat...</span>
         </div>
       </div>
     }>

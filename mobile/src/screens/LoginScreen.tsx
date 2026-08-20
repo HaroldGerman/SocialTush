@@ -34,10 +34,10 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
         <View style={[styles.logoBadge, { backgroundColor: theme.primary }]}>
-          <Text style={styles.logoText}>S</Text>
+          <Text style={styles.logoText}>L</Text>
         </View>
         <Text style={[styles.title, { color: theme.textPrimary }]}>Iniciar sesión</Text>
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Conéctate a tu cuenta de SocialTush</Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Conéctate a tu cuenta de Lifonk</Text>
       </View>
 
       {error && (

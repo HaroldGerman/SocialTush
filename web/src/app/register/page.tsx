@@ -68,11 +68,11 @@ export default function RegisterPage() {
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-6">
           <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-cyan-400 via-teal-400 to-emerald-500 flex items-center justify-center shadow-lg shadow-cyan-500/25 mb-4 active:scale-95 transition-transform">
-            <span className="font-black text-slate-950 text-2xl tracking-tighter">S</span>
+            <span className="font-black text-slate-950 text-2xl tracking-tighter">L</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Crea tu cuenta</h1>
           <p className="text-slate-400 text-xs mt-1.5 font-normal">
-            Únete a la nueva era de conexión en <strong className="gradient-text-cyan">SocialTush</strong>
+            Únete a la nueva era de conexión en <strong className="gradient-text-cyan">Lifonk</strong>
           </p>
         </div>
 
