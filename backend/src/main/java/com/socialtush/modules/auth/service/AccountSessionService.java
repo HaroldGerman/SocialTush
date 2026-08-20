@@ -58,9 +58,10 @@ public class AccountSessionService {
     }
 
     /**
-     * Existing tokens predate device metadata. When the security screen is opened from one
-     * of those sessions, adopt the current token and revoke the other anonymous legacy tokens.
-     * This removes inflated historical counts without guessing which old token belonged to which device.
+     * Adopts the current browser session into the device-aware model. When the Web client
+     * supplies a stable Lifonk device id, anonymous pre-V19 tokens and temporary server-*
+     * fallback ids are migration artifacts, not trustworthy device records. Revoke those
+     * leftovers so they cannot appear as fake extra devices in Security.
      */
     public void adoptCurrentSession(User user, HttpServletRequest request, String rawToken) {
         if (user == null || rawToken == null || rawToken.isBlank()) return;
@@ -68,7 +69,7 @@ public class AccountSessionService {
         if (current == null || current.isRevoked() || current.isExpired()
                 || !current.getUser().getId().equals(user.getId())) return;
 
-        boolean wasLegacy = current.getDeviceId() == null || current.getDeviceId().isBlank();
+        String trustedHeaderDeviceId = clean(request == null ? null : request.getHeader(DEVICE_ID_HEADER), 128);
         DeviceMetadata metadata = resolveDevice(request, current);
         current.setDeviceId(metadata.deviceId());
         current.setDeviceLabel(metadata.label());
@@ -78,13 +79,21 @@ public class AccountSessionService {
         current.setLastUsedAt(Instant.now());
         refreshTokenRepository.save(current);
 
-        if (!wasLegacy) return;
+        cleanupMigrationArtifacts(user, current, trustedHeaderDeviceId);
+    }
+
+    private void cleanupMigrationArtifacts(User user, RefreshToken current, String trustedHeaderDeviceId) {
+        if (trustedHeaderDeviceId == null || trustedHeaderDeviceId.startsWith("server-")) return;
+
         List<RefreshToken> active = refreshTokenRepository
                 .findByUserAndIsRevokedFalseAndExpiresAtAfterOrderByLastUsedAtDesc(user, Instant.now());
         boolean changed = false;
         for (RefreshToken token : active) {
             if (token.getId().equals(current.getId())) continue;
-            if (token.getDeviceId() == null || token.getDeviceId().isBlank()) {
+            String deviceId = clean(token.getDeviceId(), 128);
+            boolean legacyAnonymous = deviceId == null;
+            boolean temporaryServerFallback = deviceId != null && deviceId.startsWith("server-");
+            if (legacyAnonymous || temporaryServerFallback) {
                 token.setRevoked(true);
                 changed = true;
             }
