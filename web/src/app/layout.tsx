@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { CreateHubProvider } from "@/context/CreateHubContext";
 import "./globals.css";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
+import AccountSecurityShortcut from "@/components/AccountSecurityShortcut";
 import { RealtimeActivityProvider } from "@/context/RealtimeActivityContext";
 
 export const metadata: Metadata = {
@@ -17,11 +18,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es">
       <head>
@@ -33,11 +30,8 @@ export default function RootLayout({
             __html: `
               (function() {
                 var theme = localStorage.getItem('socialtush-theme') || 'light';
-                if (theme === 'dark') {
-                  document.documentElement.classList.add('dark');
-                } else {
-                  document.documentElement.classList.remove('dark');
-                }
+                if (theme === 'dark') document.documentElement.classList.add('dark');
+                else document.documentElement.classList.remove('dark');
               })();
             `,
           }}
@@ -50,6 +44,7 @@ export default function RootLayout({
             <RealtimeActivityProvider>
               <CreateHubProvider>
                 {children}
+                <AccountSecurityShortcut />
               </CreateHubProvider>
             </RealtimeActivityProvider>
           </AuthProvider>

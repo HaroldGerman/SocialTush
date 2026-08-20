@@ -3,11 +3,13 @@ package com.socialtush.modules.auth.controller;
 import com.socialtush.modules.auth.dto.AuthRequest;
 import com.socialtush.modules.auth.dto.AuthResponse;
 import com.socialtush.modules.auth.service.AuthService;
+import com.socialtush.modules.users.entity.User;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -33,8 +35,7 @@ public class AuthController {
             @Valid @RequestBody AuthRequest.Login request,
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
-        AuthResponse response = authService.login(request, httpRequest, httpResponse);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(authService.login(request, httpRequest, httpResponse));
     }
 
     @PostMapping("/refresh")
@@ -42,8 +43,7 @@ public class AuthController {
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse,
             @RequestBody(required = false) AuthRequest.Refresh body) {
-        AuthResponse response = authService.refresh(httpRequest, httpResponse, body);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(authService.refresh(httpRequest, httpResponse, body));
     }
 
     @PostMapping("/logout")
@@ -81,5 +81,40 @@ public class AuthController {
         return ResponseEntity.ok(Map.of(
                 "message", "Si la cuenta existe y todavía necesita verificación, enviaremos un nuevo enlace."
         ));
+    }
+
+    @GetMapping("/security")
+    public ResponseEntity<Map<String, Object>> security(@AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(authService.securityStatus(currentUser));
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<Map<String, String>> changePassword(
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody AuthRequest.ChangePassword body,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        authService.changePassword(currentUser, body.getCurrentPassword(), body.getNewPassword(), request, response);
+        return ResponseEntity.ok(Map.of("message", "Contraseña actualizada. Todas las sesiones fueron cerradas."));
+    }
+
+    @PostMapping("/logout-all")
+    public ResponseEntity<Map<String, String>> logoutAll(
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody AuthRequest.ConfirmPassword body,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        authService.logoutAll(currentUser, body.getCurrentPassword(), request, response);
+        return ResponseEntity.ok(Map.of("message", "Sesiones cerradas en todos los dispositivos."));
+    }
+
+    @DeleteMapping("/account")
+    public ResponseEntity<Map<String, String>> deleteAccount(
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody AuthRequest.DeleteAccount body,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        authService.deleteAccount(currentUser, body.getCurrentPassword(), body.getConfirmation(), request, response);
+        return ResponseEntity.ok(Map.of("message", "Tu cuenta de Lifonk fue eliminada permanentemente."));
     }
 }

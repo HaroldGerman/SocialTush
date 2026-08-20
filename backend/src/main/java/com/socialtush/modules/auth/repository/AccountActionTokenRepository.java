@@ -14,4 +14,5 @@ public interface AccountActionTokenRepository extends JpaRepository<AccountActio
     Optional<AccountActionToken> findByTokenHashAndPurpose(String tokenHash, String purpose);
     Optional<AccountActionToken> findFirstByUserAndPurposeAndUsedAtIsNullOrderByCreatedAtDesc(User user, String purpose);
     List<AccountActionToken> findByUserAndPurposeAndUsedAtIsNull(User user, String purpose);
+    void deleteByUser(User user);
 }

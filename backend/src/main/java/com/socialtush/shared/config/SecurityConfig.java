@@ -5,9 +5,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -46,9 +46,18 @@ public class SecurityConfig {
                 .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
                 .accessDeniedHandler((request, response, denied) -> response.sendError(HttpStatus.FORBIDDEN.value())))
             .authorizeHttpRequests(auth -> auth
-                // Explicitly permit HTTP OPTIONS preflight requests for CORS
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/v1/auth/**", "/api/v1/health", "/error", "/ws/chat/**").permitAll()
+                .requestMatchers(
+                    "/api/v1/auth/register",
+                    "/api/v1/auth/login",
+                    "/api/v1/auth/refresh",
+                    "/api/v1/auth/logout",
+                    "/api/v1/auth/forgot-password",
+                    "/api/v1/auth/reset-password",
+                    "/api/v1/auth/verify-email",
+                    "/api/v1/auth/resend-verification",
+                    "/api/v1/health", "/error", "/ws/chat/**"
+                ).permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/circles/**", "/api/v1/posts/**", "/api/v1/profiles/**").permitAll()
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
@@ -62,18 +71,14 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // 1. Load origins from CORS_ALLOWED_ORIGINS environment variable or fallback defaults
         List<String> allowedOrigins = new ArrayList<>();
         String envOrigins = System.getenv("CORS_ALLOWED_ORIGINS");
         if (envOrigins != null && !envOrigins.isBlank()) {
             for (String origin : envOrigins.split(",")) {
-                if (!origin.isBlank()) {
-                    allowedOrigins.add(origin.trim());
-                }
+                if (!origin.isBlank()) allowedOrigins.add(origin.trim());
             }
         }
 
-        // Always include default production & local development origins
         if (!allowedOrigins.contains("https://social-tush.vercel.app")) {
             allowedOrigins.add("https://social-tush.vercel.app");
         }
@@ -82,8 +87,6 @@ public class SecurityConfig {
         }
 
         configuration.setAllowedOrigins(allowedOrigins);
-
-        // 2. Allow Origin Patterns for Vercel preview deployments, local ports, and LAN IPs
         configuration.setAllowedOriginPatterns(Arrays.asList(
             "https://social-tush*.vercel.app",
             "https://*.vercel.app",
@@ -92,26 +95,14 @@ public class SecurityConfig {
             "http://192.168.*.*",
             "http://10.0.2.2:*"
         ));
-
-        // 3. Supported HTTP Methods
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-
-        // 4. Allowed Headers
         configuration.setAllowedHeaders(Arrays.asList(
-            "Authorization",
-            "Content-Type",
-            "Accept",
-            "X-Requested-With",
-            "Origin",
-            "Access-Control-Request-Method",
-            "Access-Control-Request-Headers",
-            "Cache-Control"
+            "Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin",
+            "Access-Control-Request-Method", "Access-Control-Request-Headers", "Cache-Control"
         ));
-
-        // 5. Exposed Headers for Client consumption
-        configuration.setExposedHeaders(Arrays.asList("Authorization", "Set-Cookie", "Access-Control-Allow-Origin", "Access-Control-Allow-Credentials"));
-
-        // 6. Support Credentials (Cookies / Authorization headers)
+        configuration.setExposedHeaders(Arrays.asList(
+            "Authorization", "Set-Cookie", "Access-Control-Allow-Origin", "Access-Control-Allow-Credentials"
+        ));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
