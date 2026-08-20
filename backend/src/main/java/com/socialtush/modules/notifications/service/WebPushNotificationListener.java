@@ -45,13 +45,13 @@ public class WebPushNotificationListener {
             case "FOLLOW" -> username + " conectó contigo";
             case "FOLLOW_REQUEST" -> username + " quiere conectar contigo";
             case "STORY_REPLY" -> username + " respondió a tu momento";
-            case "STORY_REACTION" -> username + " reaccionó a tu momento";
+            case "STORY_REACTION" -> username + " resonó"
+                    + (event.messagePreview() != null ? " " + event.messagePreview() : "")
+                    + " con tu momento";
             default -> "Tienes una nueva señal";
         };
         if ("STORY_REPLY".equals(event.type()) && event.messagePreview() != null) {
             body += ": \"" + event.messagePreview() + "\"";
-        } else if ("STORY_REACTION".equals(event.type()) && event.messagePreview() != null) {
-            body += " " + event.messagePreview();
         }
         return WebPushPayload.builder()
                 .title("Lifonk")
@@ -67,11 +67,10 @@ public class WebPushNotificationListener {
     private String safeUrl(NotificationCreatedEvent event) {
         String id = event.targetId() == null ? "" : event.targetId().toString();
         return switch (event.type()) {
-            case "MESSAGE" -> "/chat?username=" + event.senderUsername();
+            case "MESSAGE", "STORY_REPLY" -> "/chat?username=" + event.senderUsername();
             case "LIKE_POST", "COMMENT" -> "/post/" + id;
             case "FOLLOW", "FOLLOW_REQUEST" -> "/profile/" + event.senderUsername();
-            case "LIKE_COMMENT", "COMMENT_REPLY" -> "/feed";
-            case "STORY_REPLY", "STORY_REACTION" -> "/chat?username=" + event.senderUsername();
+            case "LIKE_COMMENT", "COMMENT_REPLY", "STORY_REACTION" -> "/feed";
             default -> "/feed";
         };
     }
