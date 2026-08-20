@@ -194,7 +194,9 @@ public class StoryController {
         } else if (body != null && body.get("reactionType") != null) {
             type = body.get("reactionType").toString();
         }
-        storyService.recordReaction(id, currentUser, type);
+        if (!storyService.recordReaction(id, currentUser, type)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Momento no disponible"));
+        }
         return ResponseEntity.ok(Map.of("message", "Reacción registrada"));
     }
 

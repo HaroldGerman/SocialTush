@@ -46,6 +46,16 @@ interface Message {
   senderAvatarUrl: string;
   content: string;
   messageType: string;
+  storyPreviewId?: string;
+  storyPreview?: {
+    storyId: string;
+    mediaType?: 'IMAGE' | 'VIDEO' | 'TEXT';
+    mediaUrl?: string;
+    textContent?: string;
+    backgroundColor?: string;
+    createdAt?: string;
+    available: boolean;
+  };
   createdAt: string;
   attachments?: MessageAttachment[];
   readByRecipient?: boolean;
@@ -1040,6 +1050,17 @@ function ChatContent() {
                         {!isOwn && activeConversation.isGroup && (
                           <strong className="text-[10px] text-teal-700 dark:text-teal-400 block mb-1">@{m.senderUsername}</strong>
                         )}
+                        {(m.messageType === 'STORY_REPLY' || m.messageType === 'STORY_REACTION') && (
+                          <div className="mb-2 overflow-hidden rounded-xl border border-white/20 bg-black/10 text-[10px]">
+                            <p className="px-2.5 pt-2 font-bold opacity-90">{isOwn ? (m.messageType === 'STORY_REPLY' ? 'Respondiste a su momento' : 'Reaccionaste a un momento') : (m.messageType === 'STORY_REPLY' ? 'Respondió a tu momento' : 'Reaccionó a tu momento')}</p>
+                            {m.storyPreview?.available ? (
+                              m.storyPreview.mediaType === 'IMAGE' && m.storyPreview.mediaUrl ? <img src={m.storyPreview.mediaUrl} alt="Vista previa del momento" className="mt-1 h-24 w-full object-cover" /> :
+                              m.storyPreview.mediaType === 'VIDEO' && m.storyPreview.mediaUrl ? <video src={m.storyPreview.mediaUrl} muted playsInline controls preload="metadata" className="mt-1 h-24 w-full object-cover" /> :
+                              <div className="mx-2.5 my-1 rounded-lg px-2 py-3" style={{ background: m.storyPreview.backgroundColor || '#0f766e' }}>{m.storyPreview.textContent || 'Momento de texto'}</div>
+                            ) : <div className="px-2.5 py-3 opacity-70">Momento no disponible</div>}
+                            {m.messageType === 'STORY_REACTION' && <div className="px-2.5 pb-2 text-lg">{m.content}</div>}
+                          </div>
+                        )}
                         {m.attachments?.map(attachment => (
                           <div key={attachment.id} className={m.content ? 'mb-2' : ''}>
                             {attachment.fileType === 'IMAGE' && (
@@ -1058,7 +1079,7 @@ function ChatContent() {
                             )}
                           </div>
                         ))}
-                        {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
+                        {m.content && m.messageType !== 'STORY_REACTION' && <p className="whitespace-pre-wrap">{m.content}</p>}
                       </div>
 
                       <div className="relative mt-1 flex flex-wrap items-center gap-1">

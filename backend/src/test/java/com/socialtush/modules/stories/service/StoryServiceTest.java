@@ -1,6 +1,6 @@
 package com.socialtush.modules.stories.service;
 
-import com.socialtush.modules.notifications.service.NotificationService;
+import com.socialtush.modules.chat.service.ChatService;
 import com.socialtush.modules.stories.entity.Story;
 import com.socialtush.modules.stories.entity.StoryReaction;
 import com.socialtush.modules.stories.repository.StoryReactionRepository;
@@ -24,7 +24,7 @@ class StoryServiceTest {
     @Mock StoryRepository stories;
     @Mock StoryViewRepository views;
     @Mock StoryReactionRepository reactions;
-    @Mock NotificationService notifications;
+    @Mock ChatService chatService;
     StoryService service;
     User owner;
     User viewer;
@@ -32,7 +32,7 @@ class StoryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new StoryService(stories, views, reactions, notifications);
+        service = new StoryService(stories, views, reactions, chatService);
         owner = User.builder().id(UUID.randomUUID()).username("owner").email("owner@test.local").passwordHash("x").build();
         viewer = User.builder().id(UUID.randomUUID()).username("viewer").email("viewer@test.local").passwordHash("x").build();
         story = Story.builder().id(UUID.randomUUID()).user(owner).mediaType("TEXT").expiresAt(java.time.Instant.now().plusSeconds(3600)).build();
@@ -45,7 +45,7 @@ class StoryServiceTest {
         service.recordReaction(story.getId(), viewer, "HEART");
 
         verify(reactions).save(any(StoryReaction.class));
-        verify(notifications).createNotification(owner, viewer, "STORY_REACTION", story.getId(), "HEART");
+        verify(chatService).recordStoryReaction(viewer, owner, story.getId(), "❤️");
     }
 
     @Test
@@ -56,6 +56,6 @@ class StoryServiceTest {
         service.recordReaction(story.getId(), viewer, "heart");
 
         verify(reactions).save(existing);
-        verifyNoInteractions(notifications);
+        verifyNoInteractions(chatService);
     }
 }

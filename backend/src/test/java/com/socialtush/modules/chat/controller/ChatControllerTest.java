@@ -10,6 +10,7 @@ import com.socialtush.modules.chat.repository.MessageRepository;
 import com.socialtush.modules.chat.repository.MessageReactionRepository;
 import com.socialtush.modules.chat.service.ChatService;
 import com.socialtush.modules.chat.service.PresenceService;
+import com.socialtush.modules.stories.repository.StoryRepository;
 import com.socialtush.modules.notifications.repository.NotificationRepository;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.profiles.entity.Profile;
@@ -33,6 +34,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
 class ChatControllerTest {
@@ -46,6 +48,7 @@ class ChatControllerTest {
     @Mock ChatService chatService;
     @Mock PresenceService presenceService;
     @Mock SimpMessagingTemplate messaging;
+    @Mock StoryRepository stories;
 
     @Test
     void getMessagesReturnsAttachmentMetadata() {
@@ -63,7 +66,7 @@ class ChatControllerTest {
                 .thenReturn(Optional.of(ConversationParticipant.builder().conversation(conversation).user(user).build()));
         when(messages.findByConversationIdOrderByCreatedAtDesc(any(), any()))
                 .thenReturn(new PageImpl<>(List.of(message)));
-        ChatController controller = new ChatController(conversations, participants, messages, reactions, users, profiles, notifications, chatService, presenceService, messaging);
+        ChatController controller = new ChatController(conversations, participants, messages, reactions, users, profiles, notifications, chatService, presenceService, messaging, stories);
 
         ResponseEntity<?> response = controller.getMessages(conversationId, 0, 30, user);
 
@@ -97,7 +100,7 @@ class ChatControllerTest {
         when(profiles.findById(recipient.getId())).thenReturn(Optional.of(recipientProfile));
         when(messages.findByConversationIdOrderByCreatedAtDesc(any(), any()))
                 .thenReturn(new PageImpl<>(List.of(m3, m2, m1)));
-        ChatController controller = new ChatController(conversations, participants, messages, reactions, users, profiles, notifications, chatService, presenceService, messaging);
+        ChatController controller = new ChatController(conversations, participants, messages, reactions, users, profiles, notifications, chatService, presenceService, messaging, stories);
 
         @SuppressWarnings("unchecked")
         List<ChatController.MessageResponseDto> body = (List<ChatController.MessageResponseDto>)
@@ -120,7 +123,7 @@ class ChatControllerTest {
         when(profiles.findById(reader.getId())).thenReturn(Optional.of(profile));
         when(conversations.findById(conversationId))
                 .thenReturn(Optional.of(Conversation.builder().id(conversationId).isGroup(false).createdBy(reader).build()));
-        ChatController controller = new ChatController(conversations, participants, messages, reactions, users, profiles, notifications, chatService, presenceService, messaging);
+        ChatController controller = new ChatController(conversations, participants, messages, reactions, users, profiles, notifications, chatService, presenceService, messaging, stories);
 
         ResponseEntity<?> response = controller.markConversationAsRead(conversationId, reader);
 

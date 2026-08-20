@@ -40,6 +40,8 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import com.socialtush.modules.notifications.repository.NotificationRepository;
+import com.socialtush.modules.stories.entity.Story;
+import com.socialtush.modules.stories.repository.StoryRepository;
 
 @RestController
 @RequestMapping("/api/v1/chat")
@@ -56,6 +58,7 @@ public class ChatController {
     private final ChatService chatService;
     private final PresenceService presenceService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final StoryRepository storyRepository;
 
     @GetMapping("/conversations")
     public ResponseEntity<?> getConversations(@AuthenticationPrincipal User currentUser) {
@@ -112,7 +115,7 @@ public class ChatController {
             if (ownParticipant != null && ownParticipant.getNickname() != null) name = ownParticipant.getNickname();
 
             Optional<Message> latestMessage = messageRepository.findFirstByConversationIdOrderByCreatedAtDesc(c.getId());
-            String latestText = latestMessage.map(this::messagePreview).orElse("No hay mensajes");
+            String latestText = latestMessage.map(message -> messagePreview(message, currentUser)).orElse("No hay mensajes");
             String latestTime = latestMessage.map(m -> m.getCreatedAt().toString()).orElse(c.getUpdatedAt().toString());
             String latestSender = latestMessage.map(m -> m.getSender() != null ? m.getSender().getUsername() : "").orElse("");
             long unreadCount = notificationRepository.countByReceiverAndNotificationTypeAndTargetIdAndIsReadFalse(currentUser, "MESSAGE", c.getId());
@@ -344,6 +347,9 @@ public class ChatController {
         }
 
         if (request == null) return ResponseEntity.badRequest().body(Map.of("message", "El mensaje no puede estar vacío"));
+        if (!validStoryReply(request, currentUser, conversationId, null)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "Momento no disponible para responder"));
+        }
         Message message = chatService.sendMessage(currentUser, conversationId,
                 request.getContent(), request.getMessageType(), request.getStoryPreviewId());
         MessageResponseDto dto = toMessageDto(message, currentUser);
@@ -390,6 +396,9 @@ public class ChatController {
 
         if (request == null) {
             return ResponseEntity.badRequest().body(Map.of("message", "El mensaje no puede estar vacío"));
+        }
+        if (!validStoryReply(request, currentUser, null, username)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "Momento no disponible para responder"));
         }
         ChatService.SendResult result = chatService.sendDirectMessage(currentUser, username, request.getContent(),
                 request.getMessageType(), request.getStoryPreviewId());
@@ -467,7 +476,15 @@ public class ChatController {
         return response;
     }
 
-    private String messagePreview(Message message) {
+    private String messagePreview(Message message, User viewer) {
+        boolean own = viewer != null && message.getSender() != null && message.getSender().getId().equals(viewer.getId());
+        if ("STORY_REPLY".equalsIgnoreCase(message.getMessageType())) {
+            return own ? "Respondiste a un momento" : "Respondió a tu momento";
+        }
+        if ("STORY_REACTION".equalsIgnoreCase(message.getMessageType())) {
+            String emoji = message.getContent() == null || message.getContent().isBlank() ? "❤️" : message.getContent();
+            return own ? "Reaccionaste " + emoji + " a un momento" : "Reaccionó " + emoji + " a tu momento";
+        }
         if (message.getContent() != null && !message.getContent().isBlank()) return message.getContent();
         if (message.getAttachments().isEmpty()) return "Mensaje";
         return switch (message.getAttachments().get(0).getFileType()) {
@@ -476,6 +493,16 @@ public class ChatController {
             case "AUDIO" -> "🎤 Nota de voz";
             default -> "📎 Archivo";
         };
+    }
+
+    private boolean validStoryReply(CreateMessageRequest request, User sender, UUID conversationId, String recipientUsername) {
+        if (!"STORY_REPLY".equalsIgnoreCase(request.getMessageType()) || request.getStoryPreviewId() == null) return true;
+        Story story = storyRepository.findById(request.getStoryPreviewId()).orElse(null);
+        if (story == null || story.getExpiresAt() == null || !story.getExpiresAt().isAfter(Instant.now())
+                || story.getUser().getId().equals(sender.getId())) return false;
+        if (recipientUsername != null) return story.getUser().getUsername().equalsIgnoreCase(recipientUsername);
+        return participantRepository.findByConversationId(conversationId).stream()
+                .anyMatch(participant -> participant.getUser().getId().equals(story.getUser().getId()));
     }
 
     @DeleteMapping("/conversations/{conversationId}")
@@ -508,6 +535,7 @@ public class ChatController {
                 .senderAvatarUrl(senderProfile != null && senderProfile.getAvatarUrl() != null ? senderProfile.getAvatarUrl() : "")
                 .content(message.getContent()).messageType(message.getMessageType())
                 .storyPreviewId(message.getStoryPreviewId())
+                .storyPreview(storyPreview(message))
                 .attachments(message.getAttachments().stream().map(this::toAttachmentDto).toList())
                 .reactions(reactions.stream().collect(Collectors.groupingBy(MessageReaction::getEmoji)).entrySet().stream()
                         .map(entry -> ReactionSummaryDto.builder().emoji(entry.getKey()).count(entry.getValue().size())
@@ -516,6 +544,20 @@ public class ChatController {
                 .readReceiptVisible(ownMessage && receipt.visible())
                 .readByRecipient(read)
                 .createdAt((message.getCreatedAt() != null ? message.getCreatedAt() : java.time.Instant.now()).toString()).build();
+    }
+
+    private StoryPreviewDto storyPreview(Message message) {
+        if (message.getStoryPreviewId() == null || (!"STORY_REPLY".equalsIgnoreCase(message.getMessageType())
+                && !"STORY_REACTION".equalsIgnoreCase(message.getMessageType()))) return null;
+        Story story = storyRepository.findById(message.getStoryPreviewId()).orElse(null);
+        if (story == null || story.getExpiresAt() == null || !story.getExpiresAt().isAfter(Instant.now())) {
+            return StoryPreviewDto.builder().storyId(message.getStoryPreviewId()).available(false).build();
+        }
+        return StoryPreviewDto.builder().storyId(story.getId()).mediaType(story.getMediaType())
+                .mediaUrl(story.getMediaUrl()).textContent(story.getTextContent())
+                .backgroundColor(story.getBackgroundColor())
+                .createdAt(story.getCreatedAt() == null ? null : story.getCreatedAt().toString())
+                .available(true).build();
     }
 
     private ReceiptContext receiptContext(UUID conversationId, User viewer) {
@@ -594,6 +636,7 @@ public class ChatController {
         private String content;
         private String messageType;
         private UUID storyPreviewId;
+        private StoryPreviewDto storyPreview;
         private List<AttachmentDto> attachments;
         private List<ReactionSummaryDto> reactions;
         private String createdAt;
@@ -620,6 +663,18 @@ public class ChatController {
         private String emoji;
         private long count;
         private boolean reactedByMe;
+    }
+
+    @Data
+    @Builder
+    public static class StoryPreviewDto {
+        private UUID storyId;
+        private String mediaType;
+        private String mediaUrl;
+        private String textContent;
+        private String backgroundColor;
+        private String createdAt;
+        private boolean available;
     }
 
     private record ReceiptContext(boolean visible, Instant lastReadAt) {}

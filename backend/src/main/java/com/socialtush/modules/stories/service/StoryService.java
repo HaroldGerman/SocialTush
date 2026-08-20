@@ -7,7 +7,7 @@ import com.socialtush.modules.stories.repository.StoryReactionRepository;
 import com.socialtush.modules.stories.repository.StoryRepository;
 import com.socialtush.modules.stories.repository.StoryViewRepository;
 import com.socialtush.modules.users.entity.User;
-import com.socialtush.modules.notifications.service.NotificationService;
+import com.socialtush.modules.chat.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +23,7 @@ public class StoryService {
     private final StoryRepository storyRepository;
     private final StoryViewRepository storyViewRepository;
     private final StoryReactionRepository storyReactionRepository;
-    private final NotificationService notificationService;
+    private final ChatService chatService;
 
     @Transactional
     public boolean recordView(UUID storyId, User viewer) {
@@ -45,7 +45,8 @@ public class StoryService {
     @Transactional
     public boolean recordReaction(UUID storyId, User user, String reactionType) {
         Story story = storyRepository.findById(storyId).orElse(null);
-        if (story == null || user == null) return false;
+        if (story == null || user == null || story.getExpiresAt() == null || !story.getExpiresAt().isAfter(java.time.Instant.now())
+                || story.getUser().getId().equals(user.getId())) return false;
 
         StoryReaction existing = storyReactionRepository.findByStoryIdAndUserId(storyId, user.getId()).orElse(null);
         String normalizedType = reactionType != null && !reactionType.isBlank() ? reactionType.toUpperCase() : "HEART";
@@ -57,8 +58,22 @@ public class StoryService {
         boolean changed = existing == null || !normalizedType.equalsIgnoreCase(existing.getReactionType());
         reaction.setReactionType(normalizedType);
         storyReactionRepository.save(reaction);
-        if (changed) notificationService.createNotification(story.getUser(), user, "STORY_REACTION", story.getId(), normalizedType);
+        if (changed) {
+            chatService.recordStoryReaction(user, story.getUser(), story.getId(), reactionEmoji(normalizedType));
+        }
         return true;
+    }
+
+    private String reactionEmoji(String value) {
+        return switch (value) {
+            case "HEART", "LIKE" -> "❤️";
+            case "LAUGH" -> "😂";
+            case "WOW" -> "😮";
+            case "SAD" -> "😢";
+            case "FIRE" -> "🔥";
+            case "THUMBS_UP" -> "👍";
+            default -> value;
+        };
     }
 
     @Transactional(readOnly = true)

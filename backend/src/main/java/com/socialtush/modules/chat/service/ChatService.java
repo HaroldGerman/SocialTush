@@ -70,6 +70,27 @@ public class ChatService {
         return new SendResult(conversation, message);
     }
 
+    /** Persists the single contextual message representing the actor's current story reaction. */
+    @Transactional(rollbackFor = Exception.class)
+    public Message recordStoryReaction(User actor, User owner, UUID storyId, String emoji) {
+        requireAuthenticated(actor);
+        if (owner == null || actor.getId().equals(owner.getId())) return null;
+        Conversation conversation = findOrCreateDirectConversation(actor, owner);
+        Message existing = messageRepository
+                .findFirstByConversationIdAndSenderIdAndMessageTypeAndStoryPreviewId(
+                        conversation.getId(), actor.getId(), "STORY_REACTION", storyId)
+                .orElse(null);
+        String value = emoji == null || emoji.isBlank() ? "❤️" : emoji;
+        if (existing != null) {
+            if (value.equals(existing.getContent())) return existing;
+            existing.setContent(value);
+            Message updated = messageRepository.save(existing);
+            notificationService.createNotification(owner, actor, "STORY_REACTION", storyId, value);
+            return updated;
+        }
+        return persistMessage(conversation, actor, value, "STORY_REACTION", storyId);
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public SendResult sendDirectMediaMessage(User sender, String username, String content,
                                               MultipartFile file, Integer durationSeconds) {
