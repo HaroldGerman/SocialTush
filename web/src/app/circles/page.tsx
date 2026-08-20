@@ -130,7 +130,7 @@ export default function CirclesPage() {
                 L
               </div>
               <span className="font-bold text-xl tracking-tight text-teal-950 dark:text-white">
-                Social<span className="text-teal-600">Tush</span>
+                Lif<span className="text-teal-600">onk</span>
               </span>
             </Link>
           </div>
