@@ -14,20 +14,23 @@ interface Circle {
   membersCount: number;
 }
 
-export default function CirclesScreen() {
+export default function CirclesScreen({ onOpenCircle }: { onOpenCircle?: (slug: string) => void }) {
   const { api } = useAuth();
   const { theme } = useAppTheme();
   
   const [circles, setCircles] = useState<Circle[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
   const fetchCircles = useCallback(async () => {
     try {
       const res = await api.get('/circles');
       setCircles(res.data || []);
+      setError('');
     } catch (err) {
-      setCircles([]);
+      console.error(err);
+      setError('No se pudieron cargar los Círculos.');
     }
   }, [api]);
 
@@ -48,7 +51,7 @@ export default function CirclesScreen() {
   };
 
   const renderCircleItem = ({ item }: { item: Circle }) => (
-    <TouchableOpacity disabled accessibilityLabel="Detalle de círculo, disponible en web" style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, opacity: 0.75 }]}>
+    <TouchableOpacity onPress={() => onOpenCircle?.(item.slug)} style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
         <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
       </View>
@@ -73,6 +76,7 @@ export default function CirclesScreen() {
     );
   }
 
+  if(error&&!circles.length)return <View style={[styles.center,{backgroundColor:theme.background,gap:12}]}><Text style={{color:theme.textPrimary,fontWeight:'800'}}>{error}</Text><TouchableOpacity onPress={()=>void initData()} style={{backgroundColor:theme.primary,padding:12,borderRadius:12}}><Text style={{color:'#fff',fontWeight:'800'}}>Reintentar</Text></TouchableOpacity></View>;
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
