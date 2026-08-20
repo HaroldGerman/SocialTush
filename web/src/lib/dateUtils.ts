@@ -3,10 +3,10 @@
  * Uses native Intl APIs without heavy external dependencies.
  */
 export function formatLocalTimestamp(dateInput?: string | Date | null): string {
-  if (!dateInput) return 'Reciente';
+  if (!dateInput) return 'Fecha no disponible';
 
   const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-  if (isNaN(date.getTime())) return 'Reciente';
+  if (isNaN(date.getTime())) return 'Fecha no disponible';
 
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();

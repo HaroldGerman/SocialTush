@@ -1,6 +1,7 @@
 package com.socialtush.modules.social.controller;
 
 import com.socialtush.modules.notifications.service.NotificationService;
+import com.socialtush.modules.notifications.repository.NotificationRepository;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.social.entity.Follow;
@@ -16,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
@@ -32,37 +34,30 @@ public class FollowController {
     private final FollowRepository followRepository;
     private final FollowRequestRepository followRequestRepository;
     private final NotificationService notificationService;
+    private final NotificationRepository notificationRepository;
 
     @PostMapping("/follow/{username}")
     public ResponseEntity<?> followUser(@PathVariable String username, @AuthenticationPrincipal User currentUser) {
-        System.out.println("[DEBUG FOLLOW] followUser called for target username: " + username);
         if (currentUser == null) {
-            System.out.println("[DEBUG FOLLOW] currentUser is NULL!");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
-        System.out.println("[DEBUG FOLLOW] currentUser: id=" + currentUser.getId() + ", username=" + currentUser.getUsername());
 
         User targetUser = userRepository.findByUsernameIgnoreCase(username.trim()).orElse(null);
         if (targetUser == null) {
-            System.out.println("[DEBUG FOLLOW] targetUser not found!");
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Usuario no encontrado"));
         }
-        System.out.println("[DEBUG FOLLOW] targetUser: id=" + targetUser.getId() + ", username=" + targetUser.getUsername());
 
         if (currentUser.getId().equals(targetUser.getId())) {
-            System.out.println("[DEBUG FOLLOW] Cannot follow self!");
             return ResponseEntity.badRequest().body(Map.of("message", "No puedes seguirte a ti mismo"));
         }
 
         // Check if already following
         if (followRepository.existsByFollowerIdAndFollowingId(currentUser.getId(), targetUser.getId())) {
-            System.out.println("[DEBUG FOLLOW] Already following!");
             return ResponseEntity.badRequest().body(Map.of("message", "Ya sigues a este usuario"));
         }
 
         Profile targetProfile = profileRepository.findById(targetUser.getId()).orElse(null);
         boolean isPrivate = targetProfile != null && targetProfile.isPrivate();
-        System.out.println("[DEBUG FOLLOW] targetProfile private = " + isPrivate);
 
         if (isPrivate) {
             // Check if there is an existing pending request
@@ -141,6 +136,7 @@ public class FollowController {
     }
 
     @PostMapping("/requests/{id}/accept")
+    @Transactional
     public ResponseEntity<?> acceptRequest(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
         if (currentUser == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
@@ -165,6 +161,7 @@ public class FollowController {
 
         // Clean up follow request database
         followRequestRepository.delete(request);
+        notificationRepository.deleteByReceiverAndNotificationTypeAndTargetId(currentUser, "FOLLOW_REQUEST", id);
 
         // Trigger Follow Alert
         notificationService.createNotification(request.getSender(), currentUser, "FOLLOW", currentUser.getId());
@@ -173,6 +170,7 @@ public class FollowController {
     }
 
     @PostMapping("/requests/{id}/reject")
+    @Transactional
     public ResponseEntity<?> rejectRequest(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
         if (currentUser == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
@@ -184,6 +182,7 @@ public class FollowController {
         }
 
         followRequestRepository.delete(request);
+        notificationRepository.deleteByReceiverAndNotificationTypeAndTargetId(currentUser, "FOLLOW_REQUEST", id);
 
         return ResponseEntity.ok(Map.of("message", "Solicitud rechazada y eliminada"));
     }

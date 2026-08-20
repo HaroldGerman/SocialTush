@@ -8,6 +8,8 @@ import ChatListScreen from './src/screens/ChatListScreen';
 import ChatRoomScreen from './src/screens/ChatRoomScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import CirclesScreen from './src/screens/CirclesScreen';
+import ReelsScreen from './src/screens/ReelsScreen';
+import PostDetailScreen from './src/screens/PostDetailScreen';
 import CreatePostModal from './src/components/CreatePostModal';
 import { StyleSheet, Text, View, StatusBar, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,7 +27,7 @@ interface Conversation {
   updatedAt: string;
 }
 
-type TabType = 'INICIO' | 'CIRCULOS' | 'CREAR' | 'MENSAJES' | 'PERFIL' | 'NOTIFS';
+type TabType = 'INICIO' | 'CIRCULOS' | 'CREAR' | 'MENSAJES' | 'PERFIL' | 'NOTIFS' | 'REELS';
 
 function MainApp() {
   const { user, logout } = useAuth();
@@ -38,6 +40,7 @@ function MainApp() {
   const [targetProfileUsername, setTargetProfileUsername] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [feedRefreshKey, setFeedRefreshKey] = useState<number>(0);
+  const [activePostId, setActivePostId] = useState<string | null>(null);
 
   if (user) {
     return (
@@ -50,10 +53,12 @@ function MainApp() {
         
         {/* Main Content Screen */}
         <View style={{ flex: 1 }}>
+          {activePostId ? <PostDetailScreen postId={activePostId} onBack={() => setActivePostId(null)} onOpenProfile={(username) => { setActivePostId(null); setTargetProfileUsername(username); setAuthTab('PERFIL'); }} /> : <>
           {authTab === 'INICIO' && (
             <FeedScreen 
               key={feedRefreshKey}
               onOpenNotifications={() => setAuthTab('NOTIFS')}
+              onOpenReels={() => setAuthTab('REELS')}
               onOpenProfile={() => {
                 setTargetProfileUsername(user.username);
                 setAuthTab('PERFIL');
@@ -67,7 +72,9 @@ function MainApp() {
           
           {authTab === 'CIRCULOS' && <CirclesScreen />}
 
-          {authTab === 'NOTIFS' && <NotificationsScreen />}
+          {authTab === 'NOTIFS' && <NotificationsScreen onOpenPost={setActivePostId} onOpenProfile={(username) => { setTargetProfileUsername(username); setAuthTab('PERFIL'); }} />}
+
+          {authTab === 'REELS' && <ReelsScreen onOpenProfile={(username) => { setTargetProfileUsername(username); setAuthTab('PERFIL'); }} />}
 
           {authTab === 'MENSAJES' && (
             activeConversation ? (
@@ -90,6 +97,7 @@ function MainApp() {
               onBack={targetProfileUsername && targetProfileUsername !== user.username ? () => setAuthTab('INICIO') : undefined}
             />
           )}
+          </>}
         </View>
 
         {/* Real Create Post Modal */}

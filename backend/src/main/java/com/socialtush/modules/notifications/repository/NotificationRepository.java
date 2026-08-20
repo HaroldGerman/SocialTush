@@ -40,4 +40,6 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     @Modifying
     @Query("DELETE FROM Notification n WHERE n.receiver = :receiver AND n.isRead = true")
     void deleteReadNotificationsForReceiver(@Param("receiver") User receiver);
+
+    void deleteByReceiverAndNotificationTypeAndTargetId(User receiver, String notificationType, UUID targetId);
 }

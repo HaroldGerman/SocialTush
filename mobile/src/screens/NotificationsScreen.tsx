@@ -1,191 +1,23 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { useAuth } from '../context/AuthContext';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 
-interface Notification {
-  notificationId: string;
-  senderUsername: string;
-  senderDisplayName: string;
-  senderAvatarUrl: string;
-  notificationType: string;
-  targetId: string;
-  isRead: boolean;
-  createdAt: string;
+interface Notification { notificationId: string; senderUsername: string; senderDisplayName: string; senderAvatarUrl?: string; notificationType: string; targetId: string; isRead: boolean; createdAt: string; }
+interface Props { onOpenProfile?: (username: string) => void; onOpenPost?: (postId: string) => void; }
+const relativeTime = (value: string) => { const time = new Date(value).getTime(); if (!Number.isFinite(time)) return ''; const seconds = Math.max(0, Math.floor((Date.now() - time) / 1000)); if (seconds < 60) return 'Ahora'; if (seconds < 3600) return `Hace ${Math.floor(seconds / 60)} min`; if (seconds < 86400) return `Hace ${Math.floor(seconds / 3600)} h`; if (seconds < 172800) return 'Ayer'; return new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short' }).format(new Date(time)); };
+
+export default function NotificationsScreen({ onOpenProfile, onOpenPost }: Props) {
+  const { api } = useAuth(); const { theme } = useAppTheme();
+  const [notifications, setNotifications] = useState<Notification[]>([]), [loading, setLoading] = useState(true), [error, setError] = useState('');
+  const fetchNotifications = useCallback(async () => { try { const res = await api.get('/notifications'); setNotifications((res.data || []).filter((item: Notification) => item.notificationType !== 'MESSAGE')); setError(''); } catch (requestError) { console.error(requestError); setError('No se pudo cargar la actividad.'); } finally { setLoading(false); } }, [api]);
+  useEffect(() => { void fetchNotifications(); }, [fetchNotifications]);
+  const markRead = async (item: Notification) => { if (item.isRead) return true; try { await api.post(`/notifications/${item.notificationId}/read`); setNotifications(old => old.map(value => value.notificationId === item.notificationId ? { ...value, isRead: true } : value)); return true; } catch (requestError) { console.error(requestError); setError('No se pudo marcar como leída.'); return false; } };
+  const open = async (item: Notification) => { if (!await markRead(item)) return; if (['LIKE_POST', 'COMMENT'].includes(item.notificationType)) onOpenPost?.(item.targetId); else if (['FOLLOW', 'FOLLOW_REQUEST'].includes(item.notificationType)) onOpenProfile?.(item.senderUsername); };
+  const resolveRequest = async (item: Notification, action: 'accept' | 'reject') => { try { await api.post(`/social/requests/${item.targetId}/${action}`); setNotifications(old => old.filter(value => value.notificationId !== item.notificationId)); setError(''); } catch (requestError: any) { console.error(requestError); if (requestError.response?.status === 404) void fetchNotifications(); else setError(`No se pudo ${action === 'accept' ? 'aceptar' : 'rechazar'} la solicitud.`); } };
+  if (loading) return <View style={[styles.center, { backgroundColor: theme.background }]}><ActivityIndicator size="large" color={theme.accent}/></View>;
+  return <View style={[styles.container, { backgroundColor: theme.background }]}><View style={[styles.header, { borderBottomColor: theme.border }]}><Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Actividad</Text></View>{error ? <TouchableOpacity onPress={() => setError('')} style={styles.error}><Text style={styles.errorText}>{error}</Text></TouchableOpacity> : null}<FlatList data={notifications} keyExtractor={item => item.notificationId} contentContainerStyle={!notifications.length ? styles.emptyContainer : styles.list} renderItem={({ item }) => <TouchableOpacity onPress={() => void open(item)} style={[styles.card, { borderColor: theme.border }, !item.isRead && { backgroundColor: theme.surfaceSecondary }]}>{item.senderAvatarUrl ? <Image source={{ uri: item.senderAvatarUrl }} style={styles.avatar}/> : <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: theme.primary }]}><Text style={styles.avatarText}>{(item.senderDisplayName || item.senderUsername || 'U').charAt(0).toUpperCase()}</Text></View>}<View style={styles.content}><Text style={[styles.text, { color: theme.textSecondary }]}><Text style={[styles.username, { color: theme.textPrimary }]}>@{item.senderUsername} </Text>{item.notificationType === 'LIKE_POST' && 'le dio me gusta a tu publicación.'}{item.notificationType === 'COMMENT' && 'comentó en tu publicación.'}{item.notificationType === 'FOLLOW' && 'comenzó a seguirte.'}{item.notificationType === 'FOLLOW_REQUEST' && 'te envió una solicitud de seguimiento.'}</Text><Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 3 }}>{relativeTime(item.createdAt)}</Text>{item.notificationType === 'FOLLOW_REQUEST' && <View style={styles.requestActions}><TouchableOpacity onPress={() => void resolveRequest(item, 'accept')} style={[styles.requestButton, { backgroundColor: theme.primary }]}><Text style={styles.requestButtonText}>Aceptar</Text></TouchableOpacity><TouchableOpacity onPress={() => void resolveRequest(item, 'reject')} style={[styles.requestButton, { borderColor: theme.border, borderWidth: 1 }]}><Text style={{ color: theme.textPrimary, fontSize: 11, fontWeight: '700' }}>Rechazar</Text></TouchableOpacity></View>}</View>{!item.isRead && <View style={[styles.unreadDot, { backgroundColor: theme.accent }]}/>}</TouchableOpacity>} ListEmptyComponent={<View style={styles.emptyState}><Ionicons name="notifications-outline" size={42} color={theme.textMuted}/><Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Sin actividad</Text><TouchableOpacity onPress={() => void fetchNotifications()}><Text style={{ color: theme.accent, marginTop: 8 }}>Reintentar</Text></TouchableOpacity></View>}/></View>;
 }
 
-export default function NotificationsScreen() {
-  const { api } = useAuth();
-  const { theme } = useAppTheme();
-  
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const res = await api.get('/notifications');
-      setNotifications(res.data || []);
-    } catch (err) {
-      setNotifications([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [api]);
-
-  useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
-
-  const handleMarkRead = async (id: string) => {
-    try {
-      await api.post(`/notifications/${id}/read`);
-      setNotifications(prev => prev.map(n => n.notificationId === id ? { ...n, isRead: true } : n));
-    } catch (err) {
-      setNotifications(prev => prev.map(n => n.notificationId === id ? { ...n, isRead: true } : n));
-    }
-  };
-
-  const renderItem = ({ item }: { item: Notification }) => (
-    <TouchableOpacity 
-      style={[
-        styles.card, 
-        { borderColor: theme.border },
-        !item.isRead && { backgroundColor: theme.surfaceSecondary }
-      ]} 
-      onPress={() => handleMarkRead(item.notificationId)}
-      activeOpacity={0.8}
-    >
-      <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
-        <Text style={styles.avatarText}>
-          {(item.senderDisplayName || item.senderUsername || 'U').charAt(0).toUpperCase()}
-        </Text>
-      </View>
-      <View style={styles.content}>
-        <Text style={[styles.text, { color: theme.textSecondary }]}>
-          <Text style={[styles.username, { color: theme.textPrimary }]}>@{item.senderUsername} </Text>
-          {item.notificationType === 'LIKE_POST' && 'le dio me gusta a tu post.'}
-          {item.notificationType === 'COMMENT' && 'comentó en tu post.'}
-          {item.notificationType === 'FOLLOW' && 'comenzó a seguirte.'}
-          {item.notificationType === 'FOLLOW_REQUEST' && 'te envió una solicitud de seguimiento.'}
-          {item.notificationType !== 'LIKE_POST' && item.notificationType !== 'COMMENT' && item.notificationType !== 'FOLLOW' && item.notificationType !== 'FOLLOW_REQUEST' && 'interactuó contigo.'}
-        </Text>
-      </View>
-      {!item.isRead && <View style={[styles.unreadDot, { backgroundColor: theme.accent }]} />}
-    </TouchableOpacity>
-  );
-
-  if (loading) {
-    return (
-      <View style={[styles.center, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={theme.accent} />
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Actividad</Text>
-      </View>
-
-      <FlatList
-        data={notifications}
-        keyExtractor={(item) => item.notificationId}
-        renderItem={renderItem}
-        contentContainerStyle={notifications.length === 0 ? styles.emptyContainer : { paddingHorizontal: 16 }}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <View style={[styles.emptyIconBox, { backgroundColor: theme.surfaceSecondary }]}>
-              <Ionicons name="notifications-outline" size={36} color={theme.textMuted} />
-            </View>
-            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Sin actividad reciente</Text>
-            <Text style={[styles.emptySub, { color: theme.textMuted }]}>Las interacciones con tus posts e historias aparecerán aquí.</Text>
-          </View>
-        }
-      />
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    gap: 12,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  content: {
-    flex: 1,
-  },
-  text: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  username: {
-    fontWeight: 'bold',
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  emptyContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyIconBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 6,
-  },
-  emptySub: {
-    fontSize: 13,
-    textAlign: 'center',
-  },
-});
+const styles = StyleSheet.create({ container:{flex:1}, center:{flex:1,alignItems:'center',justifyContent:'center'}, header:{paddingHorizontal:20,paddingTop:16,paddingBottom:12,borderBottomWidth:1}, headerTitle:{fontSize:22,fontWeight:'bold'}, list:{paddingHorizontal:16}, card:{flexDirection:'row',alignItems:'flex-start',paddingVertical:14,borderBottomWidth:1,gap:12}, avatar:{width:40,height:40,borderRadius:20}, avatarFallback:{alignItems:'center',justifyContent:'center'}, avatarText:{color:'#fff',fontWeight:'bold'}, content:{flex:1}, text:{fontSize:13,lineHeight:18}, username:{fontWeight:'bold'}, unreadDot:{width:8,height:8,borderRadius:4,marginTop:8}, requestActions:{flexDirection:'row',gap:8,marginTop:8}, requestButton:{paddingHorizontal:12,paddingVertical:6,borderRadius:8}, requestButtonText:{color:'#fff',fontSize:11,fontWeight:'700'}, error:{backgroundColor:'#7f1d1d',padding:10}, errorText:{color:'#fee2e2',fontSize:12}, emptyContainer:{flexGrow:1,justifyContent:'center'}, emptyState:{alignItems:'center'}, emptyTitle:{fontSize:16,fontWeight:'bold',marginTop:12} });
