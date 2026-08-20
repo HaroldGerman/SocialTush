@@ -98,6 +98,7 @@ public class SecurityConfig {
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList(
             "Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin",
+            "X-Lifonk-Device-Id",
             "Access-Control-Request-Method", "Access-Control-Request-Headers", "Cache-Control"
         ));
         configuration.setExposedHeaders(Arrays.asList(

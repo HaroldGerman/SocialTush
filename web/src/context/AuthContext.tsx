@@ -25,6 +25,27 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const DEVICE_ID_STORAGE_KEY = 'lifonk-device-id';
+
+function getOrCreateDeviceId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const existing = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+    if (existing) return existing;
+    const generated = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return null;
+  }
+}
+
+function deviceHeaders(): Record<string, string> {
+  const deviceId = getOrCreateDeviceId();
+  return deviceId ? { 'X-Lifonk-Device-Id': deviceId } : {};
+}
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -55,6 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const requestInterceptor = api.interceptors.request.use(
       (config) => {
         if (accessTokenRef.current) config.headers.Authorization = `Bearer ${accessTokenRef.current}`;
+        const deviceId = getOrCreateDeviceId();
+        if (deviceId) config.headers['X-Lifonk-Device-Id'] = deviceId;
         return config;
       },
       (error) => Promise.reject(error)
@@ -70,11 +93,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error.response?.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true;
           try {
-            const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+            const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+              withCredentials: true,
+              headers: deviceHeaders(),
+            });
             const newAccessToken = res.data.accessToken;
             setToken(newAccessToken);
             setUser(sessionFromResponse(res.data));
             originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+            const deviceId = getOrCreateDeviceId();
+            if (deviceId) originalRequest.headers['X-Lifonk-Device-Id'] = deviceId;
             return api(originalRequest);
           } catch {
             setToken(null);
@@ -90,7 +118,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+        const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+          withCredentials: true,
+          headers: deviceHeaders(),
+        });
         setToken(res.data.accessToken);
         setUser(sessionFromResponse(res.data));
       } catch {
@@ -119,8 +150,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     try {
       await api.post('/auth/register', { email, username, displayName, password });
-      // Registration deliberately does not create a session. The user verifies the
-      // email first, then logs in normally.
       setToken(null);
       setUser(null);
     } catch (err: any) {

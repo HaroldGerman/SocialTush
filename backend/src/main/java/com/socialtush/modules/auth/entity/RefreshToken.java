@@ -10,7 +10,9 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "refresh_tokens", indexes = {
-    @Index(name = "idx_refresh_tokens_token", columnList = "token", unique = true)
+    @Index(name = "idx_refresh_tokens_token", columnList = "token", unique = true),
+    @Index(name = "idx_refresh_tokens_session_key", columnList = "session_key"),
+    @Index(name = "idx_refresh_tokens_device_id", columnList = "user_id,device_id")
 })
 @Getter
 @Setter
@@ -36,6 +38,24 @@ public class RefreshToken {
     @Column(name = "is_revoked", nullable = false)
     @Builder.Default
     private boolean isRevoked = false;
+
+    @Column(name = "session_key")
+    private UUID sessionKey;
+
+    @Column(name = "device_id", length = 128)
+    private String deviceId;
+
+    @Column(name = "device_label", length = 160)
+    private String deviceLabel;
+
+    @Column(name = "device_type", length = 20)
+    private String deviceType;
+
+    @Column(name = "user_agent", length = 512)
+    private String userAgent;
+
+    @Column(name = "last_used_at")
+    private Instant lastUsedAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
