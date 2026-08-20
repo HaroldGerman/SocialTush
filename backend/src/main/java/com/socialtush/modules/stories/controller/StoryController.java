@@ -6,6 +6,9 @@ import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.social.entity.Follow;
 import com.socialtush.modules.social.repository.FollowRepository;
 import com.socialtush.modules.stories.entity.Story;
+import com.socialtush.modules.stories.entity.StoryReaction;
+import com.socialtush.modules.stories.entity.StoryView;
+import com.socialtush.modules.stories.repository.StoryReactionRepository;
 import com.socialtush.modules.stories.repository.StoryRepository;
 import com.socialtush.modules.users.entity.User;
 import lombok.Builder;
@@ -22,6 +25,7 @@ import org.springframework.beans.factory.annotation.Value;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @RestController
@@ -34,6 +38,7 @@ public class StoryController {
     private final ProfileRepository profileRepository;
     private final StorageService storageService;
     private final com.socialtush.modules.stories.service.StoryService storyService;
+    private final StoryReactionRepository storyReactionRepository;
 
     @Value("${app.storage.public-url:}")
     private String storagePublicUrl;
@@ -197,7 +202,7 @@ public class StoryController {
         if (!storyService.recordReaction(id, currentUser, type)) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Momento no disponible"));
         }
-        return ResponseEntity.ok(Map.of("message", "Reacción registrada"));
+        return ResponseEntity.ok(Map.of("message", "Resonancia registrada"));
     }
 
     @GetMapping("/{id}/viewers")
@@ -206,25 +211,55 @@ public class StoryController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
         try {
-            var storyViews = storyService.getStoryViewers(id, currentUser);
-            var profileByUserId = profileRepository.findAllById(storyViews.stream().map(v -> v.getViewer().getId()).toList())
-                    .stream().collect(Collectors.toMap(Profile::getUserId, profile -> profile));
-            var viewers = storyViews.stream().map(v -> {
-                Profile viewerProfile = profileByUserId.get(v.getViewer().getId());
+            List<StoryView> storyViews = storyService.getStoryViewers(id, currentUser);
+            List<StoryReaction> storyReactions = storyReactionRepository.findByStoryId(id);
+
+            Map<UUID, StoryView> viewByUserId = storyViews.stream().collect(Collectors.toMap(
+                    view -> view.getViewer().getId(), Function.identity(), (first, ignored) -> first, LinkedHashMap::new));
+            Map<UUID, StoryReaction> resonanceByUserId = storyReactions.stream().collect(Collectors.toMap(
+                    reaction -> reaction.getUser().getId(), Function.identity(), (first, second) -> second, LinkedHashMap::new));
+
+            LinkedHashSet<UUID> viewerIds = new LinkedHashSet<>(viewByUserId.keySet());
+            viewerIds.addAll(resonanceByUserId.keySet());
+
+            Map<UUID, Profile> profileByUserId = profileRepository.findAllById(viewerIds).stream()
+                    .collect(Collectors.toMap(Profile::getUserId, Function.identity()));
+
+            List<Map<String, Object>> viewers = viewerIds.stream().map(userId -> {
+                StoryView view = viewByUserId.get(userId);
+                StoryReaction resonance = resonanceByUserId.get(userId);
+                User viewer = view != null ? view.getViewer() : resonance.getUser();
+                Profile viewerProfile = profileByUserId.get(userId);
+
                 Map<String, Object> dto = new LinkedHashMap<>();
-                dto.put("userId", v.getViewer().getId());
-                dto.put("username", v.getViewer().getUsername());
-                dto.put("displayName", viewerProfile != null ? viewerProfile.getDisplayName() : v.getViewer().getUsername());
+                dto.put("userId", userId);
+                dto.put("username", viewer.getUsername());
+                dto.put("displayName", viewerProfile != null ? viewerProfile.getDisplayName() : viewer.getUsername());
                 dto.put("avatarUrl", viewerProfile != null ? viewerProfile.getAvatarUrl() : null);
-                dto.put("viewedAt", v.getViewedAt());
+                dto.put("viewedAt", view != null ? view.getViewedAt() : resonance.getCreatedAt());
+                dto.put("resonance", resonance != null ? resonanceEmoji(resonance.getReactionType()) : null);
                 return dto;
             }).collect(Collectors.toList());
+
             return ResponseEntity.ok(viewers);
         } catch (jakarta.persistence.EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
         } catch (org.springframework.security.access.AccessDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
         }
+    }
+
+    private String resonanceEmoji(String value) {
+        if (value == null || value.isBlank()) return null;
+        return switch (value.toUpperCase()) {
+            case "HEART", "LIKE" -> "❤️";
+            case "LAUGH" -> "😂";
+            case "WOW" -> "😮";
+            case "SAD" -> "😢";
+            case "FIRE" -> "🔥";
+            case "THUMBS_UP" -> "👍";
+            default -> value;
+        };
     }
 
     private StoryDto convertToDto(Story story) {

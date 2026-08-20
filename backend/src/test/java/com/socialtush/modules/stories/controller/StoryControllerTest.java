@@ -5,6 +5,9 @@ import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.social.entity.Follow;
 import com.socialtush.modules.social.repository.FollowRepository;
 import com.socialtush.modules.stories.entity.Story;
+import com.socialtush.modules.stories.entity.StoryReaction;
+import com.socialtush.modules.stories.entity.StoryView;
+import com.socialtush.modules.stories.repository.StoryReactionRepository;
 import com.socialtush.modules.stories.repository.StoryRepository;
 import com.socialtush.modules.stories.service.StoryService;
 import com.socialtush.modules.users.entity.User;
@@ -32,13 +35,14 @@ class StoryControllerTest {
     @Mock ProfileRepository profileRepository;
     @Mock StorageService storageService;
     @Mock StoryService storyService;
+    @Mock StoryReactionRepository storyReactionRepository;
 
     private StoryController controller;
     private User owner;
 
     @BeforeEach
     void setUp() {
-        controller = new StoryController(storyRepository, followRepository, profileRepository, storageService, storyService);
+        controller = new StoryController(storyRepository, followRepository, profileRepository, storageService, storyService, storyReactionRepository);
         ReflectionTestUtils.setField(controller, "storagePublicUrl", "https://media.socialtush.test");
         owner = user("owner");
     }
@@ -115,6 +119,27 @@ class StoryControllerTest {
         var response = controller.getStoryViewers(id, owner);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void viewersIncludeTheirResonanceWhenPresent() {
+        UUID id = UUID.randomUUID();
+        User viewer = user("viewer");
+        Story moment = story(id, owner, null);
+        StoryView view = StoryView.builder().story(moment).viewer(viewer).viewedAt(Instant.now()).build();
+        StoryReaction resonance = StoryReaction.builder().story(moment).user(viewer).reactionType("FIRE").createdAt(Instant.now()).build();
+        when(storyService.getStoryViewers(id, owner)).thenReturn(List.of(view));
+        when(storyReactionRepository.findByStoryId(id)).thenReturn(List.of(resonance));
+        when(profileRepository.findAllById(any())).thenReturn(List.of());
+
+        var response = controller.getStoryViewers(id, owner);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        var body = (List<java.util.Map<String, Object>>) response.getBody();
+        assertThat(body).hasSize(1);
+        assertThat(body.get(0).get("username")).isEqualTo("viewer");
+        assertThat(body.get(0).get("resonance")).isEqualTo("🔥");
     }
 
     private User user(String username) {
