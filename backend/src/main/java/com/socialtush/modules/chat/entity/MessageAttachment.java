@@ -63,9 +63,13 @@ public class MessageAttachment {
         return fileUrl;
     }
 
-    /** Makes old DTOs understand the attachment without changing every response class. */
+    /**
+     * Existing DTOs can distinguish unopened and consumed one-time photos
+     * without adding the storage URL or requiring a breaking response change.
+     */
     public String getFileType() {
-        return viewOnce ? "VIEW_ONCE_IMAGE" : fileType;
+        if (!viewOnce) return fileType;
+        return viewedAt == null ? "VIEW_ONCE_IMAGE" : "VIEW_ONCE_IMAGE_VIEWED";
     }
 
     public String getStoredFileType() {
