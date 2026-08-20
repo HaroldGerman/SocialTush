@@ -15,7 +15,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from './src/theme';
 
 interface Conversation {
-  conversationId: string;
+  conversationId: string | null;
+  isDraft?: boolean;
+  otherUsername?: string;
   name: string;
   avatarUrl: string;
   isGroup: boolean;
@@ -72,6 +74,7 @@ function MainApp() {
               <ChatRoomScreen 
                 conversation={activeConversation}
                 onBack={() => setActiveConversation(null)}
+                onConversationPersisted={setActiveConversation}
               />
             ) : (
               <ChatListScreen 

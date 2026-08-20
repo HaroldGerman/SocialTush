@@ -172,15 +172,11 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     setIsPaused(false);
 
     try {
-      const convRes = await api.post('/chat/conversations', { recipientUsername: currentUserStories.username, isGroup: false });
-      const convId = convRes.data?.conversationId;
-      if (convId) {
-        await api.post(`/chat/conversations/${convId}/messages`, {
-          content: textToSend,
-          messageType: 'STORY_REPLY',
-          storyPreviewId: currentStory.storyId
-        });
-      }
+      await api.post(`/chat/direct/${encodeURIComponent(currentUserStories.username)}/messages`, {
+        content: textToSend,
+        messageType: 'STORY_REPLY',
+        storyPreviewId: currentStory.storyId
+      });
       setReplyText('');
       alert(`Respuesta enviada a @${currentUserStories.username}`);
     } catch (err) {
@@ -233,7 +229,6 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
           <div className="flex items-center gap-2">
             {isOwnStory && <button onClick={(event) => { event.stopPropagation(); setIsMenuOpen(open => !open); }} className="p-1.5 rounded-full bg-black/40 text-white"><MoreHorizontal className="h-4 w-4" /></button>}
             {currentUserStories.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img src={currentUserStories.avatarUrl} alt={currentUserStories.displayName} className="h-9 w-9 rounded-full object-cover border border-white/20" />
             ) : (
               <div className="h-9 w-9 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-white">

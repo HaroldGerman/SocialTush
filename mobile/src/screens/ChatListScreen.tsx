@@ -5,7 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../theme';
 
 interface Conversation {
-  conversationId: string;
+  conversationId: string | null;
+  isDraft?: boolean;
+  otherUsername?: string;
   name: string;
   avatarUrl: string;
   isGroup: boolean;
@@ -41,26 +43,31 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
   }, [fetchConversations]);
 
   const handleStartConversation = async () => {
-    if (!searchQuery.trim()) return;
+    const username = searchQuery.trim();
+    if (!username) return;
     try {
-      const res = await api.post('/chat/conversations', {
-        recipientUsername: searchQuery.trim(),
-        isGroup: false
-      });
+      const existing = conversations.find(c => !c.isGroup && c.otherUsername?.toLowerCase() === username.toLowerCase());
+      if (existing) {
+        setSearchQuery('');
+        onSelectConversation(existing);
+        return;
+      }
+      const res = await api.get(`/profiles/${encodeURIComponent(username)}`);
+      const profile = res.data;
       setSearchQuery('');
-      await fetchConversations();
-      
       const newConv: Conversation = {
-        conversationId: res.data.conversationId,
-        name: searchQuery.trim(),
-        avatarUrl: '',
+        conversationId: null,
+        isDraft: true,
+        otherUsername: profile.username,
+        name: profile.displayName || profile.username,
+        avatarUrl: profile.avatarUrl || '',
         isGroup: false,
         latestMessage: '',
         updatedAt: new Date().toISOString()
       };
       onSelectConversation(newConv);
     } catch (err) {
-      // User search error handled gracefully
+      // The input remains available so the user can correct it or retry.
     }
   };
 
@@ -85,7 +92,7 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
           <Text style={[styles.chatName, { color: theme.textPrimary }]}>{item.name}</Text>
         </View>
         <Text style={[styles.latestMessage, { color: theme.textSecondary }]} numberOfLines={1}>
-          {item.latestMessage || 'Inicia la conversación...'}
+          {item.latestMessage}
         </Text>
       </View>
     </TouchableOpacity>
@@ -126,7 +133,7 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
       {/* List */}
       <FlatList
         data={conversations}
-        keyExtractor={(item) => item.conversationId}
+        keyExtractor={(item) => item.conversationId || `draft-${item.otherUsername}`}
         renderItem={renderConversationItem}
         contentContainerStyle={conversations.length === 0 ? styles.emptyContainer : { paddingHorizontal: 16 }}
         ListEmptyComponent={

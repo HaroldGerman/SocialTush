@@ -59,6 +59,23 @@ class ChatServiceTest {
     }
 
     @Test
+    void storyReplyCreatesConversationAndPreservesStoryReference() {
+        UUID storyId = UUID.randomUUID();
+        when(users.findByUsernameIgnoreCase("recipient")).thenReturn(Optional.of(recipient));
+        when(conversations.findPrivateConversations(sender, recipient)).thenReturn(List.of());
+        mockPersistence();
+
+        ChatService.SendResult result = service.sendDirectMessage(
+                sender, "recipient", "Qué buena historia", "STORY_REPLY", storyId);
+
+        assertThat(result.message().getMessageType()).isEqualTo("STORY_REPLY");
+        assertThat(result.message().getStoryPreviewId()).isEqualTo(storyId);
+        assertThat(result.conversation().isGroup()).isFalse();
+        verify(participants, times(2)).save(any(ConversationParticipant.class));
+        verify(messages).save(any(Message.class));
+    }
+
+    @Test
     void secondMessageReusesExistingConversation() {
         Conversation existing = conversation();
         when(users.findByUsernameIgnoreCase("recipient")).thenReturn(Optional.of(recipient));

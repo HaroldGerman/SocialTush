@@ -18,7 +18,9 @@ interface Message {
 }
 
 interface Conversation {
-  conversationId: string;
+  conversationId: string | null;
+  isDraft?: boolean;
+  otherUsername?: string;
   name: string;
   avatarUrl: string;
   isGroup: boolean;
@@ -29,9 +31,10 @@ interface Conversation {
 interface ChatRoomScreenProps {
   conversation: Conversation;
   onBack: () => void;
+  onConversationPersisted: (conversation: Conversation) => void;
 }
 
-export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenProps) {
+export default function ChatRoomScreen({ conversation, onBack, onConversationPersisted }: ChatRoomScreenProps) {
   const { api, user } = useAuth();
   const { theme } = useAppTheme();
   
@@ -39,10 +42,16 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeCall, setActiveCall] = useState(false);
+  const [sendError, setSendError] = useState('');
 
   const ws = useRef<WebSocket | null>(null);
 
   const fetchMessages = async () => {
+    if (!conversation.conversationId) {
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
     try {
       const res = await api.get(`/chat/conversations/${conversation.conversationId}/messages`);
       setMessages(res.data || []);
@@ -55,6 +64,8 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
 
   useEffect(() => {
     fetchMessages();
+
+    if (!conversation.conversationId) return;
 
     const wsUrl = getWebSocketUrl();
     const socket = new WebSocket(wsUrl);
@@ -96,31 +107,36 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
     if (!inputText.trim()) return;
 
     const contentToSend = inputText.trim();
-    setInputText('');
+    setSendError('');
 
     try {
-      const res = await api.post(`/chat/conversations/${conversation.conversationId}/messages`, {
-        content: contentToSend,
-        messageType: 'TEXT'
-      });
+      const res = conversation.conversationId
+        ? await api.post(`/chat/conversations/${conversation.conversationId}/messages`, {
+            content: contentToSend,
+            messageType: 'TEXT'
+          })
+        : await api.post(`/chat/direct/${encodeURIComponent(conversation.otherUsername || '')}/messages`, {
+            content: contentToSend,
+            messageType: 'TEXT'
+          });
 
-      const newMsg: Message = res.data;
+      const newMsg: Message = conversation.conversationId ? res.data : res.data.message;
+      if (!conversation.conversationId) {
+        onConversationPersisted({
+          ...conversation,
+          conversationId: res.data.conversationId,
+          isDraft: false,
+          latestMessage: newMsg.content,
+          updatedAt: newMsg.createdAt
+        });
+      }
+      setInputText('');
       setMessages((prev) => {
         if (prev.some((m) => m.messageId === newMsg.messageId)) return prev;
         return [...prev, newMsg];
       });
     } catch (err) {
-      const mockMsg: Message = {
-        messageId: 'temp-' + Date.now(),
-        senderId: user?.userId || '1',
-        senderUsername: user?.username || 'yo',
-        senderDisplayName: user?.displayName || 'Yo',
-        senderAvatarUrl: '',
-        content: contentToSend,
-        messageType: 'TEXT',
-        createdAt: new Date().toISOString()
-      };
-      setMessages((prev) => [...prev, mockMsg]);
+      setSendError('No se pudo enviar el mensaje. Inténtalo de nuevo.');
     }
   };
 
@@ -149,7 +165,7 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
   if (activeCall) {
     return (
       <CallScreen 
-        recipientUsername={conversation.name}
+        recipientUsername={conversation.otherUsername || ''}
         onHangUp={() => setActiveCall(false)}
       />
     );
@@ -179,7 +195,7 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
           <Text style={[styles.status, { color: theme.emerald }]}>En línea</Text>
         </View>
 
-        <TouchableOpacity onPress={() => setActiveCall(true)} style={[styles.callBtn, { backgroundColor: theme.surfaceSecondary }]}>
+        <TouchableOpacity disabled={!conversation.conversationId} onPress={() => setActiveCall(true)} style={[styles.callBtn, { backgroundColor: theme.surfaceSecondary, opacity: conversation.conversationId ? 1 : 0.45 }]}>
           <Ionicons name="call-outline" size={20} color={theme.accent} />
         </TouchableOpacity>
       </View>
@@ -200,6 +216,7 @@ export default function ChatRoomScreen({ conversation, onBack }: ChatRoomScreenP
       />
 
       {/* Input */}
+      {sendError ? <Text style={[styles.sendError, { color: theme.danger }]}>{sendError}</Text> : null}
       <View style={[styles.inputRow, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
         <TextInput
           style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.textPrimary }]}
@@ -309,6 +326,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sendError: {
+    fontSize: 12,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   emptyContainer: {
     flexGrow: 1,
