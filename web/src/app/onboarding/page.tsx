@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth, api } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { 
@@ -41,7 +41,7 @@ const GOALS_LIST = [
 ];
 
 export default function OnboardingPage() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
 
   const [step, setStep] = useState<number>(1);
@@ -49,6 +49,22 @@ export default function OnboardingPage() {
   const [selectedCircles, setSelectedCircles] = useState<string[]>([]);
   const [selectedGoal, setSelectedGoal] = useState<string>('learn');
   const [submitting, setSubmitting] = useState(false);
+  const [entryAllowed, setEntryAllowed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!user) {
+      setEntryAllowed(false);
+      router.replace('/login');
+      return;
+    }
+    if (sessionStorage.getItem('lifonk_onboarding_from_registration') !== '1') {
+      setEntryAllowed(false);
+      router.replace('/feed');
+      return;
+    }
+    setEntryAllowed(true);
+  }, [isLoading, user, router]);
 
   const toggleInterest = (id: string) => {
     if (selectedInterests.includes(id)) {
@@ -74,13 +90,18 @@ export default function OnboardingPage() {
         circles: selectedCircles,
         socialGoal: selectedGoal
       });
-      router.push('/feed');
+      sessionStorage.removeItem('lifonk_onboarding_from_registration');
+      router.replace('/feed');
     } catch (err) {
-      router.push('/feed');
+      console.error('No se pudo completar el onboarding:', err);
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (entryAllowed !== true) {
+    return <div className="min-h-screen bg-[#f4f6f9] grid place-items-center text-sm text-slate-500">Validando registro…</div>;
+  }
 
   return (
     <div className="min-h-screen bg-[#f4f6f9] text-[#1e293b] flex flex-col justify-between font-sans p-6">

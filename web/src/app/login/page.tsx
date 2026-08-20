@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useAuth, api } from '@/context/AuthContext';
+import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Sparkles, Eye, EyeOff, Lock, User, AlertCircle, ArrowLeft, ArrowRight, ShieldCheck, RefreshCw } from 'lucide-react';
@@ -18,7 +18,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      router.push('/');
+      router.replace('/feed');
     }
   }, [user, isLoading, router]);
 
@@ -29,16 +29,8 @@ export default function LoginPage() {
 
     try {
       await login(usernameOrEmail.trim(), password);
-      try {
-        const profileRes = await api.get(`/profiles/${usernameOrEmail.trim().toLowerCase()}`);
-        if (profileRes.data && profileRes.data.onboardingCompleted === false) {
-          router.push('/onboarding');
-          return;
-        }
-      } catch (e) {
-        // Fallback
-      }
-      router.push('/feed');
+      sessionStorage.removeItem('lifonk_onboarding_from_registration');
+      router.replace('/feed');
     } catch (err: any) {
       setError(err.message || 'Error al iniciar sesión. Verifica tus credenciales.');
     } finally {

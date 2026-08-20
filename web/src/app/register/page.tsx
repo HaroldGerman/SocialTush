@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -16,10 +16,11 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const registrationInProgressRef = useRef(false);
 
   useEffect(() => {
-    if (!isLoading && user) {
-      router.push('/onboarding');
+    if (!isLoading && user && !registrationInProgressRef.current) {
+      router.replace('/feed');
     }
   }, [user, isLoading, router]);
 
@@ -27,11 +28,14 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
+    registrationInProgressRef.current = true;
 
     try {
       await register(email.trim(), username.trim(), displayName.trim(), password);
-      router.push('/onboarding');
+      sessionStorage.setItem('lifonk_onboarding_from_registration', '1');
+      router.replace('/onboarding');
     } catch (err: any) {
+      registrationInProgressRef.current = false;
       setError(err.message || 'Error al registrarse. Intenta con otro nombre de usuario o correo.');
     } finally {
       setIsSubmitting(false);
