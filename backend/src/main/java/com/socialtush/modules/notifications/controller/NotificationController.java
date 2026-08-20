@@ -1,5 +1,6 @@
 package com.socialtush.modules.notifications.controller;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.socialtush.modules.notifications.entity.Device;
 import com.socialtush.modules.notifications.entity.Notification;
 import com.socialtush.modules.notifications.repository.DeviceRepository;
@@ -167,6 +168,7 @@ public class NotificationController {
         private String senderAvatarUrl;
         private String notificationType;
         private UUID targetId;
+        @JsonProperty("isRead")
         private boolean isRead;
         private String createdAt;
     }
