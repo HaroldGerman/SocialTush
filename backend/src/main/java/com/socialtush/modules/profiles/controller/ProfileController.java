@@ -3,7 +3,9 @@ package com.socialtush.modules.profiles.controller;
 import com.socialtush.modules.media.service.StorageService;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
+import com.socialtush.modules.posts.repository.PostRepository;
 import com.socialtush.modules.social.repository.FollowRepository;
+import com.socialtush.modules.social.repository.FollowRequestRepository;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
 import lombok.Builder;
@@ -30,6 +32,8 @@ public class ProfileController {
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final FollowRepository followRepository;
+    private final FollowRequestRepository followRequestRepository;
+    private final PostRepository postRepository;
     private final StorageService storageService;
 
     @GetMapping("/{username}")
@@ -52,9 +56,14 @@ public class ProfileController {
 
         boolean isSelf = currentUser != null && currentUser.getId().equals(targetUser.getId());
         boolean isFollowing = currentUser != null && followRepository.existsByFollowerIdAndFollowingId(currentUser.getId(), targetUser.getId());
+        boolean isPending = currentUser != null && !isSelf && !isFollowing
+                && followRequestRepository.existsBySenderIdAndReceiverIdAndStatus(currentUser.getId(), targetUser.getId(), "PENDING");
+        boolean canViewContent = !profile.isPrivate() || isSelf || isFollowing;
+        String relationshipStatus = isFollowing ? "FOLLOWING" : isPending ? "PENDING" : "NONE";
 
         long followersCount = followRepository.countByFollowing(targetUser);
         long followingCount = followRepository.countByFollower(targetUser);
+        long postCount = postRepository.countByUser(targetUser);
 
         ProfileDto dto = ProfileDto.builder()
                 .userId(targetUser.getId())
@@ -65,6 +74,9 @@ public class ProfileController {
                 .isPrivate(profile.isPrivate())
                 .isSelf(isSelf)
                 .isFollowing(isFollowing)
+                .canViewContent(canViewContent)
+                .relationshipStatus(relationshipStatus)
+                .postCount(postCount)
                 .followersCount(followersCount)
                 .followingCount(followingCount)
                 .whoCanMessage(profile.getWhoCanMessage())
@@ -241,6 +253,10 @@ public class ProfileController {
 
         @JsonProperty("isFollowing")
         private boolean isFollowing;
+
+        private boolean canViewContent;
+        private String relationshipStatus;
+        private long postCount;
 
         private long followersCount;
         private long followingCount;

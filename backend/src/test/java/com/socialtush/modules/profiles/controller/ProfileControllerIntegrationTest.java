@@ -105,6 +105,12 @@ class ProfileControllerIntegrationTest {
     @Test
     void privatePostsAreForbiddenToNonFollowerAndVisibleToApprovedFollower() throws Exception {
         profile.setPrivate(true); profileRepository.save(profile); flushAndClear();
+        mockMvc.perform(get("/api/v1/profiles/privacy_owner").with(authRequest(viewer)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isPrivate").value(true))
+                .andExpect(jsonPath("$.canViewContent").value(false))
+                .andExpect(jsonPath("$.relationshipStatus").value("NONE"))
+                .andExpect(jsonPath("$.postCount").value(1));
         mockMvc.perform(get("/api/v1/posts/user/privacy_owner").with(authRequest(viewer))).andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/posts/" + post.getId()).with(authRequest(viewer))).andExpect(status().isForbidden());
 
@@ -112,8 +118,26 @@ class ProfileControllerIntegrationTest {
         User managedOwner = userRepository.findById(owner.getId()).orElseThrow();
         followRepository.save(Follow.builder().follower(managedViewer).following(managedOwner).build());
         flushAndClear();
+        mockMvc.perform(get("/api/v1/profiles/privacy_owner").with(authRequest(viewer)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.canViewContent").value(true))
+                .andExpect(jsonPath("$.relationshipStatus").value("FOLLOWING"))
+                .andExpect(jsonPath("$.postCount").value(1));
         mockMvc.perform(get("/api/v1/posts/user/privacy_owner").with(authRequest(viewer))).andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/posts/" + post.getId()).with(authRequest(viewer))).andExpect(status().isOk());
+    }
+
+    @Test
+    void publicProfileExposesRealPostCountAndContentAccess() throws Exception {
+        postRepository.save(Post.builder().user(owner).caption("Segundo momento").build());
+        flushAndClear();
+
+        mockMvc.perform(get("/api/v1/profiles/privacy_owner").with(authRequest(viewer)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isPrivate").value(false))
+                .andExpect(jsonPath("$.canViewContent").value(true))
+                .andExpect(jsonPath("$.relationshipStatus").value("NONE"))
+                .andExpect(jsonPath("$.postCount").value(2));
     }
 
     private org.springframework.test.web.servlet.ResultActions putProfile(String json) throws Exception {

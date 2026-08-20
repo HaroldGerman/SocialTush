@@ -12,6 +12,8 @@ import java.util.UUID;
 
 @Repository
 public interface PostRepository extends JpaRepository<Post, UUID> {
+    long countByUser(User user);
+
     @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.user = :user AND (c IS NULL OR c.visibility = 'PUBLIC') ORDER BY p.createdAt DESC")
     Page<Post> findPublicProfilePosts(User user, Pageable pageable);
 

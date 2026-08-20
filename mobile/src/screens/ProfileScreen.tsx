@@ -12,6 +12,11 @@ interface ProfileData {
   avatarUrl: string;
   isPrivate: boolean;
   onboardingCompleted: boolean;
+  canViewContent: boolean;
+  relationshipStatus: 'NONE' | 'PENDING' | 'FOLLOWING';
+  postCount: number;
+  followersCount: number;
+  followingCount: number;
 }
 
 interface ProfileScreenProps {
@@ -48,6 +53,11 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
         avatarUrl: '',
         isPrivate: false,
         onboardingCompleted: true,
+        canViewContent: true,
+        relationshipStatus: 'NONE',
+        postCount: 0,
+        followersCount: 0,
+        followingCount: 0,
       });
     } finally {
       setLoading(false);
@@ -68,6 +78,27 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
     } catch (err) {
       console.error(err);
       setUpdateError('No se pudo actualizar la privacidad.');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleFollow = async () => {
+    if (!profile || profile.relationshipStatus !== 'NONE') return;
+    setUpdating(true);
+    setUpdateError('');
+    try {
+      const res = await api.post(`/social/follow/${profile.username}`);
+      const pending = res.data.status === 'PENDING';
+      setProfile(previous => previous ? {
+        ...previous,
+        relationshipStatus: pending ? 'PENDING' : 'FOLLOWING',
+        canViewContent: pending ? previous.canViewContent : true,
+        followersCount: pending ? previous.followersCount : previous.followersCount + 1,
+      } : previous);
+    } catch (err) {
+      console.error(err);
+      setUpdateError('No se pudo enviar la solicitud.');
     } finally {
       setUpdating(false);
     }
@@ -112,10 +143,32 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
           </Text>
           <Text style={[styles.usernameHandle, { color: theme.accent }]}>@{profile?.username}</Text>
 
+          <View style={[styles.statsRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <View style={styles.statItem}><Text style={[styles.statValue, { color: theme.textPrimary }]}>{profile?.postCount ?? 0}</Text><Text style={[styles.statLabel, { color: theme.textMuted }]}>Momentos</Text></View>
+            <View style={styles.statItem}><Text style={[styles.statValue, { color: theme.textPrimary }]}>{profile?.followersCount ?? 0}</Text><Text style={[styles.statLabel, { color: theme.textMuted }]}>Seguidores</Text></View>
+            <View style={styles.statItem}><Text style={[styles.statValue, { color: theme.textPrimary }]}>{profile?.followingCount ?? 0}</Text><Text style={[styles.statLabel, { color: theme.textMuted }]}>Siguiendo</Text></View>
+          </View>
+
           {profile?.bio ? (
             <Text style={[styles.bioText, { color: theme.textSecondary }]}>{profile.bio}</Text>
           ) : null}
         </View>
+
+        {!isSelf && profile?.isPrivate && !profile.canViewContent ? (
+          <View style={[styles.privateCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Ionicons name="lock-closed-outline" size={30} color={theme.textMuted} />
+            <Text style={[styles.privateTitle, { color: theme.textPrimary }]}>Esta cuenta es privada</Text>
+            <Text style={[styles.privateDescription, { color: theme.textSecondary }]}>Sigue a @{profile.username} para ver sus Momentos y contenido.</Text>
+            <TouchableOpacity
+              onPress={handleFollow}
+              disabled={updating || profile.relationshipStatus !== 'NONE'}
+              style={[styles.followButton, { backgroundColor: profile.relationshipStatus === 'NONE' ? theme.primary : theme.border }]}
+            >
+              <Text style={styles.followButtonText}>{profile.relationshipStatus === 'PENDING' ? 'Solicitud enviada' : profile.relationshipStatus === 'FOLLOWING' ? 'Siguiendo' : 'Seguir'}</Text>
+            </TouchableOpacity>
+            {updateError ? <Text style={{ color: theme.danger, fontSize: 12 }}>{updateError}</Text> : null}
+          </View>
+        ) : null}
 
         {/* Self Settings */}
         {isSelf ? (
@@ -220,6 +273,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     lineHeight: 18,
   },
+  statsRow: {
+    width: '100%',
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderRadius: 16,
+    marginTop: 18,
+    paddingVertical: 12,
+  },
+  statItem: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: 16, fontWeight: '800' },
+  statLabel: { fontSize: 10, fontWeight: '700', marginTop: 2 },
+  privateCard: {
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 24,
+  },
+  privateTitle: { marginTop: 10, fontSize: 16, fontWeight: '800' },
+  privateDescription: { marginTop: 6, fontSize: 12, textAlign: 'center', lineHeight: 18 },
+  followButton: { marginTop: 16, borderRadius: 12, paddingHorizontal: 22, paddingVertical: 10 },
+  followButtonText: { color: '#ffffff', fontSize: 12, fontWeight: '800' },
   settingsSection: {
     gap: 16,
   },
