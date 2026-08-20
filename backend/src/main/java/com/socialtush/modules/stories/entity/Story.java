@@ -36,8 +36,8 @@ public class Story {
     @Column(name = "text_content", columnDefinition = "TEXT")
     private String textContent;
 
-    @Column(name = "background_color", length = 7)
-    private String backgroundColor; // Hex code, e.g. #ff0000
+    @Column(name = "background_color", length = 512)
+    private String backgroundColor; // Hex color or CSS gradient
 
     @Column(name = "music_url", length = 512)
     private String musicUrl;

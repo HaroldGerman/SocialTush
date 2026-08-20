@@ -59,7 +59,7 @@ export default function FeedPage() {
   const { user } = useAuth();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const { openCreateHub } = useCreateHub();
+  const { openCreateHub, openStoryComposer } = useCreateHub();
 
   // State
   const [postsList, setPostsList] = useState<PostData[]>([]);
@@ -81,7 +81,6 @@ export default function FeedPage() {
   // Stories State
   const [groupedStories, setGroupedStories] = useState<GroupedStory[]>([]);
   const [activeStoryViewerIndex, setActiveStoryViewerIndex] = useState<number | null>(null);
-  const storyFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Comments State
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
@@ -106,6 +105,12 @@ export default function FeedPage() {
         .catch(() => setUnreadMessagesCount(0));
     }
   }, [user]);
+
+  useEffect(() => {
+    const refreshStories = () => fetchActiveStories();
+    window.addEventListener('socialtush:story-published', refreshStories);
+    return () => window.removeEventListener('socialtush:story-published', refreshStories);
+  }, []);
 
   const fetchFeedPosts = async () => {
     setLoadingPosts(true);
@@ -185,25 +190,6 @@ export default function FeedPage() {
       alert(errorMsg);
     } finally {
       setIsPublishing(false);
-    }
-  };
-
-  // Handle Create Story
-  const handleStoryFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('mediaType', file.type.startsWith('video') ? 'VIDEO' : 'IMAGE');
-
-      await api.post('/stories', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      fetchActiveStories();
-    } catch (err) {
-      alert('Error al subir la historia');
     }
   };
 
@@ -593,16 +579,9 @@ export default function FeedPage() {
             <div className="flex items-center gap-4">
               {/* Button: Crear Historia */}
               <div 
-                onClick={() => storyFileInputRef.current?.click()}
+                onClick={openStoryComposer}
                 className="flex-shrink-0 flex flex-col items-center gap-1.5 cursor-pointer group"
               >
-                <input 
-                  type="file" 
-                  ref={storyFileInputRef}
-                  onChange={handleStoryFileSelect}
-                  accept="image/*,video/*" 
-                  className="hidden" 
-                />
                 <div className="w-14 h-14 md:w-16 md:h-16 rounded-full border-2 border-dashed border-teal-500 bg-teal-950/40 flex items-center justify-center text-teal-400 group-hover:bg-teal-900/60 transition-all shadow-sm">
                   <Plus className="w-5 h-5 stroke-[2.5]" />
                 </div>
@@ -883,6 +862,7 @@ export default function FeedPage() {
           groupedStories={groupedStories}
           initialUserIndex={activeStoryViewerIndex}
           onClose={() => setActiveStoryViewerIndex(null)}
+          onStoriesChange={setGroupedStories}
         />
       )}
     </div>

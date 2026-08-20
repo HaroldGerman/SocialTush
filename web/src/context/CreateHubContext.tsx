@@ -69,6 +69,7 @@ export function CreateHubProvider({ children }: { children: React.ReactNode }) {
       <StoryComposer
         isOpen={isStoryOpen}
         onClose={() => setIsStoryOpen(false)}
+        onPublished={() => window.dispatchEvent(new CustomEvent('socialtush:story-published'))}
       />
     </CreateHubContext.Provider>
   );

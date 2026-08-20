@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, ChevronLeft, ChevronRight, Play, Pause, Heart, Send } from 'lucide-react';
+import { X, Play, Pause, Send, MoreHorizontal } from 'lucide-react';
 
 import { api, useAuth } from '@/context/AuthContext';
 
@@ -28,19 +28,27 @@ interface StoryViewerProps {
   groupedStories: GroupedStory[];
   initialUserIndex: number;
   onClose: () => void;
+  onStoriesChange?: (stories: GroupedStory[]) => void;
 }
 
-export default function StoryViewer({ groupedStories, initialUserIndex, onClose }: StoryViewerProps) {
+export default function StoryViewer({ groupedStories, initialUserIndex, onClose, onStoriesChange }: StoryViewerProps) {
   const { user } = useAuth();
   const [userIndex, setUserIndex] = useState(initialUserIndex);
   const [storyIndex, setStoryIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [replyText, setReplyText] = useState('');
+  const [stories, setStories] = useState(groupedStories);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [videoDuration, setVideoDuration] = useState(5);
 
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
+  const storyVideoRef = useRef<HTMLVideoElement>(null);
 
-  const currentUserStories = groupedStories[userIndex];
+  const currentUserStories = stories[userIndex];
   const currentStory = currentUserStories?.stories[storyIndex];
   const isOwnStory = user?.username && currentUserStories?.username && user.username.toLowerCase() === currentUserStories.username.toLowerCase();
 
@@ -59,7 +67,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
 
   // Handle automatic progress timer (5 seconds per story)
   useEffect(() => {
-    if (isPaused || !currentStory) return;
+    if (isPaused || isMenuOpen || isDeleteOpen || !currentStory) return;
 
     progressInterval.current = setInterval(() => {
       setProgress((prev) => {
@@ -68,20 +76,27 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
           handleNextStory();
           return 0;
         }
-        return prev + 2; // Increments to reach 100 in ~5s
+        return prev + (10 / Math.max(videoDuration, 0.1));
       });
     }, 100);
 
     return () => {
       if (progressInterval.current) clearInterval(progressInterval.current);
     };
-  }, [userIndex, storyIndex, isPaused, currentStory]);
+  }, [userIndex, storyIndex, isPaused, isMenuOpen, isDeleteOpen, currentStory, videoDuration]);
+
+  useEffect(() => {
+    const video = storyVideoRef.current;
+    if (!video) return;
+    if (isPaused || isMenuOpen || isDeleteOpen) video.pause();
+    else video.play().catch(error => console.error('No se pudo reproducir la historia de video:', error));
+  }, [isPaused, isMenuOpen, isDeleteOpen, currentStory]);
 
   const handleNextStory = () => {
     if (storyIndex < currentUserStories.stories.length - 1) {
       setStoryIndex(storyIndex + 1);
       setProgress(0);
-    } else if (userIndex < groupedStories.length - 1) {
+    } else if (userIndex < stories.length - 1) {
       setUserIndex(userIndex + 1);
     } else {
       onClose();
@@ -96,8 +111,33 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
       setUserIndex(userIndex - 1);
       // Set to last story of previous user
       setTimeout(() => {
-        setStoryIndex(groupedStories[userIndex - 1].stories.length - 1);
+        setStoryIndex(stories[userIndex - 1].stories.length - 1);
       }, 50);
+    }
+  };
+
+  const handleDeleteStory = async () => {
+    if (!currentStory) return;
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await api.delete(`/stories/${currentStory.storyId}`);
+      const nextGroups = stories
+        .map((group, index) => index === userIndex ? { ...group, stories: group.stories.filter(story => story.storyId !== currentStory.storyId) } : group)
+        .filter(group => group.stories.length > 0);
+      setStories(nextGroups);
+      onStoriesChange?.(nextGroups);
+      setIsDeleteOpen(false);
+      setIsMenuOpen(false);
+      if (nextGroups.length === 0) return onClose();
+      if (!nextGroups[userIndex]) setUserIndex(nextGroups.length - 1);
+      else setStoryIndex(index => Math.min(index, nextGroups[userIndex].stories.length - 1));
+      setProgress(0);
+    } catch (error: any) {
+      console.error('Error al eliminar historia:', error);
+      setDeleteError(error.response?.data?.message || 'No se pudo eliminar la historia.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -161,10 +201,10 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
   if (!currentUserStories || !currentStory) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between items-center animate-fade-in select-none">
+    <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between items-center animate-fade-in select-none h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       {/* Visual background wrapper */}
       <div className="absolute inset-0 z-0 opacity-40 blur-2xl scale-125 bg-cover bg-center pointer-events-none"
-           style={{ backgroundImage: currentStory.mediaUrl ? `url(${currentStory.mediaUrl})` : 'none', backgroundColor: currentStory.backgroundColor || '#09090b' }} />
+           style={{ backgroundImage: currentStory.mediaUrl ? `url(${currentStory.mediaUrl})` : 'none', background: currentStory.mediaUrl ? undefined : (currentStory.backgroundColor || '#09090b') }} />
 
       {/* Story Content Card */}
       <div 
@@ -191,6 +231,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
         {/* Top bar details (User Avatar, display name, close btn) */}
         <div className="absolute top-6 left-4 right-4 z-30 flex items-center justify-between">
           <div className="flex items-center gap-2">
+            {isOwnStory && <button onClick={(event) => { event.stopPropagation(); setIsMenuOpen(open => !open); }} className="p-1.5 rounded-full bg-black/40 text-white"><MoreHorizontal className="h-4 w-4" /></button>}
             {currentUserStories.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={currentUserStories.avatarUrl} alt={currentUserStories.displayName} className="h-9 w-9 rounded-full object-cover border border-white/20" />
@@ -204,6 +245,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
               <span className="text-[10px] text-zinc-400 block">@{currentUserStories.username}{formatRelativeTime(currentStory.createdAt)}</span>
             </div>
           </div>
+          {isOwnStory && isMenuOpen && <button onClick={(event) => { event.stopPropagation(); setIsDeleteOpen(true); }} className="absolute right-16 top-10 rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-xs font-bold text-rose-400 shadow-xl">Eliminar historia</button>}
 
           <div className="flex items-center gap-2">
             <button onClick={() => setIsPaused(!isPaused)} className="p-1.5 rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
@@ -230,9 +272,13 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
             />
           )}
 
+          {currentStory.mediaType === 'VIDEO' && (
+            <video ref={storyVideoRef} src={currentStory.mediaUrl} autoPlay playsInline onLoadedMetadata={(event) => setVideoDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 5)} onEnded={handleNextStory} className="w-full h-full object-contain" />
+          )}
+
           {currentStory.mediaType === 'TEXT' && (
             <div 
-              style={{ backgroundColor: currentStory.backgroundColor || '#6366f1' }}
+              style={{ background: currentStory.backgroundColor || '#6366f1' }}
               className="w-full h-full flex items-center justify-center p-8 text-center"
             >
               <h2 className="text-2xl sm:text-3xl font-extrabold text-white leading-relaxed font-sans max-w-sm">
@@ -278,7 +324,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
       </div>
 
       {/* Bottom quick action chat reply & reactions */}
-      <div className="w-full max-w-lg p-4 bg-zinc-950 border-t border-zinc-900 z-25 flex flex-col gap-2">
+      {!isOwnStory && <div className="w-full max-w-lg p-4 bg-zinc-950 border-t border-zinc-900 z-20 flex flex-col gap-2">
         {/* Quick Emoji Reactions */}
         <div className="flex items-center justify-around py-1 text-lg">
           {['❤️', '😂', '😮', '😢', '🔥'].map((emoji, idx) => (
@@ -309,7 +355,16 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
             <Send className="h-4 w-4" />
           </button>
         </form>
-      </div>
+      </div>}
+
+      {isDeleteOpen && <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !isDeleting && setIsDeleteOpen(false)}>
+        <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 p-5 space-y-4" onClick={event => event.stopPropagation()}>
+          <h3 className="font-bold text-white">¿Eliminar esta historia?</h3>
+          <p className="text-sm text-zinc-400">Esta acción no se puede deshacer.</p>
+          {deleteError && <p role="alert" className="text-xs text-rose-400">{deleteError}</p>}
+          <div className="flex gap-3"><button disabled={isDeleting} onClick={() => setIsDeleteOpen(false)} className="flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-white">Cancelar</button><button disabled={isDeleting} onClick={handleDeleteStory} className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">{isDeleting ? 'Eliminando...' : 'Eliminar'}</button></div>
+        </div>
+      </div>}
     </div>
   );
 }

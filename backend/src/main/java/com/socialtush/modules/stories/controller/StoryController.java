@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -33,6 +34,9 @@ public class StoryController {
     private final ProfileRepository profileRepository;
     private final StorageService storageService;
     private final com.socialtush.modules.stories.service.StoryService storyService;
+
+    @Value("${app.storage.public-url:}")
+    private String storagePublicUrl;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> createStory(
@@ -96,12 +100,9 @@ public class StoryController {
                 .map(Follow::getFollowing)
                 .collect(Collectors.toList());
 
-        List<Story> activeStories;
-        if (followings.isEmpty()) {
-            activeStories = storyRepository.findByExpiresAtAfterOrderByCreatedAtAsc(Instant.now());
-        } else {
-            activeStories = storyRepository.findActiveStories(followings, currentUser, Instant.now());
-        }
+        List<Story> activeStories = followings.isEmpty()
+                ? storyRepository.findByUserAndExpiresAtAfterOrderByCreatedAtAsc(currentUser, Instant.now())
+                : storyRepository.findActiveStories(followings, currentUser, Instant.now());
 
         // Group stories by User
         Map<User, List<Story>> grouped = activeStories.stream()
@@ -136,6 +137,36 @@ public class StoryController {
         });
 
         return ResponseEntity.ok(responseDtos);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteStory(@PathVariable UUID id, @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+
+        Story story = storyRepository.findById(id).orElse(null);
+        if (story == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Historia no encontrada"));
+        }
+        if (!story.getUser().getId().equals(currentUser.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "No puedes eliminar la historia de otro usuario"));
+        }
+
+        String storageKey = ownedStorageKey(story.getMediaUrl());
+        if (storageKey != null) {
+            storageService.deleteFile(storageKey);
+        }
+        storyRepository.delete(story);
+        return ResponseEntity.noContent().build();
+    }
+
+    private String ownedStorageKey(String mediaUrl) {
+        if (mediaUrl == null || mediaUrl.isBlank() || storagePublicUrl == null || storagePublicUrl.isBlank()) return null;
+        String prefix = storagePublicUrl.replaceAll("/+$", "") + "/";
+        if (!mediaUrl.startsWith(prefix)) return null;
+        String key = mediaUrl.substring(prefix.length());
+        return key.isBlank() || key.contains("..") ? null : key;
     }
 
     @PostMapping("/{id}/view")

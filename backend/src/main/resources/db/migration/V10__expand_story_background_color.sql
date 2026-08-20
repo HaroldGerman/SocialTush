@@ -1,0 +1,1 @@
+ALTER TABLE stories ALTER COLUMN background_color TYPE VARCHAR(512);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '@/context/AuthContext';
 import { 
   X, Camera, Image as ImageIcon, Type, Sparkles, Smile, Music, Film, Check, RefreshCw
@@ -9,6 +9,7 @@ import {
 interface StoryComposerProps {
   isOpen: boolean;
   onClose: () => void;
+  onPublished?: (story: unknown) => void;
 }
 
 interface OverlayItem {
@@ -22,14 +23,6 @@ interface OverlayItem {
   bg?: boolean;
 }
 
-const SAMPLE_SONGS = [
-  { title: "Despacito", artist: "Luis Fonsi" },
-  { title: "Blinding Lights", artist: "The Weeknd" },
-  { title: "La Bachata", artist: "Manuel Turizo" },
-  { title: "Stay", artist: "Kid LAROI & Justin Bieber" },
-  { title: "Dakiti", artist: "Bad Bunny" }
-];
-
 const PRESET_BACKGROUNDS = [
   'linear-gradient(135deg, #0f766e 0%, #042f2e 100%)', // Teal Dark
   'linear-gradient(135deg, #312e81 0%, #1e1b4b 100%)', // Indigo Dark
@@ -39,7 +32,7 @@ const PRESET_BACKGROUNDS = [
   '#1e293b'  // Slate Gray
 ];
 
-export default function StoryComposer({ isOpen, onClose }: StoryComposerProps) {
+export default function StoryComposer({ isOpen, onClose, onPublished }: StoryComposerProps) {
   // Mode selection: 'SELECT', 'CAMERA', 'GALLERY', 'TEXT', 'EDITOR'
   const [composerMode, setComposerMode] = useState<'SELECT' | 'CAMERA' | 'TEXT' | 'EDITOR'>('SELECT');
   
@@ -54,7 +47,6 @@ export default function StoryComposer({ isOpen, onClose }: StoryComposerProps) {
 
   // Overlays
   const [overlays, setOverlays] = useState<OverlayItem[]>([]);
-  const [selectedSong, setSelectedSong] = useState<string | null>(null);
   
   // Tools panels
   const [activePanel, setActivePanel] = useState<'NONE' | 'TEXT' | 'EMOJI' | 'MUSIC'>('NONE');
@@ -65,94 +57,150 @@ export default function StoryComposer({ isOpen, onClose }: StoryComposerProps) {
   const [newTextBg, setNewTextBg] = useState(false);
 
   // Camera settings
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const cameraRequestRef = useRef(0);
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const nativeCameraInputRef = useRef<HTMLInputElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   // Publish Status
   const [isPublishing, setIsPublishing] = useState(false);
   const [isBestFriends, setIsBestFriends] = useState(false);
 
-  useEffect(() => {
-    return () => {
-      stopCamera();
+  const stopCamera = useCallback(() => {
+    cameraRequestRef.current += 1;
+    const current = streamRef.current;
+    if (current) {
+      current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setIsCameraReady(false);
+    setIsStartingCamera(false);
+  }, []);
+
+  const cameraErrorMessage = (error: unknown) => {
+    const name = error instanceof DOMException ? error.name : '';
+    const messages: Record<string, string> = {
+      NotAllowedError: 'El permiso de cámara fue denegado.',
+      NotFoundError: 'No encontramos una cámara disponible.',
+      NotReadableError: 'La cámara está siendo usada por otra aplicación.',
+      OverconstrainedError: 'La cámara no admite la configuración solicitada.',
+      SecurityError: 'El navegador bloqueó el acceso seguro a la cámara.'
     };
-  }, [stream]);
+    return messages[name] || 'No pudimos acceder a la cámara.';
+  };
+
+  const requestCamera = async (facing: 'user' | 'environment') => {
+    if (!navigator.mediaDevices?.getUserMedia) throw new DOMException('getUserMedia no disponible', 'NotSupportedError');
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: facing } }, audio: false });
+    } catch (error) {
+      if (error instanceof DOMException && (error.name === 'OverconstrainedError' || error.name === 'NotFoundError')) {
+        return navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing } }, audio: false });
+      }
+      throw error;
+    }
+  };
+
+  const startCamera = useCallback(async (facing: 'user' | 'environment' = 'user') => {
+    stopCamera();
+    const requestId = cameraRequestRef.current;
+    setCameraError(null);
+    setIsStartingCamera(true);
+    try {
+      const mediaStream = await requestCamera(facing);
+      if (requestId !== cameraRequestRef.current) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      streamRef.current = mediaStream;
+      setCameraFacing(facing);
+      setComposerMode('CAMERA');
+    } catch (err) {
+      if (requestId !== cameraRequestRef.current) return;
+      console.error('No se pudo iniciar la cámara:', err);
+      setCameraError(cameraErrorMessage(err));
+      setComposerMode('SELECT');
+    } finally {
+      if (requestId === cameraRequestRef.current) setIsStartingCamera(false);
+    }
+  }, [stopCamera]);
+
+  useEffect(() => {
+    if (composerMode !== 'CAMERA' || !videoRef.current || !streamRef.current) return;
+    const video = videoRef.current;
+    video.srcObject = streamRef.current;
+    video.play().catch(error => {
+      console.error('No se pudo reproducir el preview de cámara:', error);
+      setCameraError('No pudimos mostrar la vista previa de la cámara.');
+      stopCamera();
+      setComposerMode('SELECT');
+    });
+  }, [composerMode, cameraFacing, stopCamera]);
+
+  useEffect(() => () => stopCamera(), [stopCamera]);
+  useEffect(() => {
+    if (!isOpen) stopCamera();
+  }, [isOpen, stopCamera]);
 
   if (!isOpen) return null;
 
-  // Camera handlers
-  const startCamera = async (facing: 'user' | 'environment' = 'user') => {
-    stopCamera();
-    try {
-      const constraints = {
-        video: { facingMode: facing },
-        audio: false
-      };
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-      setComposerMode('CAMERA');
-    } catch (err) {
-      alert('No pudimos acceder a la cámara. Puedes seleccionar una imagen de tu galería.');
-      setComposerMode('SELECT');
-    }
-  };
-
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-  };
-
   const toggleCameraFacing = () => {
     const nextFacing = cameraFacing === 'user' ? 'environment' : 'user';
-    setCameraFacing(nextFacing);
     startCamera(nextFacing);
   };
 
   const capturePhoto = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !isCameraReady || videoRef.current.videoWidth <= 0 || videoRef.current.videoHeight <= 0) return;
     setIsCapturing(true);
 
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 720;
-    canvas.height = video.videoHeight || 1280;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      // Mirror if user camera
-      if (cameraFacing === 'user') {
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-      }
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
-          setSelectedFile(file);
-          const url = URL.createObjectURL(file);
-          setMediaUrl(url);
-          setMediaType('IMAGE');
-          setComposerMode('EDITOR');
-          stopCamera();
+      try {
+        if (cameraFacing === 'user') {
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
         }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+            setSelectedFile(file);
+            setMediaUrl(URL.createObjectURL(file));
+            setMediaType('IMAGE');
+            setComposerMode('EDITOR');
+            stopCamera();
+          } else setCameraError('No pudimos procesar la foto capturada.');
+          setIsCapturing(false);
+        }, 'image/jpeg', 0.95);
+      } catch (error) {
+        console.error('Error al capturar la foto:', error);
+        setCameraError('No pudimos capturar la foto. Inténtalo de nuevo.');
         setIsCapturing(false);
-      }, 'image/jpeg', 0.95);
+        stopCamera();
+      }
     } else {
+      console.error('Canvas 2D no está disponible para capturar la cámara.');
+      setCameraError('Este navegador no permite procesar la captura.');
       setIsCapturing(false);
+      stopCamera();
     }
   };
 
   // Gallery select
   const handleGallerySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    stopCamera();
     const file = e.target.files?.[0];
     if (file) {
       setSelectedFile(file);
@@ -256,23 +304,20 @@ export default function StoryComposer({ isOpen, onClose }: StoryComposerProps) {
         formData.append('file', selectedFile);
       }
 
-      if (selectedSong) {
-        formData.append('musicTitle', selectedSong);
-      }
-
       // Persist overlay items as metadata
       if (overlays.length > 0) {
         formData.append('overlayData', JSON.stringify(overlays));
       }
 
-      await api.post('/stories', formData, {
+      const response = await api.post('/stories', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
       onCloseClean();
-      window.location.reload();
+      onPublished?.(response.data);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Error al publicar historia');
+      console.error('Error al publicar historia:', err);
+      setCameraError(err.response?.data?.message || 'Error al publicar historia');
     } finally {
       setIsPublishing(false);
     }
@@ -287,13 +332,13 @@ export default function StoryComposer({ isOpen, onClose }: StoryComposerProps) {
     }
     setOverlays([]);
     setTextContent('');
-    setSelectedSong(null);
+    setCameraError(null);
     setComposerMode('SELECT');
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-[110] bg-black flex flex-col md:p-4 justify-center items-center">
+    <div className="fixed inset-0 z-[110] bg-black flex flex-col md:p-4 justify-center items-center h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       {/* Container wrapper */}
       <div className="w-full h-full md:max-w-md bg-[#090d16] md:rounded-3xl border border-slate-800 shadow-2xl relative overflow-hidden flex flex-col">
         
@@ -316,16 +361,30 @@ export default function StoryComposer({ isOpen, onClose }: StoryComposerProps) {
             <div className="grid grid-cols-1 gap-3 pt-4">
               <button
                 onClick={() => startCamera('user')}
+                disabled={isStartingCamera}
                 className="flex items-center gap-3 p-4 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-2xl text-left transition-all group"
               >
                 <div className="p-3 rounded-xl bg-teal-950/80 text-teal-400 group-hover:scale-105 transition-transform">
                   <Camera className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-white">Usar Cámara</h4>
+                  <h4 className="font-bold text-sm text-white">{isStartingCamera ? 'Abriendo cámara...' : 'Usar Cámara'}</h4>
                   <p className="text-[11px] text-slate-500">Toma una foto en vivo desde tu dispositivo</p>
                 </div>
               </button>
+
+              {cameraError && (
+                <div role="alert" className="rounded-2xl border border-amber-700/60 bg-amber-950/30 p-4 text-left space-y-3">
+                  <p className="text-sm font-bold text-white">No pudimos acceder a la cámara.</p>
+                  <p className="text-xs text-amber-200">{cameraError}</p>
+                  <div className="grid gap-2">
+                    <button type="button" onClick={() => startCamera(cameraFacing)} className="rounded-xl bg-teal-700 px-3 py-2 text-xs font-bold text-white">Reintentar</button>
+                    <button type="button" onClick={() => nativeCameraInputRef.current?.click()} className="rounded-xl border border-slate-600 px-3 py-2 text-xs font-bold text-white">Usar cámara del dispositivo</button>
+                    <label className="rounded-xl border border-slate-600 px-3 py-2 text-center text-xs font-bold text-white cursor-pointer">Elegir de galería<input type="file" accept="image/*,video/*" onChange={handleGallerySelect} className="hidden" /></label>
+                  </div>
+                </div>
+              )}
+              <input ref={nativeCameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleGallerySelect} className="hidden" />
 
               <label className="flex items-center gap-3 p-4 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-2xl text-left cursor-pointer transition-all group">
                 <div className="p-3 rounded-xl bg-emerald-950/80 text-emerald-400 group-hover:scale-105 transition-transform">
@@ -366,8 +425,11 @@ export default function StoryComposer({ isOpen, onClose }: StoryComposerProps) {
               ref={videoRef}
               autoPlay
               playsInline
+              muted
+              onLoadedMetadata={(event) => setIsCameraReady(event.currentTarget.videoWidth > 0 && event.currentTarget.videoHeight > 0)}
               className={`w-full h-full object-cover ${cameraFacing === 'user' ? 'scale-x-[-1]' : ''}`}
             />
+            {!isCameraReady && <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm font-bold text-white">Preparando cámara...</div>}
             
             {/* Header toolbar */}
             <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-10">
@@ -389,7 +451,7 @@ export default function StoryComposer({ isOpen, onClose }: StoryComposerProps) {
             <div className="absolute bottom-8 left-0 right-0 flex justify-center z-10">
               <button
                 onClick={capturePhoto}
-                disabled={isCapturing}
+                disabled={isCapturing || !isCameraReady}
                 className="w-20 h-20 rounded-full border-4 border-white bg-transparent flex items-center justify-center p-1 cursor-pointer disabled:opacity-50"
               >
                 <div className="w-full h-full rounded-full bg-white active:scale-95 transition-transform" />
@@ -521,16 +583,6 @@ export default function StoryComposer({ isOpen, onClose }: StoryComposerProps) {
                 </div>
               ))}
 
-              {/* Music badge */}
-              {selectedSong && (
-                <div className="absolute bottom-20 left-4 bg-teal-900/90 border border-teal-600/50 px-4 py-2.5 rounded-2xl flex items-center gap-2 text-white shadow-lg z-20 animate-bounce">
-                  <Music className="w-4 h-4 text-teal-400" />
-                  <div className="text-left">
-                    <span className="block text-[11px] font-black leading-none">{selectedSong}</span>
-                    <span className="text-[9px] text-teal-300 font-semibold">SocialTush Audio</span>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Panel details */}
@@ -587,26 +639,13 @@ export default function StoryComposer({ isOpen, onClose }: StoryComposerProps) {
 
             {activePanel === 'MUSIC' && (
               <div className="absolute bottom-16 left-4 right-4 bg-slate-900/95 border border-slate-800 rounded-3xl p-4 z-40 text-slate-200 space-y-3">
-                <h4 className="text-xs font-black text-white">Seleccionar Música</h4>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {SAMPLE_SONGS.map((song, i) => (
-                    <button
-                      key={i}
-                      onClick={() => { setSelectedSong(`${song.title} - ${song.artist}`); setActivePanel('NONE'); }}
-                      className="w-full flex items-center justify-between p-2 hover:bg-slate-800 rounded-xl text-left text-xs transition-colors"
-                    >
-                      <div>
-                        <span className="font-bold block text-white">{song.title}</span>
-                        <span className="text-[10px] text-slate-400">{song.artist}</span>
-                      </div>
-                      <Music className="w-4 h-4 text-teal-400" />
-                    </button>
-                  ))}
-                </div>
+                <h4 className="text-xs font-black text-white">Música</h4>
+                <p className="text-xs text-slate-400">Próximamente. Todavía no hay un proveedor de música conectado.</p>
               </div>
             )}
 
             {/* Bottom Actions footer */}
+            {cameraError && <div role="alert" className="absolute bottom-16 left-4 right-4 z-50 rounded-xl bg-rose-950/95 border border-rose-700 p-3 text-xs text-rose-100">{cameraError}</div>}
             <div className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between z-30">
               <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 font-semibold text-xs">
                 <input
