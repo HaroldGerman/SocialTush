@@ -1,6 +1,9 @@
 package com.socialtush.modules.posts.service;
 
 import com.socialtush.modules.comments.repository.CommentRepository;
+import com.socialtush.modules.circles.entity.Circle;
+import com.socialtush.modules.circles.repository.CircleMemberRepository;
+import com.socialtush.modules.circles.repository.CircleRepository;
 import com.socialtush.modules.likes.repository.LikeRepository;
 import com.socialtush.modules.media.service.StorageService;
 import com.socialtush.modules.posts.controller.PostController.PostDto;
@@ -15,7 +18,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,16 +39,29 @@ public class PostService {
     private final CommentRepository commentRepository;
     private final SavedPostRepository savedPostRepository;
     private final StorageService storageService;
+    private final CircleRepository circleRepository;
+    private final CircleMemberRepository circleMemberRepository;
 
     @Transactional(rollbackFor = Exception.class)
-    public PostDto createPost(String caption, String location, String musicTitle, boolean isShortVideo, MultipartFile[] files, User currentUser) {
+    public PostDto createPost(String caption, String location, String musicTitle, boolean isShortVideo,
+                              MultipartFile[] files, UUID circleId, User currentUser) {
         if ((caption == null || caption.isBlank()) && (files == null || files.length == 0)) {
             throw new IllegalArgumentException("Se requiere al menos texto o archivo multimedia");
+        }
+
+        Circle circle = null;
+        if (circleId != null) {
+            circle = circleRepository.findById(circleId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Círculo no encontrado"));
+            if (!circleMemberRepository.existsByCircleIdAndUserId(circleId, currentUser.getId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Debes ser miembro para publicar en este círculo");
+            }
         }
 
         // 1. Build initial Post
         Post post = Post.builder()
                 .user(currentUser)
+                .circle(circle)
                 .caption(caption != null ? caption.trim() : "")
                 .location(location)
                 .musicTitle(musicTitle)
@@ -137,6 +155,11 @@ public class PostService {
         return url;
     }
 
+    public boolean canViewPost(Post post, User viewer) {
+        if (post.getCircle() == null || "PUBLIC".equalsIgnoreCase(post.getCircle().getVisibility())) return true;
+        return viewer != null && circleMemberRepository.existsByCircleIdAndUserId(post.getCircle().getId(), viewer.getId());
+    }
+
     public PostDto convertToDto(Post post, User currentUser) {
         Profile profile = profileRepository.findById(post.getUser().getId()).orElse(null);
 
@@ -160,6 +183,8 @@ public class PostService {
                 .location(post.getLocation())
                 .musicTitle(post.getMusicTitle())
                 .mediaUrls(mediaUrls)
+                .mediaTypes(post.getMediaList() != null ? post.getMediaList().stream().map(PostMedia::getMediaType).toList() : List.of())
+                .circleId(post.getCircle() != null ? post.getCircle().getId() : null)
                 .likesCount(likesCount)
                 .commentsCount(commentsCount)
                 .hasLiked(hasLiked)

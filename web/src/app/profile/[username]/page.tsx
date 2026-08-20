@@ -46,6 +46,16 @@ interface PostData {
   createdAt: string;
 }
 
+interface ProfileCircle {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  avatarUrl?: string;
+  membersCount: number;
+  visibility: string;
+}
+
 export default function ProfilePage() {
   const { username } = useParams() as { username: string };
   const { user: currentUser, logout, updateUserProfile, isLoading: authLoading } = useAuth();
@@ -54,6 +64,8 @@ export default function ProfilePage() {
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [userPosts, setUserPosts] = useState<PostData[]>([]);
+  const [profileCircles, setProfileCircles] = useState<ProfileCircle[]>([]);
+  const [circlesError, setCirclesError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'MOMENTOS' | 'RESPUESTAS' | 'CIRCULOS' | 'GUARDADOS'>('MOMENTOS');
@@ -94,9 +106,18 @@ export default function ProfilePage() {
       } catch (e) {
         setUserPosts([]);
       }
+      try {
+        const circlesRes = await api.get(`/circles/user/${username}`);
+        setProfileCircles(circlesRes.data || []);
+        setCirclesError('');
+      } catch (circleError: any) {
+        setProfileCircles([]);
+        setCirclesError(circleError.response?.data?.message || 'No se pudieron cargar los círculos.');
+      }
     } catch (err: any) {
       setProfile(null);
       setUserPosts([]);
+      setProfileCircles([]);
       setError(err.response?.status === 404 ? 'Usuario no encontrado' : 'No se pudo cargar el perfil.');
     } finally {
       setLoading(false);
@@ -492,26 +513,24 @@ export default function ProfilePage() {
 
         {/* Tab Content Display */}
         {activeTab === 'CIRCULOS' ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              { name: 'Exploradores', members: '24 miembros', bg: 'bg-emerald-700', desc: 'Rutas de senderismo y aventuras en la naturaleza.' },
-              { name: 'Sostenibles', members: '18 miembros', bg: 'bg-teal-700', desc: 'Proyectos de reciclaje, huertos y cuidado del medio ambiente.' },
-              { name: 'Café & Ideas', members: '21 miembros', bg: 'bg-amber-700', desc: 'Reuniones semanales para compartir proyectos creativos.' },
-            ].map((c, i) => (
-              <div key={i} className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-3">
+          circlesError ? (
+            <div className="rounded-3xl border border-rose-200 bg-white p-8 text-center dark:border-rose-900 dark:bg-[#0f172a]"><p className="text-sm text-rose-600">{circlesError}</p><button onClick={fetchProfile} className="mt-3 rounded-xl bg-teal-700 px-4 py-2 text-xs font-bold text-white">Reintentar</button></div>
+          ) : profileCircles.length === 0 ? (
+            <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-[#0f172a]">No hay círculos públicos para mostrar.</div>
+          ) : <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {profileCircles.map((circle) => (
+              <div key={circle.id} className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-3">
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-2xl ${c.bg} text-white font-black flex items-center justify-center text-sm shadow-sm`}>
-                    {c.name.charAt(0)}
-                  </div>
+                  <UserAvatar avatarUrl={circle.avatarUrl} name={circle.name} className="w-10 h-10 rounded-2xl text-xs shadow-sm" />
                   <div>
-                    <h4 className="font-bold text-sm text-slate-800 dark:text-white">{c.name}</h4>
-                    <span className="text-[10px] text-slate-400 font-semibold">{c.members}</span>
+                    <h4 className="font-bold text-sm text-slate-800 dark:text-white">{circle.name}</h4>
+                    <span className="text-[10px] text-slate-400 font-semibold">{circle.membersCount} miembros</span>
                   </div>
                 </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-relaxed">{c.desc}</p>
-                <button className="w-full py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all">
+                <p className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-relaxed">{circle.description || 'Sin descripción.'}</p>
+                <Link href={`/circles/${circle.slug}`} className="block w-full py-2 text-center bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all">
                   Ver círculo
-                </button>
+                </Link>
               </div>
             ))}
           </div>

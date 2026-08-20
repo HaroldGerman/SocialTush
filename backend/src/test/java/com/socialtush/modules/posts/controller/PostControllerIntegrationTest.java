@@ -9,6 +9,10 @@ import com.socialtush.modules.social.repository.FollowRepository;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
 import com.socialtush.modules.media.service.StorageService;
+import com.socialtush.modules.circles.entity.Circle;
+import com.socialtush.modules.circles.entity.CircleMember;
+import com.socialtush.modules.circles.repository.CircleRepository;
+import com.socialtush.modules.circles.repository.CircleMemberRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +33,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -50,6 +55,12 @@ public class PostControllerIntegrationTest {
 
     @Autowired
     private FollowRepository followRepository;
+
+    @Autowired
+    private CircleRepository circleRepository;
+
+    @Autowired
+    private CircleMemberRepository circleMemberRepository;
 
     @MockBean
     private StorageService storageService;
@@ -113,6 +124,86 @@ public class PostControllerIntegrationTest {
                         .param("caption", "Mi primer post en SocialTush"))
                 .andExpect(status().is2xxSuccessful())
                 .andExpect(jsonPath("$.caption").value("Mi primer post en SocialTush"));
+        org.junit.jupiter.api.Assertions.assertNull(postRepository.findAll().get(0).getCircle());
+    }
+
+    @Test
+    void memberCanPublishInCircleAndNonMemberCannot() throws Exception {
+        Circle circle = circle("post-circle", "PUBLIC", testUser);
+        circleMemberRepository.save(CircleMember.builder().circle(circle).user(testUser).role("OWNER").build());
+
+        mockMvc.perform(multipart("/api/v1/posts")
+                        .param("caption", "Dentro del círculo")
+                        .param("circleId", circle.getId().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.circleId").value(circle.getId().toString()));
+
+        mockMvc.perform(multipart("/api/v1/posts")
+                        .param("caption", "No permitido")
+                        .param("circleId", circle.getId().toString())
+                        .with(authentication(new UsernamePasswordAuthenticationToken(otherUser, null, Collections.emptyList()))))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(multipart("/api/v1/posts")
+                        .param("caption", "No existe")
+                        .param("circleId", java.util.UUID.randomUUID().toString())
+                        .with(authentication(new UsernamePasswordAuthenticationToken(otherUser, null, Collections.emptyList()))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void circleMediaUsesExistingPostUploadPipeline() throws Exception {
+        Circle circle = circle("circle-media", "PUBLIC", testUser);
+        circleMemberRepository.save(CircleMember.builder().circle(circle).user(testUser).role("OWNER").build());
+        when(storageService.uploadFile(anyString(), any(byte[].class), eq("video/mp4")))
+                .thenReturn("https://cdn.example/circle-video.mp4");
+
+        mockMvc.perform(multipart("/api/v1/posts")
+                        .file(new MockMultipartFile("files", "clip.mp4", "video/mp4", new byte[]{1, 2, 3}))
+                        .param("circleId", circle.getId().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mediaUrls[0]").value("https://cdn.example/circle-video.mp4"))
+                .andExpect(jsonPath("$.mediaTypes[0]").value("VIDEO"));
+    }
+
+    @Test
+    void privateCirclePostsAreFilteredUntilViewerBecomesMember() throws Exception {
+        Circle publicCircle = circle("public-posts", "PUBLIC", otherUser);
+        Circle privateCircle = circle("private-posts", "PRIVATE", otherUser);
+        circleMemberRepository.save(CircleMember.builder().circle(publicCircle).user(otherUser).build());
+        circleMemberRepository.save(CircleMember.builder().circle(privateCircle).user(otherUser).build());
+        followRepository.save(Follow.builder().follower(testUser).following(otherUser).build());
+
+        postRepository.save(Post.builder().user(otherUser).circle(publicCircle).caption("visible-public").build());
+        Post hidden = postRepository.save(Post.builder().user(otherUser).circle(privateCircle).caption("hidden-private").build());
+
+        mockMvc.perform(get("/api/v1/posts/feed")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.posts.length()").value(1)).andExpect(jsonPath("$.posts[0].caption").value("visible-public"));
+        mockMvc.perform(get("/api/v1/posts/explore")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+        mockMvc.perform(get("/api/v1/posts/user/other_user")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+        mockMvc.perform(post("/api/v1/posts/" + hidden.getId() + "/save")).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/comments/" + hidden.getId())).andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/likes/" + hidden.getId())).andExpect(status().isForbidden());
+
+        circleMemberRepository.save(CircleMember.builder().circle(privateCircle).user(testUser).build());
+        mockMvc.perform(get("/api/v1/posts/feed")).andExpect(jsonPath("$.posts.length()").value(2));
+        mockMvc.perform(get("/api/v1/posts/explore")).andExpect(jsonPath("$.length()").value(2));
+        mockMvc.perform(get("/api/v1/posts/user/other_user")).andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void deletingOwnCirclePostUsesExistingDeleteFlow() throws Exception {
+        Circle circle = circle("delete-circle-post", "PUBLIC", testUser);
+        Post post = postRepository.save(Post.builder().user(testUser).circle(circle).caption("Eliminar").build());
+        mockMvc.perform(delete("/api/v1/posts/" + post.getId())).andExpect(status().isNoContent());
+        org.junit.jupiter.api.Assertions.assertFalse(postRepository.existsById(post.getId()));
+    }
+
+    private Circle circle(String slug, String visibility, User owner) {
+        return circleRepository.save(Circle.builder().name(slug).slug(slug).description(slug)
+                .visibility(visibility).type("GENERAL").owner(owner).membersCount(1).activeNowCount(0).build());
     }
 
     @Test

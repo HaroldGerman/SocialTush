@@ -1,14 +1,23 @@
 package com.socialtush.modules.circles.controller;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.socialtush.modules.circles.entity.Circle;
 import com.socialtush.modules.circles.entity.CircleMember;
 import com.socialtush.modules.circles.service.CircleService;
+import com.socialtush.modules.posts.controller.PostController.PostDto;
+import com.socialtush.modules.posts.entity.Post;
+import com.socialtush.modules.posts.repository.PostRepository;
+import com.socialtush.modules.posts.service.PostService;
 import com.socialtush.modules.users.entity.User;
+import com.socialtush.modules.users.repository.UserRepository;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,53 +32,41 @@ import java.util.stream.Collectors;
 public class CircleController {
 
     private final CircleService circleService;
+    private final PostRepository postRepository;
+    private final PostService postService;
+    private final UserRepository userRepository;
 
     @GetMapping
     public ResponseEntity<List<CircleDto>> getAllCircles(@AuthenticationPrincipal User currentUser) {
         List<Circle> circles = circleService.getAllPublicCircles();
-        List<CircleDto> dtos = circles.stream().map(c -> CircleDto.builder()
-                .id(c.getId())
-                .name(c.getName())
-                .slug(c.getSlug())
-                .description(c.getDescription())
-                .avatarUrl(c.getAvatarUrl())
-                .coverUrl(c.getCoverUrl())
-                .visibility(c.getVisibility())
-                .type(c.getType())
-                .city(c.getCity())
-                .country(c.getCountry())
-                .language(c.getLanguage())
-                .membersCount(c.getMembersCount())
-                .activeNowCount(c.getActiveNowCount())
-                .isMember(circleService.isMember(c.getId(), currentUser))
-                .build()).collect(Collectors.toList());
+        List<CircleDto> dtos = circles.stream().map(c -> toDto(c, currentUser, null)).collect(Collectors.toList());
         return ResponseEntity.ok(dtos);
     }
 
     @GetMapping("/{slug}")
     public ResponseEntity<?> getCircleBySlug(@PathVariable String slug, @AuthenticationPrincipal User currentUser) {
-        Circle c = circleService.getCircleBySlug(slug.toLowerCase().trim());
-        if (c == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Círculo no encontrado"));
-        }
+        Circle circle = circleService.getVisibleCircle(slug, currentUser);
+        return ResponseEntity.ok(toDto(circle, currentUser, null));
+    }
 
-        CircleDto dto = CircleDto.builder()
-                .id(c.getId())
-                .name(c.getName())
-                .slug(c.getSlug())
-                .description(c.getDescription())
-                .avatarUrl(c.getAvatarUrl())
-                .coverUrl(c.getCoverUrl())
-                .visibility(c.getVisibility())
-                .type(c.getType())
-                .city(c.getCity())
-                .country(c.getCountry())
-                .language(c.getLanguage())
-                .membersCount(c.getMembersCount())
-                .activeNowCount(c.getActiveNowCount())
-                .isMember(circleService.isMember(c.getId(), currentUser))
-                .build();
-        return ResponseEntity.ok(dto);
+    @GetMapping("/{slug}/posts")
+    public ResponseEntity<?> getCirclePosts(
+            @PathVariable String slug,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        Circle circle = circleService.getVisibleCircle(slug, currentUser);
+        Pageable pageable = PageRequest.of(page, Math.min(Math.max(size, 1), 100));
+        Page<Post> posts = postRepository.findByCircleIdOrderByCreatedAtDesc(circle.getId(), pageable);
+        List<PostDto> dtos = posts.getContent().stream().map(post -> postService.convertToDto(post, currentUser)).toList();
+        return ResponseEntity.ok(Map.of(
+                "posts", dtos,
+                "currentPage", posts.getNumber(),
+                "totalItems", posts.getTotalElements(),
+                "totalPages", posts.getTotalPages(),
+                "isLast", posts.isLast()
+        ));
     }
 
     @GetMapping("/mine")
@@ -78,24 +75,19 @@ public class CircleController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
         List<CircleMember> members = circleService.getUserCircles(currentUser);
-        List<CircleDto> dtos = members.stream().map(m -> {
-            Circle c = m.getCircle();
-            return CircleDto.builder()
-                    .id(c.getId())
-                    .name(c.getName())
-                    .slug(c.getSlug())
-                    .description(c.getDescription())
-                    .avatarUrl(c.getAvatarUrl())
-                    .coverUrl(c.getCoverUrl())
-                    .visibility(c.getVisibility())
-                    .type(c.getType())
-                    .membersCount(c.getMembersCount())
-                    .activeNowCount(c.getActiveNowCount())
-                    .isMember(true)
-                    .role(m.getRole())
-                    .build();
-        }).collect(Collectors.toList());
+        List<CircleDto> dtos = members.stream().map(m -> toDto(m.getCircle(), currentUser, m.getRole())).toList();
         return ResponseEntity.ok(dtos);
+    }
+
+    @GetMapping("/user/{username}")
+    public ResponseEntity<?> getUserCircles(@PathVariable String username, @AuthenticationPrincipal User currentUser) {
+        User target = userRepository.findByUsernameIgnoreCase(username.trim()).orElse(null);
+        if (target == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Usuario no encontrado"));
+        boolean isSelf = currentUser != null && currentUser.getId().equals(target.getId());
+        List<CircleDto> circles = circleService.getVisibleUserCircles(target, currentUser).stream()
+                .map(member -> toDto(member.getCircle(), currentUser, isSelf ? member.getRole() : null))
+                .toList();
+        return ResponseEntity.ok(circles);
     }
 
     @PostMapping
@@ -141,7 +133,19 @@ public class CircleController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
         boolean success = circleService.leaveCircle(id, currentUser);
+        if (!success) {
+            return ResponseEntity.badRequest().body(Map.of("message", "No se pudo salir del círculo"));
+        }
         return ResponseEntity.ok(Map.of("message", "Has salido del círculo con éxito", "joined", false));
+    }
+
+    private CircleDto toDto(Circle circle, User currentUser, String role) {
+        return CircleDto.builder()
+                .id(circle.getId()).name(circle.getName()).slug(circle.getSlug())
+                .description(circle.getDescription()).avatarUrl(circle.getAvatarUrl()).coverUrl(circle.getCoverUrl())
+                .visibility(circle.getVisibility()).type(circle.getType()).city(circle.getCity()).country(circle.getCountry())
+                .language(circle.getLanguage()).membersCount(circle.getMembersCount()).activeNowCount(circle.getActiveNowCount())
+                .isMember(circleService.isMember(circle.getId(), currentUser)).role(role).build();
     }
 
     @Data
@@ -160,6 +164,7 @@ public class CircleController {
         private String language;
         private int membersCount;
         private int activeNowCount;
+        @JsonProperty("isMember")
         private boolean isMember;
         private String role;
     }

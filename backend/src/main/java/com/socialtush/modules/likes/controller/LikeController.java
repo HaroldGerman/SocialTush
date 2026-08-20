@@ -4,6 +4,7 @@ import com.socialtush.modules.likes.entity.Like;
 import com.socialtush.modules.likes.repository.LikeRepository;
 import com.socialtush.modules.notifications.service.NotificationService;
 import com.socialtush.modules.posts.repository.PostRepository;
+import com.socialtush.modules.posts.service.PostService;
 import com.socialtush.modules.users.entity.User;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class LikeController {
     private final LikeRepository likeRepository;
     private final PostRepository postRepository;
     private final NotificationService notificationService;
+    private final PostService postService;
 
     @PostMapping("/{targetId}")
     public ResponseEntity<?> toggleLike(
@@ -38,6 +40,11 @@ public class LikeController {
         String typeUpper = targetType.toUpperCase().trim();
         if (!"POST".equals(typeUpper) && !"COMMENT".equals(typeUpper)) {
             return ResponseEntity.badRequest().body(Map.of("message", "Tipo de target inválido. Use POST o COMMENT"));
+        }
+        if ("POST".equals(typeUpper)) {
+            var post = postRepository.findById(targetId).orElse(null);
+            if (post == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Publicación no encontrada"));
+            if (!postService.canViewPost(post, currentUser)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "No tienes acceso a esta publicación"));
         }
 
         Optional<Like> existingLike = likeRepository.findByUserAndTargetIdAndTargetType(currentUser, targetId, typeUpper);

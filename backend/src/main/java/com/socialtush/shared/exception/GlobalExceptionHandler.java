@@ -9,6 +9,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 
@@ -42,6 +43,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, String>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
         return ResponseEntity.badRequest().body(Map.of("message", "Error al procesar la solicitud. Verifique que los datos no estén duplicados."));
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, String>> handleResponseStatus(ResponseStatusException ex) {
+        String message = ex.getReason() != null ? ex.getReason() : "No se pudo procesar la solicitud";
+        return ResponseEntity.status(ex.getStatusCode()).body(Map.of("message", message));
     }
 
     @ExceptionHandler(Exception.class)

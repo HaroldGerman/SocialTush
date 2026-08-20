@@ -5,6 +5,7 @@ import com.socialtush.modules.comments.repository.CommentRepository;
 import com.socialtush.modules.notifications.service.NotificationService;
 import com.socialtush.modules.posts.entity.Post;
 import com.socialtush.modules.posts.repository.PostRepository;
+import com.socialtush.modules.posts.service.PostService;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.users.entity.User;
@@ -30,9 +31,13 @@ public class CommentController {
     private final PostRepository postRepository;
     private final ProfileRepository profileRepository;
     private final NotificationService notificationService;
+    private final PostService postService;
 
     @GetMapping("/{postId}")
-    public ResponseEntity<?> getPostComments(@PathVariable UUID postId) {
+    public ResponseEntity<?> getPostComments(@PathVariable UUID postId, @AuthenticationPrincipal User currentUser) {
+        Post post = postRepository.findById(postId).orElse(null);
+        if (post == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Publicación no encontrada"));
+        if (!postService.canViewPost(post, currentUser)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "No tienes acceso a esta publicación"));
         List<Comment> comments = commentRepository.findByPostIdAndParentIsNullOrderByCreatedAtAsc(postId);
         List<CommentDto> dtos = comments.stream()
                 .map(this::convertToDto)
@@ -57,6 +62,9 @@ public class CommentController {
         Post post = postRepository.findById(postId).orElse(null);
         if (post == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Publicación no encontrada"));
+        }
+        if (!postService.canViewPost(post, currentUser)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "No tienes acceso a esta publicación"));
         }
 
         Comment parent = null;

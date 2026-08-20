@@ -38,7 +38,7 @@ export function CreateHubProvider({ children }: { children: React.ReactNode }) {
 
   const handleSelectCirculo = () => {
     setIsHubOpen(false);
-    router.push('/circles');
+    router.push('/circles?create=1');
   };
 
   return (

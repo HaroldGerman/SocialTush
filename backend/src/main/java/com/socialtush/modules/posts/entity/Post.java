@@ -1,5 +1,6 @@
 package com.socialtush.modules.posts.entity;
 
+import com.socialtush.modules.circles.entity.Circle;
 import com.socialtush.modules.users.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
@@ -14,7 +15,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "posts", indexes = {
     @Index(name = "idx_posts_user_id", columnList = "user_id"),
-    @Index(name = "idx_posts_created_at", columnList = "created_at")
+    @Index(name = "idx_posts_created_at", columnList = "created_at"),
+    @Index(name = "idx_posts_circle_id", columnList = "circle_id")
 })
 @Getter
 @Setter
@@ -30,6 +32,10 @@ public class Post {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "circle_id")
+    private Circle circle;
 
     @Column(columnDefinition = "TEXT")
     private String caption;

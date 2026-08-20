@@ -8,19 +8,24 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
 import java.util.UUID;
 
 @Repository
 public interface PostRepository extends JpaRepository<Post, UUID> {
-    Page<Post> findByUserOrderByCreatedAtDesc(User user, Pageable pageable);
-    
-    @Query("SELECT p FROM Post p WHERE p.user IN :users OR p.user = :currentUser ORDER BY p.createdAt DESC")
-    Page<Post> findFeedPosts(List<User> users, User currentUser, Pageable pageable);
+    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.user = :user AND (c IS NULL OR c.visibility = 'PUBLIC') ORDER BY p.createdAt DESC")
+    Page<Post> findPublicProfilePosts(User user, Pageable pageable);
 
-    @Query("SELECT p FROM Post p WHERE p.user = :currentUser OR EXISTS (SELECT f FROM Follow f WHERE f.follower = :currentUser AND f.following = p.user) ORDER BY p.createdAt DESC")
+    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.user = :user AND (c IS NULL OR c.visibility = 'PUBLIC' OR EXISTS (SELECT cm FROM CircleMember cm WHERE cm.circle = c AND cm.user.id = :viewerId)) ORDER BY p.createdAt DESC")
+    Page<Post> findProfilePostsVisibleTo(User user, UUID viewerId, Pageable pageable);
+
+    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE (p.user = :currentUser OR EXISTS (SELECT f FROM Follow f WHERE f.follower = :currentUser AND f.following = p.user)) AND (c IS NULL OR c.visibility = 'PUBLIC' OR EXISTS (SELECT cm FROM CircleMember cm WHERE cm.circle = c AND cm.user = :currentUser)) ORDER BY p.createdAt DESC")
     Page<Post> findFeedPostsNew(User currentUser, Pageable pageable);
 
-    @Query("SELECT p FROM Post p WHERE p.isShortVideo = :isShortVideo ORDER BY p.createdAt DESC")
-    Page<Post> findExplorePosts(boolean isShortVideo, Pageable pageable);
+    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.isShortVideo = :isShortVideo AND (c IS NULL OR c.visibility = 'PUBLIC') ORDER BY p.createdAt DESC")
+    Page<Post> findPublicExplorePosts(boolean isShortVideo, Pageable pageable);
+
+    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.isShortVideo = :isShortVideo AND (c IS NULL OR c.visibility = 'PUBLIC' OR EXISTS (SELECT cm FROM CircleMember cm WHERE cm.circle = c AND cm.user.id = :viewerId)) ORDER BY p.createdAt DESC")
+    Page<Post> findExplorePostsVisibleTo(boolean isShortVideo, UUID viewerId, Pageable pageable);
+
+    Page<Post> findByCircleIdOrderByCreatedAtDesc(UUID circleId, Pageable pageable);
 }

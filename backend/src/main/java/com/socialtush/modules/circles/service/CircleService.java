@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -31,8 +33,30 @@ public class CircleService {
         return circleRepository.findBySlug(slug).orElse(null);
     }
 
+    public Circle getVisibleCircle(String slug, User viewer) {
+        Circle circle = circleRepository.findBySlug(slug.toLowerCase().trim())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Círculo no encontrado"));
+        requireCanView(circle, viewer);
+        return circle;
+    }
+
+    public void requireCanView(Circle circle, User viewer) {
+        if ("PUBLIC".equalsIgnoreCase(circle.getVisibility())) return;
+        if (viewer == null || !circleMemberRepository.existsByCircleIdAndUserId(circle.getId(), viewer.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Este círculo es privado");
+        }
+    }
+
     public List<CircleMember> getUserCircles(User user) {
         return circleMemberRepository.findByUserId(user.getId());
+    }
+
+    public List<CircleMember> getVisibleUserCircles(User target, User viewer) {
+        List<CircleMember> memberships = circleMemberRepository.findByUserId(target.getId());
+        if (viewer != null && viewer.getId().equals(target.getId())) return memberships;
+        return memberships.stream()
+                .filter(member -> "PUBLIC".equalsIgnoreCase(member.getCircle().getVisibility()))
+                .toList();
     }
 
     @Transactional
@@ -42,11 +66,15 @@ public class CircleService {
             slug = slug + "-" + UUID.randomUUID().toString().substring(0, 4);
         }
 
+        String normalizedVisibility = visibility == null ? "PUBLIC" : visibility.toUpperCase().trim();
+        if (!List.of("PUBLIC", "PRIVATE").contains(normalizedVisibility)) {
+            throw new IllegalArgumentException("Privacidad de círculo inválida");
+        }
         Circle circle = Circle.builder()
                 .name(name.trim())
                 .slug(slug)
                 .description(description)
-                .visibility(visibility != null ? visibility.toUpperCase() : "PUBLIC")
+                .visibility(normalizedVisibility)
                 .type(type != null ? type.toUpperCase() : "GENERAL")
                 .city(city)
                 .country(country)
@@ -74,6 +102,9 @@ public class CircleService {
         if (circleMemberRepository.existsByCircleIdAndUserId(circleId, user.getId())) {
             return true; // Already member
         }
+        if (!"PUBLIC".equalsIgnoreCase(circle.getVisibility())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Este círculo requiere autorización para unirse");
+        }
 
         CircleMember member = CircleMember.builder()
                 .circle(circle)
@@ -96,6 +127,7 @@ public class CircleService {
 
         CircleMember member = circleMemberRepository.findByCircleIdAndUserId(circleId, user.getId()).orElse(null);
         if (member == null) return false;
+        if ("OWNER".equalsIgnoreCase(member.getRole())) return false;
 
         circleMemberRepository.delete(member);
 

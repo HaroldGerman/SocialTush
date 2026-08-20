@@ -48,13 +48,14 @@ public class PostController {
             @RequestParam(value = "musicTitle", required = false) String musicTitle,
             @RequestParam(value = "isShortVideo", defaultValue = "false") boolean isShortVideo,
             @RequestParam(value = "files", required = false) MultipartFile[] files,
+            @RequestParam(value = "circleId", required = false) UUID circleId,
             @AuthenticationPrincipal User currentUser
     ) {
         if (currentUser == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
 
-        PostDto dto = postService.createPost(caption, location, musicTitle, isShortVideo, files, currentUser);
+        PostDto dto = postService.createPost(caption, location, musicTitle, isShortVideo, files, circleId, currentUser);
         return ResponseEntity.ok(dto);
     }
 
@@ -111,7 +112,9 @@ public class PostController {
             @AuthenticationPrincipal User currentUser
     ) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<Post> postPage = postRepository.findExplorePosts(reelsOnly, pageable);
+        Page<Post> postPage = currentUser == null
+                ? postRepository.findPublicExplorePosts(reelsOnly, pageable)
+                : postRepository.findExplorePostsVisibleTo(reelsOnly, currentUser.getId(), pageable);
 
         List<PostDto> dtos = postPage.getContent().stream()
                 .map(p -> postService.convertToDto(p, currentUser))
@@ -141,7 +144,9 @@ public class PostController {
         }
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        Page<Post> postPage = postRepository.findByUserOrderByCreatedAtDesc(targetUser, pageable);
+        Page<Post> postPage = currentUser == null
+                ? postRepository.findPublicProfilePosts(targetUser, pageable)
+                : postRepository.findProfilePostsVisibleTo(targetUser, currentUser.getId(), pageable);
 
         List<PostDto> dtos = postPage.getContent().stream()
                 .map(p -> postService.convertToDto(p, currentUser))
@@ -159,6 +164,9 @@ public class PostController {
         Post post = postRepository.findById(postId).orElse(null);
         if (post == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Publicación no encontrada"));
+        }
+        if (!postService.canViewPost(post, currentUser)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "No tienes acceso a esta publicación"));
         }
 
         Optional<SavedPost> savedOpt = savedPostRepository.findByUserAndPostId(currentUser, postId);
@@ -182,7 +190,9 @@ public class PostController {
             @AuthenticationPrincipal User currentUser
     ) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        Page<Post> reelsPage = postRepository.findExplorePosts(true, pageable);
+        Page<Post> reelsPage = currentUser == null
+                ? postRepository.findPublicExplorePosts(true, pageable)
+                : postRepository.findExplorePostsVisibleTo(true, currentUser.getId(), pageable);
 
         List<PostDto> dtos = reelsPage.getContent().stream()
                 .map(post -> postService.convertToDto(post, currentUser))
@@ -209,6 +219,8 @@ public class PostController {
         private String location;
         private String musicTitle;
         private List<String> mediaUrls;
+        private List<String> mediaTypes;
+        private UUID circleId;
         private long likesCount;
         private long commentsCount;
         private boolean hasLiked;
