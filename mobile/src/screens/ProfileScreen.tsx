@@ -31,6 +31,7 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
   
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileError, setProfileError] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState('');
@@ -39,26 +40,16 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
   const isSelf = !username || username === currentUser?.username;
 
   const fetchProfile = async () => {
+    setLoading(true);
+    setProfile(null);
+    setProfileError('');
     try {
       const res = await api.get(`/profiles/${targetUsername}`);
       setProfile(res.data);
       setIsPrivate(res.data.isPrivate);
-    } catch (err) {
-      // Fallback to basic session info
-      setProfile({
-        userId: currentUser?.userId || '1',
-        username: targetUsername || 'usuario',
-        displayName: currentUser?.displayName || targetUsername || 'Usuario',
-        bio: 'Miembro activo de Lifonk.',
-        avatarUrl: '',
-        isPrivate: false,
-        onboardingCompleted: true,
-        canViewContent: true,
-        relationshipStatus: 'NONE',
-        postCount: 0,
-        followersCount: 0,
-        followingCount: 0,
-      });
+    } catch (err: any) {
+      setProfile(null);
+      setProfileError(err.response?.status === 404 ? 'Usuario no encontrado' : 'No se pudo cargar el perfil');
     } finally {
       setLoading(false);
     }
@@ -108,6 +99,18 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
         <ActivityIndicator size="large" color={theme.accent} />
+      </View>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
+        <Ionicons name="alert-circle-outline" size={36} color={theme.textMuted} />
+        <Text style={[styles.loadErrorText, { color: theme.textPrimary }]}>{profileError || 'No se pudo cargar el perfil'}</Text>
+        <TouchableOpacity onPress={fetchProfile} style={[styles.retryButton, { backgroundColor: theme.primary }]}>
+          <Text style={styles.retryButtonText}>Reintentar</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -217,7 +220,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 12,
   },
+  loadErrorText: { fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  retryButton: { borderRadius: 12, paddingHorizontal: 20, paddingVertical: 10 },
+  retryButtonText: { color: '#ffffff', fontSize: 12, fontWeight: '800' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

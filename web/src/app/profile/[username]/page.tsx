@@ -69,6 +69,7 @@ export default function ProfilePage() {
   const [userPosts, setUserPosts] = useState<PostData[]>([]);
   const [profileCircles, setProfileCircles] = useState<ProfileCircle[]>([]);
   const [circlesError, setCirclesError] = useState('');
+  const [postsLoadError, setPostsLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'MOMENTOS' | 'RESPUESTAS' | 'CIRCULOS' | 'GUARDADOS'>('MOMENTOS');
@@ -92,6 +93,36 @@ export default function ProfilePage() {
 
   const isSelf = profile ? (profile.isSelf || (currentUser && currentUser.username.toLowerCase() === username.toLowerCase())) : false;
 
+  const fetchPosts = useCallback(async (knownProfile: ProfileData) => {
+    setPostsLoadError(false);
+    if (!knownProfile.canViewContent) {
+      setUserPosts([]);
+      return;
+    }
+
+    try {
+      const postsRes = await api.get(`/posts/user/${username}`);
+      setUserPosts(postsRes.data.content || postsRes.data || []);
+    } catch (postsError: any) {
+      setUserPosts([]);
+      if (postsError.response?.status === 404) {
+        setProfile(null);
+        setError('Usuario no encontrado');
+        return;
+      }
+      if (postsError.response?.status === 403) {
+        try {
+          const refreshedProfile = await api.get(`/profiles/${username}`);
+          setProfile(refreshedProfile.data);
+          if (!refreshedProfile.data.canViewContent) return;
+        } catch (profileRefreshError) {
+          console.error('No se pudo reconciliar la privacidad del perfil', profileRefreshError);
+        }
+      }
+      setPostsLoadError(true);
+    }
+  }, [username]);
+
   const fetchProfile = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -102,16 +133,7 @@ export default function ProfilePage() {
       setEditBio(res.data.bio || '');
       setEditIsPrivate(res.data.isPrivate);
 
-      if (res.data.canViewContent) {
-        try {
-          const postsRes = await api.get(`/posts/user/${username}`);
-          setUserPosts(postsRes.data.content || postsRes.data || []);
-        } catch (e) {
-          setUserPosts([]);
-        }
-      } else {
-        setUserPosts([]);
-      }
+      await fetchPosts(res.data);
       try {
         const circlesRes = await api.get(`/circles/user/${username}`);
         setProfileCircles(circlesRes.data || []);
@@ -123,12 +145,13 @@ export default function ProfilePage() {
     } catch (err: any) {
       setProfile(null);
       setUserPosts([]);
+      setPostsLoadError(false);
       setProfileCircles([]);
       setError(err.response?.status === 404 ? 'Usuario no encontrado' : 'No se pudo cargar el perfil.');
     } finally {
       setLoading(false);
     }
-  }, [username, currentUser]);
+  }, [username, currentUser, fetchPosts]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -575,6 +598,12 @@ export default function ProfilePage() {
                     : 'Seguir'}
               </button>
             )}
+          </div>
+        ) : postsLoadError ? (
+          <div className="rounded-3xl border border-rose-200 bg-white p-10 text-center dark:border-rose-900 dark:bg-[#0f172a]">
+            <ShieldAlert className="mx-auto h-8 w-8 text-rose-400" />
+            <p className="mt-3 text-xs font-bold text-slate-700 dark:text-slate-200">No se pudieron cargar los Momentos.</p>
+            <button onClick={() => fetchPosts(profile)} className="mt-4 rounded-xl bg-teal-700 px-4 py-2 text-xs font-bold text-white hover:bg-teal-800">Reintentar</button>
           </div>
         ) : (
           <div className="space-y-4">
