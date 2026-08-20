@@ -92,13 +92,44 @@ export default function StoryViewer({
   const [viewersOpen, setViewersOpen] = useState(false);
   const [viewers, setViewers] = useState<any[]>([]);
   const [viewersLoading, setViewersLoading] = useState(false);
+  const [imageReady, setImageReady] = useState(true);
+
   useEffect(() => {
     setUserIndex(initialIndex);
     setStoryIndex(0);
     setProgress(0);
   }, [initialIndex, visible]);
+
   const group = groups[userIndex];
   const story = group?.stories[storyIndex];
+
+  useEffect(() => {
+    if (!visible || story?.mediaType !== "IMAGE" || !story.mediaUrl) {
+      setImageReady(true);
+      return;
+    }
+
+    let active = true;
+    setImageReady(false);
+    Image.prefetch(story.mediaUrl)
+      .then(() => {
+        if (active) setImageReady(true);
+      })
+      .catch(() => {
+        // The Image component still gets a chance to load and report onLoad/onError.
+      });
+
+    const nextStory = group?.stories[storyIndex + 1]
+      ?? groups[userIndex + 1]?.stories?.[0];
+    if (nextStory?.mediaType === "IMAGE" && nextStory.mediaUrl) {
+      void Image.prefetch(nextStory.mediaUrl).catch(() => undefined);
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [visible, story?.storyId, story?.mediaType, story?.mediaUrl, group, groups, storyIndex, userIndex]);
+
   const overlays = useMemo(() => {
     if (!story?.overlayData) return [];
     try {
@@ -128,7 +159,8 @@ export default function StoryViewer({
     } else onClose();
   };
   useEffect(() => {
-    if (!visible || !story || paused || menu || viewersOpen) return;
+    const waitingForImage = story?.mediaType === "IMAGE" && !imageReady;
+    if (!visible || !story || paused || menu || viewersOpen || waitingForImage) return;
     const timer = setInterval(
       () =>
         setProgress((value) => {
@@ -141,7 +173,7 @@ export default function StoryViewer({
       100,
     );
     return () => clearInterval(timer);
-  }, [visible, story?.storyId, paused, menu, viewersOpen, duration]);
+  }, [visible, story?.storyId, story?.mediaType, paused, menu, viewersOpen, duration, imageReady]);
   useEffect(() => {
     if (story && !own)
       api
@@ -237,7 +269,7 @@ export default function StoryViewer({
             backgroundColor:
               story.mediaType === "TEXT"
                 ? story.backgroundColor || "#0f766e"
-                : "#000",
+                : "#071b1a",
           },
         ]}
       >
@@ -248,11 +280,28 @@ export default function StoryViewer({
             onDuration={setDuration}
           />
         ) : story.mediaType === "IMAGE" && story.mediaUrl ? (
-          <Image
-            source={{ uri: story.mediaUrl }}
-            style={StyleSheet.absoluteFill}
-            resizeMode="contain"
-          />
+          <>
+            <Image
+              source={{ uri: story.mediaUrl }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="contain"
+              fadeDuration={120}
+              onLoad={() => setImageReady(true)}
+              onError={() => setImageReady(true)}
+            />
+            {!imageReady ? (
+              <View style={styles.mediaLoading} pointerEvents="none">
+                <UserAvatar
+                  avatarUrl={group.avatarUrl}
+                  displayName={group.displayName}
+                  username={group.username}
+                  size={52}
+                />
+                <ActivityIndicator size="small" color="#2dd4bf" />
+                <Text style={styles.mediaLoadingText}>Cargando momento…</Text>
+              </View>
+            ) : null}
+          </>
         ) : story.mediaType === "TEXT" ? (
           <View style={styles.textStory}>
             <Text style={styles.storyText}>{story.textContent}</Text>
@@ -421,6 +470,18 @@ export default function StoryViewer({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  mediaLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    backgroundColor: "#071b1a",
+  },
+  mediaLoadingText: {
+    color: "#ccfbf1",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   textStory: {
     flex: 1,
     alignItems: "center",
