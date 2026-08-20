@@ -48,7 +48,7 @@ public class WebPushNotificationListener {
             case "STORY_REACTION" -> username + " reaccionó a tu momento";
             default -> "Tienes una nueva señal";
         };
-        if ("STORY_REPLY".equals(event.type()) && event.messagePreview() != null) {
+        if (("STORY_REPLY".equals(event.type()) || "STORY_REACTION".equals(event.type())) && event.messagePreview() != null) {
             body += ": \"" + event.messagePreview() + "\"";
         }
         return WebPushPayload.builder()
