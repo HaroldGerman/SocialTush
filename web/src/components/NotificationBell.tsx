@@ -18,7 +18,7 @@ function signalCopy(type: string, preview?: string): string {
     case 'FOLLOW': return ' conectó contigo.';
     case 'FOLLOW_REQUEST': return ' quiere conectar contigo.';
     case 'STORY_REPLY': return ` respondió a tu momento${preview ? `: "${preview}"` : ''}.`;
-    case 'STORY_REACTION': return ` reaccionó a tu momento${preview ? ` ${preview}` : ''}.`;
+    case 'STORY_REACTION': return preview ? ` resonó ${preview} con tu momento.` : ' resonó con tu momento.';
     default: return ' generó una nueva señal.';
   }
 }
@@ -46,7 +46,7 @@ export default function NotificationBell() {
   const destination = (signal: Signal) => {
     if (signal.notificationType === 'FOLLOW' || signal.notificationType === 'FOLLOW_REQUEST') return `/profile/${signal.senderUsername}`;
     if (signal.notificationType === 'LIKE_POST' || signal.notificationType === 'COMMENT') return `/post/${signal.targetId}`;
-    if (signal.notificationType === 'MESSAGE' || signal.notificationType === 'STORY_REPLY' || signal.notificationType === 'STORY_REACTION') return `/chat?username=${encodeURIComponent(signal.senderUsername)}`;
+    if (signal.notificationType === 'MESSAGE' || signal.notificationType === 'STORY_REPLY') return `/chat?username=${encodeURIComponent(signal.senderUsername)}`;
     return '/feed';
   };
 
