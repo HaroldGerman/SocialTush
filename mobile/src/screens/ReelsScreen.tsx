@@ -1,38 +1,522 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, Image, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View, ViewToken } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useVideoPlayer, VideoView } from 'expo-video';
-import { useAuth } from '../context/AuthContext';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  ViewToken,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useVideoPlayer, VideoView } from "expo-video";
+import { useAuth } from "../context/AuthContext";
+import UserAvatar from "../components/UserAvatar";
 
-interface Reel { postId:string; userId:string; username:string; displayName:string; avatarUrl?:string; caption:string; mediaUrls:string[]; mediaTypes:string[]; likesCount:number; commentsCount:number; hasLiked:boolean; isSaved:boolean; }
-interface Comment { commentId:string; username:string; displayName:string; avatarUrl?:string; content:string; createdAt:string; }
-const ITEM_HEIGHT = Dimensions.get('window').height - 120;
+interface Reel {
+  postId: string;
+  userId: string;
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+  caption: string;
+  mediaUrls: string[];
+  mediaTypes: string[];
+  likesCount: number;
+  commentsCount: number;
+  hasLiked: boolean;
+  isSaved: boolean;
+}
+interface Comment {
+  commentId: string;
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+  content: string;
+  createdAt: string;
+}
+const ITEM_HEIGHT = Dimensions.get("window").height - 120;
 
-function ReelVideo({ reel, active, muted, onToggle }: { reel:Reel; active:boolean; muted:boolean; onToggle:()=>void }) {
-  const source = reel.mediaTypes?.[0] === 'VIDEO' ? reel.mediaUrls?.[0] : null;
-  const player = useVideoPlayer(source || null, instance => { instance.loop = true; instance.muted = muted; });
-  useEffect(() => { player.muted = muted; active && source ? player.play() : player.pause(); return () => player.pause(); }, [active, muted, player, source]);
-  if (!source) return <View style={styles.placeholder}><Text style={styles.mutedText}>Reel sin video válido</Text></View>;
-  return <TouchableOpacity activeOpacity={1} onPress={onToggle} style={StyleSheet.absoluteFill}><VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false}/></TouchableOpacity>;
+function ReelVideo({
+  reel,
+  active,
+  muted,
+  onToggle,
+}: {
+  reel: Reel;
+  active: boolean;
+  muted: boolean;
+  onToggle: () => void;
+}) {
+  const source = reel.mediaTypes?.[0] === "VIDEO" ? reel.mediaUrls?.[0] : null;
+  const player = useVideoPlayer(source || null, (instance) => {
+    instance.loop = true;
+    instance.muted = muted;
+  });
+  useEffect(() => {
+    player.muted = muted;
+    active && source ? player.play() : player.pause();
+    return () => player.pause();
+  }, [active, muted, player, source]);
+  if (!source)
+    return (
+      <View style={styles.placeholder}>
+        <Text style={styles.mutedText}>Reel sin video válido</Text>
+      </View>
+    );
+  return (
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={onToggle}
+      style={StyleSheet.absoluteFill}
+    >
+      <VideoView
+        player={player}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        nativeControls={false}
+      />
+    </TouchableOpacity>
+  );
 }
 
-export default function ReelsScreen({ onOpenProfile }: { onOpenProfile?: (username:string)=>void }) {
-  const { api } = useAuth();
-  const [reels,setReels]=useState<Reel[]>([]),[loading,setLoading]=useState(true),[loadingMore,setLoadingMore]=useState(false);
-  const [page,setPage]=useState(0),[isLast,setIsLast]=useState(true),[activeId,setActiveId]=useState<string|null>(null),[muted,setMuted]=useState(true);
-  const [manuallyPaused,setManuallyPaused]=useState<Set<string>>(new Set()),[error,setError]=useState('');
-  const [commentsFor,setCommentsFor]=useState<Reel|null>(null),[comments,setComments]=useState<Comment[]>([]),[commentText,setCommentText]=useState('');
-  const loadingRef=useRef(false), viewabilityConfig=useRef({itemVisiblePercentThreshold:70});
-  const fetchPage=useCallback(async(nextPage:number,replace=false)=>{if(loadingRef.current)return;loadingRef.current=true;replace?setLoading(true):setLoadingMore(true);try{const res=await api.get(`/posts/reels?page=${nextPage}&size=10`);const incoming=res.data?.posts||[];setReels(old=>replace?incoming:[...old,...incoming.filter((item:Reel)=>!old.some(value=>value.postId===item.postId))]);if(replace&&incoming[0])setActiveId(incoming[0].postId);setPage(nextPage);setIsLast(Boolean(res.data?.isLast));setError('');}catch(requestError){console.error(requestError);setError('No se pudieron cargar los Reels.');}finally{loadingRef.current=false;setLoading(false);setLoadingMore(false);}},[api]);
-  useEffect(()=>{void fetchPage(0,true);return()=>setActiveId(null);},[fetchPage]);
-  const onViewableItemsChanged=useRef(({viewableItems}:{viewableItems:ViewToken[]})=>{const item=viewableItems[0]?.item as Reel|undefined;if(item)setActiveId(item.postId);}).current;
-  const like=async(id:string)=>{try{const res=await api.post(`/likes/${id}`);setReels(old=>old.map(item=>item.postId===id?{...item,hasLiked:res.data.liked,likesCount:res.data.count}:item));setError('');}catch(requestError){console.error(requestError);setError('No se pudo actualizar el Me gusta.');}};
-  const save=async(id:string)=>{try{const res=await api.post(`/posts/${id}/save`);setReels(old=>old.map(item=>item.postId===id?{...item,isSaved:res.data.saved}:item));setError('');}catch(requestError){console.error(requestError);setError('No se pudo actualizar Guardados.');}};
-  const openComments=async(reel:Reel)=>{setCommentsFor(reel);setComments([]);try{const res=await api.get(`/comments/${reel.postId}`);setComments(res.data||[]);setError('');}catch(requestError){console.error(requestError);setError('No se pudieron cargar los comentarios.');}};
-  const sendComment=async()=>{if(!commentsFor||!commentText.trim())return;try{const res=await api.post(`/comments/${commentsFor.postId}`,{content:commentText.trim()});setComments(old=>[...old,res.data]);setCommentText('');setReels(old=>old.map(item=>item.postId===commentsFor.postId?{...item,commentsCount:item.commentsCount+1}:item));}catch(requestError){console.error(requestError);setError('No se pudo publicar. Conservamos tu texto.');}};
-  const toggle=(id:string)=>setManuallyPaused(old=>{const next=new Set(old);next.has(id)?next.delete(id):next.add(id);return next;});
-  if(loading)return <View style={styles.center}><ActivityIndicator size="large" color="#14b8a6"/></View>;
-  return <View style={styles.container}>{error?<TouchableOpacity onPress={()=>setError('')} style={styles.error}><Text style={styles.errorText}>{error}</Text></TouchableOpacity>:null}<TouchableOpacity onPress={()=>setMuted(value=>!value)} style={styles.mute}><Ionicons name={muted?'volume-mute':'volume-high'} size={23} color="#fff"/></TouchableOpacity><FlatList data={reels} keyExtractor={item=>item.postId} pagingEnabled snapToInterval={ITEM_HEIGHT} decelerationRate="fast" renderItem={({item})=><View style={styles.reel}><ReelVideo reel={item} active={activeId===item.postId&&!manuallyPaused.has(item.postId)&&!commentsFor} muted={muted} onToggle={()=>toggle(item.postId)}/><View pointerEvents="none" style={styles.overlay}/><View style={styles.actions}><TouchableOpacity onPress={()=>void like(item.postId)} style={styles.action}><Ionicons name={item.hasLiked?'heart':'heart-outline'} size={29} color={item.hasLiked?'#ef4444':'#fff'}/><Text style={styles.count}>{item.likesCount}</Text></TouchableOpacity><TouchableOpacity onPress={()=>void openComments(item)} style={styles.action}><Ionicons name="chatbubble-outline" size={27} color="#fff"/><Text style={styles.count}>{item.commentsCount}</Text></TouchableOpacity><TouchableOpacity onPress={()=>void save(item.postId)} style={styles.action}><Ionicons name={item.isSaved?'bookmark':'bookmark-outline'} size={27} color={item.isSaved?'#14b8a6':'#fff'}/></TouchableOpacity></View><View style={styles.details}><TouchableOpacity onPress={()=>onOpenProfile?.(item.username)} style={styles.author}>{item.avatarUrl?<Image source={{uri:item.avatarUrl}} style={styles.avatar}/>:<View style={[styles.avatar,styles.fallback]}><Text style={styles.avatarText}>{(item.displayName||item.username).charAt(0).toUpperCase()}</Text></View>}<Text style={styles.username}>@{item.username}</Text></TouchableOpacity>{item.caption?<Text numberOfLines={3} style={styles.caption}>{item.caption}</Text>:null}</View></View>} onViewableItemsChanged={onViewableItemsChanged} viewabilityConfig={viewabilityConfig.current} onEndReached={()=>{if(!isLast&&!loadingMore)void fetchPage(page+1);}} onEndReachedThreshold={0.7} ListFooterComponent={loadingMore?<ActivityIndicator color="#14b8a6"/>:null} ListEmptyComponent={<View style={styles.center}><Text style={styles.mutedText}>No hay Reels disponibles.</Text><TouchableOpacity onPress={()=>void fetchPage(0,true)}><Text style={styles.retry}>Reintentar</Text></TouchableOpacity></View>}/><Modal visible={Boolean(commentsFor)} transparent animationType="slide" onRequestClose={()=>setCommentsFor(null)}><View style={styles.modalBackdrop}><View style={styles.sheet}><View style={styles.sheetHeader}><Text style={styles.sheetTitle}>Comentarios</Text><TouchableOpacity onPress={()=>setCommentsFor(null)}><Ionicons name="close" size={24}/></TouchableOpacity></View><FlatList data={comments} keyExtractor={item=>item.commentId} renderItem={({item})=><View style={styles.comment}>{item.avatarUrl?<Image source={{uri:item.avatarUrl}} style={styles.commentAvatar}/>:<View style={[styles.commentAvatar,styles.fallback]}/>}<View style={{flex:1}}><Text style={styles.commentUser}>@{item.username}</Text><Text>{item.content}</Text></View></View>} ListEmptyComponent={<Text style={styles.emptyComments}>Sé el primero en comentar.</Text>}/><View style={styles.composer}><TextInput value={commentText} onChangeText={setCommentText} placeholder="Escribe un comentario…" style={styles.input}/><TouchableOpacity disabled={!commentText.trim()} onPress={()=>void sendComment()} style={styles.send}><Text style={styles.sendText}>Enviar</Text></TouchableOpacity></View></View></View></Modal></View>;
+export default function ReelsScreen({
+  onOpenProfile,
+}: {
+  onOpenProfile?: (username: string) => void;
+}) {
+  const { api, user } = useAuth();
+  const [reels, setReels] = useState<Reel[]>([]),
+    [loading, setLoading] = useState(true),
+    [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(0),
+    [isLast, setIsLast] = useState(true),
+    [activeId, setActiveId] = useState<string | null>(null),
+    [muted, setMuted] = useState(true);
+  const [manuallyPaused, setManuallyPaused] = useState<Set<string>>(new Set()),
+    [error, setError] = useState("");
+  const [commentsFor, setCommentsFor] = useState<Reel | null>(null),
+    [comments, setComments] = useState<Comment[]>([]),
+    [commentText, setCommentText] = useState("");
+  const loadingRef = useRef(false),
+    viewabilityConfig = useRef({ itemVisiblePercentThreshold: 70 });
+  const fetchPage = useCallback(
+    async (nextPage: number, replace = false) => {
+      if (loadingRef.current) return;
+      loadingRef.current = true;
+      replace ? setLoading(true) : setLoadingMore(true);
+      try {
+        const res = await api.get(`/posts/reels?page=${nextPage}&size=10`);
+        const incoming = res.data?.posts || [];
+        setReels((old) =>
+          replace
+            ? incoming
+            : [
+                ...old,
+                ...incoming.filter(
+                  (item: Reel) =>
+                    !old.some((value) => value.postId === item.postId),
+                ),
+              ],
+        );
+        if (replace && incoming[0]) setActiveId(incoming[0].postId);
+        setPage(nextPage);
+        setIsLast(Boolean(res.data?.isLast));
+        setError("");
+      } catch (requestError) {
+        console.error(requestError);
+        setError("No se pudieron cargar los Reels.");
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [api],
+  );
+  useEffect(() => {
+    void fetchPage(0, true);
+    return () => setActiveId(null);
+  }, [fetchPage]);
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      const item = viewableItems[0]?.item as Reel | undefined;
+      if (item) setActiveId(item.postId);
+    },
+  ).current;
+  const like = async (id: string) => {
+    try {
+      const res = await api.post(`/likes/${id}`);
+      setReels((old) =>
+        old.map((item) =>
+          item.postId === id
+            ? { ...item, hasLiked: res.data.liked, likesCount: res.data.count }
+            : item,
+        ),
+      );
+      setError("");
+    } catch (requestError) {
+      console.error(requestError);
+      setError("No se pudo actualizar el Me gusta.");
+    }
+  };
+  const save = async (id: string) => {
+    try {
+      const res = await api.post(`/posts/${id}/save`);
+      setReels((old) =>
+        old.map((item) =>
+          item.postId === id ? { ...item, isSaved: res.data.saved } : item,
+        ),
+      );
+      setError("");
+    } catch (requestError) {
+      console.error(requestError);
+      setError("No se pudo actualizar Guardados.");
+    }
+  };
+  const openComments = async (reel: Reel) => {
+    setCommentsFor(reel);
+    setComments([]);
+    try {
+      const res = await api.get(`/comments/${reel.postId}`);
+      setComments(res.data || []);
+      setError("");
+    } catch (requestError) {
+      console.error(requestError);
+      setError("No se pudieron cargar los comentarios.");
+    }
+  };
+  const sendComment = async () => {
+    if (!commentsFor || !commentText.trim()) return;
+    try {
+      const res = await api.post(`/comments/${commentsFor.postId}`, {
+        content: commentText.trim(),
+      });
+      setComments((old) => [...old, res.data]);
+      setCommentText("");
+      setReels((old) =>
+        old.map((item) =>
+          item.postId === commentsFor.postId
+            ? { ...item, commentsCount: item.commentsCount + 1 }
+            : item,
+        ),
+      );
+    } catch (requestError) {
+      console.error(requestError);
+      setError("No se pudo publicar. Conservamos tu texto.");
+    }
+  };
+  const toggle = (id: string) =>
+    setManuallyPaused((old) => {
+      const next = new Set(old);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  const deleteReel = (reel: Reel) => {
+    if (reel.userId !== user?.userId) return;
+    Alert.alert(
+      "¿Eliminar este Reel?",
+      "Esta acción no se puede deshacer.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await api.delete(`/posts/${reel.postId}`);
+              setReels((old) => old.filter((item) => item.postId !== reel.postId));
+              setError("");
+            } catch (requestError) {
+              console.error(requestError);
+              setError("No se pudo eliminar el Reel.");
+            }
+          },
+        },
+      ],
+    );
+  };
+  if (loading)
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#14b8a6" />
+      </View>
+    );
+  return (
+    <View style={styles.container}>
+      {error ? (
+        <TouchableOpacity onPress={() => setError("")} style={styles.error}>
+          <Text style={styles.errorText}>{error}</Text>
+        </TouchableOpacity>
+      ) : null}
+      <TouchableOpacity
+        onPress={() => setMuted((value) => !value)}
+        style={styles.mute}
+      >
+        <Ionicons
+          name={muted ? "volume-mute" : "volume-high"}
+          size={23}
+          color="#fff"
+        />
+      </TouchableOpacity>
+      <FlatList
+        data={reels}
+        keyExtractor={(item) => item.postId}
+        pagingEnabled
+        snapToInterval={ITEM_HEIGHT}
+        decelerationRate="fast"
+        renderItem={({ item }) => (
+          <View style={styles.reel}>
+            <ReelVideo
+              reel={item}
+              active={
+                activeId === item.postId &&
+                !manuallyPaused.has(item.postId) &&
+                !commentsFor
+              }
+              muted={muted}
+              onToggle={() => toggle(item.postId)}
+            />
+            <View pointerEvents="none" style={styles.overlay} />
+            <View style={styles.actions}>
+              <TouchableOpacity
+                onPress={() => void like(item.postId)}
+                style={styles.action}
+              >
+                <Ionicons
+                  name={item.hasLiked ? "heart" : "heart-outline"}
+                  size={29}
+                  color={item.hasLiked ? "#ef4444" : "#fff"}
+                />
+                <Text style={styles.count}>{item.likesCount}</Text>
+              </TouchableOpacity>
+              {item.userId === user?.userId ? (
+                <TouchableOpacity
+                  accessibilityLabel="Eliminar Reel"
+                  onPress={() => deleteReel(item)}
+                  style={styles.action}
+                >
+                  <Ionicons name="trash-outline" size={25} color="#fff" />
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                onPress={() => void openComments(item)}
+                style={styles.action}
+              >
+                <Ionicons name="chatbubble-outline" size={27} color="#fff" />
+                <Text style={styles.count}>{item.commentsCount}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void save(item.postId)}
+                style={styles.action}
+              >
+                <Ionicons
+                  name={item.isSaved ? "bookmark" : "bookmark-outline"}
+                  size={27}
+                  color={item.isSaved ? "#14b8a6" : "#fff"}
+                />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.details}>
+              <TouchableOpacity
+                onPress={() => onOpenProfile?.(item.username)}
+                style={styles.author}
+              >
+                <UserAvatar avatarUrl={item.avatarUrl} displayName={item.displayName} username={item.username} size={36} />
+                <Text style={styles.username}>@{item.username}</Text>
+              </TouchableOpacity>
+              {item.caption ? (
+                <Text numberOfLines={3} style={styles.caption}>
+                  {item.caption}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        )}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig.current}
+        onEndReached={() => {
+          if (!isLast && !loadingMore) void fetchPage(page + 1);
+        }}
+        onEndReachedThreshold={0.7}
+        ListFooterComponent={
+          loadingMore ? <ActivityIndicator color="#14b8a6" /> : null
+        }
+        ListEmptyComponent={
+          <View style={styles.center}>
+            <Text style={styles.mutedText}>No hay Reels disponibles.</Text>
+            <TouchableOpacity onPress={() => void fetchPage(0, true)}>
+              <Text style={styles.retry}>Reintentar</Text>
+            </TouchableOpacity>
+          </View>
+        }
+      />
+      <Modal
+        visible={Boolean(commentsFor)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCommentsFor(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Comentarios</Text>
+              <TouchableOpacity onPress={() => setCommentsFor(null)}>
+                <Ionicons name="close" size={24} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={comments}
+              keyExtractor={(item) => item.commentId}
+              renderItem={({ item }) => (
+                <View style={styles.comment}>
+                  {item.avatarUrl ? (
+                    <Image
+                      source={{ uri: item.avatarUrl }}
+                      style={styles.commentAvatar}
+                    />
+                  ) : (
+                    <View style={[styles.commentAvatar, styles.fallback]} />
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.commentUser}>@{item.username}</Text>
+                    <Text>{item.content}</Text>
+                  </View>
+                </View>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.emptyComments}>
+                  Sé el primero en comentar.
+                </Text>
+              }
+            />
+            <View style={styles.composer}>
+              <TextInput
+                value={commentText}
+                onChangeText={setCommentText}
+                placeholder="Escribe un comentario…"
+                style={styles.input}
+              />
+              <TouchableOpacity
+                disabled={!commentText.trim()}
+                onPress={() => void sendComment()}
+                style={styles.send}
+              >
+                <Text style={styles.sendText}>Enviar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
 }
 
-const styles=StyleSheet.create({container:{flex:1,backgroundColor:'#090d16'},center:{flex:1,minHeight:300,alignItems:'center',justifyContent:'center',backgroundColor:'#090d16'},reel:{height:ITEM_HEIGHT,backgroundColor:'#090d16'},placeholder:{...StyleSheet.absoluteFillObject,alignItems:'center',justifyContent:'center'},overlay:{...StyleSheet.absoluteFillObject,backgroundColor:'rgba(0,0,0,.25)'},mute:{position:'absolute',right:15,top:15,zIndex:20,padding:10,backgroundColor:'rgba(0,0,0,.45)',borderRadius:30},actions:{position:'absolute',right:16,bottom:80,gap:22,alignItems:'center'},action:{alignItems:'center'},count:{color:'#fff',fontSize:11,fontWeight:'700'},details:{position:'absolute',left:16,right:75,bottom:26,gap:8},author:{flexDirection:'row',alignItems:'center',gap:9},avatar:{width:36,height:36,borderRadius:18},fallback:{backgroundColor:'#0f766e',alignItems:'center',justifyContent:'center'},avatarText:{color:'#fff',fontWeight:'700'},username:{color:'#fff',fontWeight:'800'},caption:{color:'#fff',fontSize:13},mutedText:{color:'#94a3b8'},retry:{color:'#14b8a6',marginTop:12},error:{backgroundColor:'#7f1d1d',padding:9,zIndex:30},errorText:{color:'#fee2e2',textAlign:'center',fontSize:12},modalBackdrop:{flex:1,justifyContent:'flex-end',backgroundColor:'rgba(0,0,0,.55)'},sheet:{height:'72%',backgroundColor:'#fff',borderTopLeftRadius:24,borderTopRightRadius:24,paddingBottom:16},sheetHeader:{flexDirection:'row',justifyContent:'space-between',padding:16,borderBottomWidth:1,borderColor:'#e2e8f0'},sheetTitle:{fontWeight:'800'},comment:{flexDirection:'row',gap:10,paddingHorizontal:16,paddingVertical:10},commentAvatar:{width:30,height:30,borderRadius:15},commentUser:{fontWeight:'700',fontSize:12},emptyComments:{textAlign:'center',padding:30,color:'#64748b'},composer:{flexDirection:'row',gap:8,padding:12,borderTopWidth:1,borderColor:'#e2e8f0'},input:{flex:1,borderWidth:1,borderColor:'#cbd5e1',borderRadius:12,paddingHorizontal:12},send:{backgroundColor:'#0f766e',borderRadius:12,paddingHorizontal:14,justifyContent:'center'},sendText:{color:'#fff',fontWeight:'700'}});
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#090d16" },
+  center: {
+    flex: 1,
+    minHeight: 300,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#090d16",
+  },
+  reel: { height: ITEM_HEIGHT, backgroundColor: "#090d16" },
+  placeholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,.25)",
+  },
+  mute: {
+    position: "absolute",
+    right: 15,
+    top: 15,
+    zIndex: 20,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,.45)",
+    borderRadius: 30,
+  },
+  actions: {
+    position: "absolute",
+    right: 16,
+    bottom: 80,
+    gap: 22,
+    alignItems: "center",
+  },
+  action: { alignItems: "center" },
+  count: { color: "#fff", fontSize: 11, fontWeight: "700" },
+  details: { position: "absolute", left: 16, right: 75, bottom: 26, gap: 8 },
+  author: { flexDirection: "row", alignItems: "center", gap: 9 },
+  avatar: { width: 36, height: 36, borderRadius: 18 },
+  fallback: {
+    backgroundColor: "#0f766e",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { color: "#fff", fontWeight: "700" },
+  username: { color: "#fff", fontWeight: "800" },
+  caption: { color: "#fff", fontSize: 13 },
+  mutedText: { color: "#94a3b8" },
+  retry: { color: "#14b8a6", marginTop: 12 },
+  error: { backgroundColor: "#7f1d1d", padding: 9, zIndex: 30 },
+  errorText: { color: "#fee2e2", textAlign: "center", fontSize: 12 },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,.55)",
+  },
+  sheet: {
+    height: "72%",
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 16,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  sheetTitle: { fontWeight: "800" },
+  comment: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  commentAvatar: { width: 30, height: 30, borderRadius: 15 },
+  commentUser: { fontWeight: "700", fontSize: 12 },
+  emptyComments: { textAlign: "center", padding: 30, color: "#64748b" },
+  composer: {
+    flexDirection: "row",
+    gap: 8,
+    padding: 12,
+    borderTopWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+  },
+  send: {
+    backgroundColor: "#0f766e",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+  },
+  sendText: { color: "#fff", fontWeight: "700" },
+});
