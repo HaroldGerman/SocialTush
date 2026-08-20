@@ -28,6 +28,7 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
   const [loading, setLoading] = useState(true);
   const [isPrivate, setIsPrivate] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState('');
 
   const targetUsername = username || currentUser?.username;
   const isSelf = !username || username === currentUser?.username;
@@ -58,12 +59,15 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
   }, [targetUsername]);
 
   const handleTogglePrivacy = async (value: boolean) => {
-    setIsPrivate(value);
     setUpdating(true);
+    setUpdateError('');
     try {
-      await api.patch('/profiles/me', { isPrivate: value });
+      const res = await api.put('/profiles/me', { isPrivate: value });
+      setIsPrivate(res.data.isPrivate);
+      setProfile(previous => previous ? { ...previous, isPrivate: res.data.isPrivate } : previous);
     } catch (err) {
-      setIsPrivate(!value);
+      console.error(err);
+      setUpdateError('No se pudo actualizar la privacidad.');
     } finally {
       setUpdating(false);
     }
@@ -117,6 +121,7 @@ export default function ProfileScreen({ username, onLogout, onBack }: ProfileScr
         {isSelf ? (
           <View style={styles.settingsSection}>
             <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>Configuración de Privacidad</Text>
+            {updateError ? <Text style={{ color: theme.danger, fontSize: 12 }}>{updateError}</Text> : null}
 
             <View style={[styles.settingRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.settingInfo}>

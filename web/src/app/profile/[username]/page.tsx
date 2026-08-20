@@ -242,6 +242,7 @@ export default function ProfilePage() {
     e.preventDefault();
     setUpdating(true);
     try {
+      let res;
       if (avatarFile) {
         // Multipart payload
         const formData = new FormData();
@@ -250,7 +251,7 @@ export default function ProfilePage() {
         formData.append('isPrivate', String(editIsPrivate));
         formData.append('avatar', avatarFile);
 
-        const res = await api.patch('/profiles/me', formData, {
+        res = await api.patch('/profiles/me', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
         
@@ -261,20 +262,25 @@ export default function ProfilePage() {
         setAvatarPreview(null);
         setAvatarFile(null);
 
-        // Instantly update navbar and local layout using global context handler
-        updateUserProfile({ displayName: res.data.displayName, avatarUrl: res.data.avatarUrl || undefined });
       } else {
         // Normal JSON payload
-        const res = await api.put('/profiles/me', {
+        res = await api.put('/profiles/me', {
           displayName: editDisplayName,
           bio: editBio,
           isPrivate: editIsPrivate
         });
-        updateUserProfile({ displayName: res.data.displayName, avatarUrl: res.data.avatarUrl || currentUser?.avatarUrl });
       }
-      
+
+      updateUserProfile({ displayName: res.data.displayName, avatarUrl: res.data.avatarUrl || currentUser?.avatarUrl });
+      setProfile(previous => previous ? {
+        ...previous,
+        displayName: res.data.displayName,
+        bio: res.data.bio,
+        avatarUrl: res.data.avatarUrl,
+        isPrivate: res.data.isPrivate,
+      } : previous);
+      setEditIsPrivate(res.data.isPrivate);
       setIsEditing(false);
-      fetchProfile();
     } catch (err: any) {
       alert(err.response?.data?.message || 'Error al actualizar el perfil.');
     } finally {

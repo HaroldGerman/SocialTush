@@ -13,6 +13,7 @@ import com.socialtush.modules.posts.repository.PostRepository;
 import com.socialtush.modules.posts.repository.SavedPostRepository;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
+import com.socialtush.modules.social.repository.FollowRepository;
 import com.socialtush.modules.users.entity.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +36,7 @@ public class PostService {
 
     private final PostRepository postRepository;
     private final ProfileRepository profileRepository;
+    private final FollowRepository followRepository;
     private final LikeRepository likeRepository;
     private final CommentRepository commentRepository;
     private final SavedPostRepository savedPostRepository;
@@ -169,8 +171,13 @@ public class PostService {
     }
 
     public boolean canViewPost(Post post, User viewer) {
-        if (post.getCircle() == null || "PUBLIC".equalsIgnoreCase(post.getCircle().getVisibility())) return true;
-        return viewer != null && circleMemberRepository.existsByCircleIdAndUserId(post.getCircle().getId(), viewer.getId());
+        if (post.getCircle() != null && !"PUBLIC".equalsIgnoreCase(post.getCircle().getVisibility())) {
+            if (viewer == null || !circleMemberRepository.existsByCircleIdAndUserId(post.getCircle().getId(), viewer.getId())) return false;
+        }
+        Profile authorProfile = profileRepository.findById(post.getUser().getId()).orElse(null);
+        if (authorProfile == null || !authorProfile.isPrivate()) return true;
+        return viewer != null && (viewer.getId().equals(post.getUser().getId())
+                || followRepository.existsByFollowerIdAndFollowingId(viewer.getId(), post.getUser().getId()));
     }
 
     public PostDto convertToDto(Post post, User currentUser) {

@@ -95,7 +95,9 @@ public class ProfileController {
         if (request.getAvatarUrl() != null) {
             profile.setAvatarUrl(request.getAvatarUrl());
         }
-        profile.setPrivate(request.isPrivate());
+        if (request.getIsPrivate() != null) {
+            profile.setPrivate(request.getIsPrivate());
+        }
 
         if (request.getWhoCanMessage() != null) {
             profile.setWhoCanMessage(request.getWhoCanMessage());
@@ -252,7 +254,8 @@ public class ProfileController {
         private String displayName;
         private String bio;
         private String avatarUrl;
-        private boolean isPrivate;
+        @JsonProperty("isPrivate")
+        private Boolean isPrivate;
         private String whoCanMessage;
         private String whoCanComment;
         private boolean readReceiptsEnabled = true;
