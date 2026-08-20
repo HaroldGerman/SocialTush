@@ -9,6 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../theme';
 import UserAvatar from '../components/UserAvatar';
 
+type AttachmentType = 'IMAGE'|'VIDEO'|'AUDIO'|'VIEW_ONCE_IMAGE'|'VIEW_ONCE_IMAGE_VIEWED';
+
 interface Message {
   messageId: string;
   senderId: string;
@@ -20,7 +22,7 @@ interface Message {
   createdAt: string;
   readByRecipient?: boolean;
   readReceiptVisible?: boolean;
-  attachments?: Array<{id:string;fileUrl:string;fileType:'IMAGE'|'VIDEO'|'AUDIO';fileName?:string;fileSize?:number;durationSeconds?:number}>;
+  attachments?: Array<{id:string;fileUrl:string;fileType:AttachmentType;fileName?:string;fileSize?:number;durationSeconds?:number;viewOnce?:boolean;viewed?:boolean}>;
   reactions?: Array<{emoji:string;count:number;reactedByMe:boolean}>;
 }
 
@@ -56,6 +58,9 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
   const [loading, setLoading] = useState(true);
   const [sendError, setSendError] = useState('');
   const [selectedMedia,setSelectedMedia]=useState<ImagePicker.ImagePickerAsset|null>(null);
+  const [viewOnceSelected,setViewOnceSelected]=useState(false);
+  const [viewOnceUrl,setViewOnceUrl]=useState<string|null>(null);
+  const [openingViewOnce,setOpeningViewOnce]=useState<string|null>(null);
   const [audioPreview,setAudioPreview]=useState<{uri:string;durationSeconds:number}|null>(null);
   const [sendingMedia,setSendingMedia]=useState(false);
   const [recordingCancelled,setRecordingCancelled]=useState(false);
@@ -145,6 +150,8 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
               }
             } else if(parsed.type==='MESSAGE_REACTION_UPDATED'){
               void fetchMessages();
+            } else if(parsed.type==='VIEW_ONCE_CONSUMED'){
+              setMessages(prev=>prev.map(message=>message.messageId!==parsed.messageId?message:{...message,attachments:message.attachments?.map(attachment=>attachment.id===parsed.attachmentId?{...attachment,fileType:'VIEW_ONCE_IMAGE_VIEWED',viewed:true}:attachment)}));
             } else if (parsed.messageId) {
               setMessages((prev) => {
                 if (prev.some((m) => m.messageId === parsed.messageId)) return prev;
@@ -215,11 +222,12 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
     }
   };
 
-  const pickMedia=async(camera=false)=>{setSendError('');const permission=camera?await ImagePicker.requestCameraPermissionsAsync():await ImagePicker.requestMediaLibraryPermissionsAsync();if(!permission.granted)return setSendError(camera?'No pudimos acceder a la cámara.':'No pudimos acceder a tus fotos.');const result=camera?await ImagePicker.launchCameraAsync({mediaTypes:['images'],quality:.85}):await ImagePicker.launchImageLibraryAsync({mediaTypes:['images','videos'],quality:.85});if(!result.canceled)setSelectedMedia(result.assets[0]);};
+  const pickMedia=async(camera=false)=>{setSendError('');setViewOnceSelected(false);const permission=camera?await ImagePicker.requestCameraPermissionsAsync():await ImagePicker.requestMediaLibraryPermissionsAsync();if(!permission.granted)return setSendError(camera?'No pudimos acceder a la cámara.':'No pudimos acceder a tus fotos.');const result=camera?await ImagePicker.launchCameraAsync({mediaTypes:['images'],quality:.85}):await ImagePicker.launchImageLibraryAsync({mediaTypes:['images','videos'],quality:.85});if(!result.canceled)setSelectedMedia(result.assets[0]);};
   const startRecording=async()=>{setSendError('');const permission=await AudioModule.requestRecordingPermissionsAsync();if(!permission.granted)return setSendError('No pudimos acceder al micrófono.');try{setRecordingCancelled(false);setAudioPreview(null);await setAudioModeAsync({allowsRecording:true,playsInSilentMode:true});await recorder.prepareToRecordAsync();recorder.record();}catch(error){console.error(error);setSendError('No se pudo iniciar la grabación.');}};
   const stopRecording=async(cancel=false)=>{setRecordingCancelled(cancel);try{await recorder.stop();await setAudioModeAsync({allowsRecording:false,playsInSilentMode:true});if(!cancel&&recorder.uri)setAudioPreview({uri:recorder.uri,durationSeconds:Math.max(1,Math.round((recorderState.durationMillis||0)/1000))});}catch(error){console.error(error);if(!cancel)setSendError('No se pudo preparar la nota de voz.');}};
-  const sendMedia=async(kind:'asset'|'audio')=>{const source=kind==='audio'?audioPreview?{uri:audioPreview.uri,name:`voice_${Date.now()}.m4a`,type:'audio/mp4'}:null:selectedMedia?{uri:selectedMedia.uri,name:selectedMedia.fileName||`chat_${Date.now()}.${selectedMedia.type==='video'?'mp4':'jpg'}`,type:selectedMedia.mimeType||(selectedMedia.type==='video'?'video/mp4':'image/jpeg')}:null;if(!source)return;setSendingMedia(true);setSendError('');try{const data=new FormData();data.append('file',{...source,uri:Platform.OS==='ios'?source.uri.replace('file://',''):source.uri} as any);if(inputText.trim())data.append('content',inputText.trim());if(kind==='audio'&&audioPreview)data.append('durationSeconds',String(audioPreview.durationSeconds));const res=conversation.conversationId?await api.post(`/chat/conversations/${conversation.conversationId}/messages/media`,data,{headers:{'Content-Type':'multipart/form-data'}}):await api.post(`/chat/direct/${encodeURIComponent(conversation.otherUsername||'')}/messages/media`,data,{headers:{'Content-Type':'multipart/form-data'}});const message:Message=conversation.conversationId?res.data:res.data.message;if(!conversation.conversationId)onConversationPersisted({...conversation,conversationId:res.data.conversationId,isDraft:false,latestMessage:message.content|| (kind==='audio'?'Nota de voz':'Archivo'),updatedAt:message.createdAt});setMessages(old=>old.some(item=>item.messageId===message.messageId)?old:[...old,message]);setInputText('');if(kind==='audio')setAudioPreview(null);else setSelectedMedia(null);}catch(error:any){console.error(error);setSendError(kind==='audio'?'No se pudo enviar el audio. Reintentar.':'No se pudo enviar el archivo. Reintentar.');}finally{setSendingMedia(false);}};
-  const mediaAttachments=infoMedia?.length?infoMedia:messages.flatMap(message=>message.attachments||[]);
+  const sendMedia=async(kind:'asset'|'audio')=>{const source=kind==='audio'?audioPreview?{uri:audioPreview.uri,name:`voice_${Date.now()}.m4a`,type:'audio/mp4'}:null:selectedMedia?{uri:selectedMedia.uri,name:selectedMedia.fileName||`chat_${Date.now()}.${selectedMedia.type==='video'?'mp4':'jpg'}`,type:selectedMedia.mimeType||(selectedMedia.type==='video'?'video/mp4':'image/jpeg')}:null;if(!source)return;const oneTime=kind==='asset'&&selectedMedia?.type==='image'&&viewOnceSelected&&!conversation.isGroup;setSendingMedia(true);setSendError('');try{const data=new FormData();data.append('file',{...source,uri:Platform.OS==='ios'?source.uri.replace('file://',''):source.uri} as any);if(inputText.trim())data.append('content',inputText.trim());if(kind==='audio'&&audioPreview)data.append('durationSeconds',String(audioPreview.durationSeconds));let endpoint:string;if(oneTime){endpoint=conversation.conversationId?`/chat/view-once/conversations/${conversation.conversationId}/messages`:`/chat/view-once/direct/${encodeURIComponent(conversation.otherUsername||'')}/messages`;}else{endpoint=conversation.conversationId?`/chat/conversations/${conversation.conversationId}/messages/media`:`/chat/direct/${encodeURIComponent(conversation.otherUsername||'')}/messages/media`;}const res=await api.post(endpoint,data,{headers:{'Content-Type':'multipart/form-data'}});const message:Message=conversation.conversationId?res.data:res.data.message;if(!conversation.conversationId)onConversationPersisted({...conversation,conversationId:res.data.conversationId,isDraft:false,latestMessage:message.content||(oneTime?'Foto de una sola vista':kind==='audio'?'Nota de voz':'Archivo'),updatedAt:message.createdAt});setMessages(old=>old.some(item=>item.messageId===message.messageId)?old:[...old,message]);setInputText('');if(kind==='audio')setAudioPreview(null);else{setSelectedMedia(null);setViewOnceSelected(false);}}catch(error:any){console.error(error);setSendError(kind==='audio'?'No se pudo enviar el audio. Reintentar.':oneTime?'No se pudo enviar la foto de una sola vista. Reintentar.':'No se pudo enviar el archivo. Reintentar.');}finally{setSendingMedia(false);}};
+  const openViewOnce=async(message:Message,attachment:NonNullable<Message['attachments']>[number])=>{const isOwn=message.senderUsername===user?.username||message.senderId===user?.userId;if(isOwn||attachment.fileType!=='VIEW_ONCE_IMAGE'||openingViewOnce)return;setOpeningViewOnce(attachment.id);setSendError('');try{const res=await api.post(`/chat/view-once/attachments/${attachment.id}/open`);setMessages(prev=>prev.map(item=>item.messageId!==message.messageId?item:{...item,attachments:item.attachments?.map(candidate=>candidate.id===attachment.id?{...candidate,fileType:'VIEW_ONCE_IMAGE_VIEWED',viewed:true}:candidate)}));setViewOnceUrl(res.data.fileUrl);}catch(error:any){if(error?.response?.status===410){setMessages(prev=>prev.map(item=>item.messageId!==message.messageId?item:{...item,attachments:item.attachments?.map(candidate=>candidate.id===attachment.id?{...candidate,fileType:'VIEW_ONCE_IMAGE_VIEWED',viewed:true}:candidate)}));setSendError('Esta foto ya fue vista.');}else setSendError(error?.response?.data?.message||'No se pudo abrir la foto.');}finally{setOpeningViewOnce(null);}};
+  const mediaAttachments=(infoMedia?.length?infoMedia:messages.flatMap(message=>message.attachments||[])).filter(item=>!item.fileType.startsWith('VIEW_ONCE_'));
   const toggleReaction=async(message:Message,emoji:string)=>{try{const mine=message.reactions?.find(item=>item.reactedByMe);if(mine?.emoji===emoji)await api.delete(`/chat/messages/${message.messageId}/reaction`);else await api.put(`/chat/messages/${message.messageId}/reaction`,{emoji});await fetchMessages();setReactionMessageId(null);}catch{setSendError('No se pudo actualizar la reacción.');}};
   const togglePin=async()=>{if(!conversation.conversationId)return;try{conversation.isPinned?await api.delete(`/chat/conversations/${conversation.conversationId}/pin`):await api.patch(`/chat/conversations/${conversation.conversationId}/pin`);onConversationPersisted({...conversation,isPinned:!conversation.isPinned});}catch{setSendError('No se pudo cambiar el anclado.');}};
   const saveNickname=async()=>{if(!conversation.conversationId)return;try{await api.patch(`/chat/conversations/${conversation.conversationId}/nickname`,{nickname});onConversationPersisted({...conversation,nickname:nickname.trim()||undefined,name:nickname.trim()||conversation.name});}catch{setSendError('No se pudo guardar el apodo.');}};
@@ -250,7 +258,13 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
             ? [styles.ownBubble, { backgroundColor: theme.primary }] 
             : [styles.otherBubble, { backgroundColor: theme.surface, borderColor: theme.border }]
         ]}>
-          {item.attachments?.map(attachment=>attachment.fileType==='IMAGE'?<Image key={attachment.id} source={{uri:attachment.fileUrl}} style={styles.attachmentImage} resizeMode="cover"/>:attachment.fileType==='VIDEO'?<ChatVideo key={attachment.id} uri={attachment.fileUrl}/>:<ChatAudio key={attachment.id} uri={attachment.fileUrl} duration={attachment.durationSeconds}/>)}
+          {item.attachments?.map(attachment=>{
+            if(attachment.fileType==='IMAGE')return <Image key={attachment.id} source={{uri:attachment.fileUrl}} style={styles.attachmentImage} resizeMode="cover"/>;
+            if(attachment.fileType==='VIDEO')return <ChatVideo key={attachment.id} uri={attachment.fileUrl}/>;
+            if(attachment.fileType==='AUDIO')return <ChatAudio key={attachment.id} uri={attachment.fileUrl} duration={attachment.durationSeconds}/>;
+            const consumed=attachment.fileType==='VIEW_ONCE_IMAGE_VIEWED';
+            return <TouchableOpacity key={attachment.id} disabled={consumed||isOwn||openingViewOnce===attachment.id} onPress={()=>void openViewOnce(item,attachment)} style={[styles.viewOnceCard,{borderColor:isOwn?'#ffffff55':theme.border,backgroundColor:isOwn?'#ffffff18':theme.background}]}>{openingViewOnce===attachment.id?<ActivityIndicator color={isOwn?'#fff':theme.accent}/>:<Ionicons name={consumed?'eye-off-outline':'eye-outline'} size={25} color={isOwn?'#fff':theme.accent}/>}<View style={{flex:1}}><Text style={{color:isOwn?'#fff':theme.textPrimary,fontWeight:'900',fontSize:13}}>{consumed?'Foto vista':'Foto de una sola vista'}</Text><Text style={{color:isOwn?'#ffffffaa':theme.textMuted,fontSize:10,marginTop:2}}>{consumed?'Ya no se puede volver a abrir':isOwn?'Esperando a que la vea':'Toca para verla una vez'}</Text></View></TouchableOpacity>;
+          })}
           {item.content ? <Text style={[styles.messageText, isOwn ? styles.ownText : [styles.otherText, { color: theme.textPrimary }]]}>
             {item.content}
           </Text> : null}
@@ -280,12 +294,10 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
       style={[styles.container, { backgroundColor: themedBackground }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Header */}
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>
           <Ionicons name="arrow-back" size={22} color={theme.textPrimary} />
         </TouchableOpacity>
-        
         <TouchableOpacity style={styles.headerIdentity} onPress={()=>setShowInfo(true)} accessibilityLabel="Abrir información de la conversación">
           <UserAvatar avatarUrl={conversation.avatarUrl} displayName={conversation.name} username={conversation.otherUsername} size={38}/>
           <View style={styles.headerInfo}><Text style={[styles.title, { color: theme.textPrimary }]}>{conversation.name}</Text>{conversation.otherUsername?<Text style={[styles.status, { color: presence?.online?theme.accent:theme.textSecondary }]}>{presence?.online?'Disponible':`@${conversation.otherUsername}`}</Text>:null}</View>
@@ -293,7 +305,6 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
         <TouchableOpacity onPress={()=>setShowInfo(true)} style={styles.infoButton} accessibilityLabel="Abrir información"><Ionicons name="ellipsis-vertical" size={20} color={theme.textPrimary}/></TouchableOpacity>
       </View>
 
-      {/* Messages */}
       <FlatList
         data={messages}
         keyExtractor={(item) => item.messageId}
@@ -308,11 +319,10 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
         }
       />
 
-      {/* Input */}
       {sendError ? <Text style={[styles.sendError, { color: theme.danger }]}>{sendError}</Text> : null}
       {recorderState.isRecording?<View style={[styles.recording,{backgroundColor:theme.surface,borderColor:theme.border}]}><Text style={{color:theme.danger,fontWeight:'800'}}>● Grabando… {formatDuration(Math.floor((recorderState.durationMillis||0)/1000))}</Text><View style={styles.recordActions}><TouchableOpacity onPress={()=>void stopRecording(true)}><Text style={{color:theme.danger,fontWeight:'800'}}>Cancelar</Text></TouchableOpacity><TouchableOpacity onPress={()=>void stopRecording(false)} style={[styles.stop,{backgroundColor:theme.primary}]}><Text style={{color:'#fff',fontWeight:'800'}}>Detener</Text></TouchableOpacity></View></View>:null}
       {audioPreview&&!recorderState.isRecording?<View style={[styles.preview,{backgroundColor:theme.surface,borderColor:theme.border}]}><ChatAudio uri={audioPreview.uri} duration={audioPreview.durationSeconds}/><TouchableOpacity disabled={sendingMedia} onPress={()=>setAudioPreview(null)}><Text style={{color:theme.danger,fontWeight:'800'}}>Quitar</Text></TouchableOpacity><TouchableOpacity disabled={sendingMedia} onPress={()=>void sendMedia('audio')} style={[styles.audioSend,{backgroundColor:theme.primary}]}>{sendingMedia?<ActivityIndicator color="#fff"/>:<Text style={{color:'#fff',fontWeight:'800'}}>Enviar audio ➤</Text>}</TouchableOpacity></View>:null}
-      {selectedMedia?<View style={[styles.preview,{backgroundColor:theme.surface,borderColor:theme.border}]}>{selectedMedia.type==='image'?<Image source={{uri:selectedMedia.uri}} style={styles.selectedThumb}/>:<Ionicons name="videocam" size={30} color={theme.accent}/>}<Text numberOfLines={1} style={{color:theme.textSecondary,flex:1}}>{selectedMedia.fileName||'Archivo seleccionado'}</Text><TouchableOpacity onPress={()=>setSelectedMedia(null)}><Ionicons name="close-circle" size={24} color={theme.danger}/></TouchableOpacity><TouchableOpacity disabled={sendingMedia} onPress={()=>void sendMedia('asset')} style={[styles.audioSend,{backgroundColor:theme.primary}]}><Ionicons name="send" size={17} color="#fff"/></TouchableOpacity></View>:null}
+      {selectedMedia?<><View style={[styles.preview,{backgroundColor:theme.surface,borderColor:theme.border}]}>{selectedMedia.type==='image'?<Image source={{uri:selectedMedia.uri}} style={styles.selectedThumb}/>:<Ionicons name="videocam" size={30} color={theme.accent}/>}<Text numberOfLines={1} style={{color:theme.textSecondary,flex:1}}>{selectedMedia.fileName||'Archivo seleccionado'}</Text><TouchableOpacity onPress={()=>{setSelectedMedia(null);setViewOnceSelected(false);}}><Ionicons name="close-circle" size={24} color={theme.danger}/></TouchableOpacity><TouchableOpacity disabled={sendingMedia} onPress={()=>void sendMedia('asset')} style={[styles.audioSend,{backgroundColor:theme.primary}]}><Ionicons name="send" size={17} color="#fff"/></TouchableOpacity></View>{selectedMedia.type==='image'&&!conversation.isGroup?<TouchableOpacity onPress={()=>setViewOnceSelected(value=>!value)} style={[styles.viewOnceToggle,{backgroundColor:theme.surface,borderColor:viewOnceSelected?theme.accent:theme.border}]}><View style={[styles.viewOnceIcon,{backgroundColor:viewOnceSelected?theme.primary:theme.background}]}><Ionicons name={viewOnceSelected?'eye':'eye-outline'} size={18} color={viewOnceSelected?'#fff':theme.accent}/></View><View style={{flex:1}}><Text style={{color:theme.textPrimary,fontWeight:'900',fontSize:12}}>Ver una vez</Text><Text style={{color:theme.textMuted,fontSize:10}}>La foto desaparecerá del chat después de abrirse.</Text></View><Ionicons name={viewOnceSelected?'checkmark-circle':'ellipse-outline'} size={21} color={viewOnceSelected?theme.accent:theme.textMuted}/></TouchableOpacity>:null}</>:null}
       <View style={[styles.inputRow, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
         <TouchableOpacity disabled={recorderState.isRecording} onPress={()=>void pickMedia(false)}><Ionicons name="image-outline" size={22} color={theme.textMuted}/></TouchableOpacity>
         <TouchableOpacity disabled={recorderState.isRecording} onPress={()=>void pickMedia(true)}><Ionicons name="camera-outline" size={22} color={theme.textMuted}/></TouchableOpacity>
@@ -328,6 +338,12 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
           <Ionicons name="send" size={16} color="#ffffff" />
         </TouchableOpacity>
       </View>
+      <Modal visible={Boolean(viewOnceUrl)} animationType="fade" onRequestClose={()=>setViewOnceUrl(null)}>
+        <View style={styles.viewOnceViewer}>
+          {viewOnceUrl?<Image source={{uri:viewOnceUrl}} style={StyleSheet.absoluteFill} resizeMode="contain"/>:null}
+          <View style={styles.viewOnceViewerTop}><View><Text style={styles.viewOnceViewerTitle}>Una sola vista</Text><Text style={styles.viewOnceViewerHint}>Al cerrar no podrás volver a abrir esta foto.</Text></View><TouchableOpacity onPress={()=>setViewOnceUrl(null)} style={styles.viewOnceClose}><Ionicons name="close" size={28} color="#fff"/></TouchableOpacity></View>
+        </View>
+      </Modal>
       <Modal visible={showInfo} animationType="slide" onRequestClose={()=>setShowInfo(false)}>
         <ScrollView style={{backgroundColor:theme.background}} contentContainerStyle={styles.infoContent}>
           <View style={styles.infoTop}><TouchableOpacity onPress={()=>setShowInfo(false)} accessibilityLabel="Volver"><Ionicons name="arrow-back" size={23} color={theme.textPrimary}/></TouchableOpacity><Text style={[styles.infoTitle,{color:theme.textPrimary}]}>Información</Text><View style={{width:23}}/></View>
@@ -350,125 +366,51 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  backBtn: {
-    padding: 4,
-  },
+  container: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  backBtn: { padding: 4 },
   headerIdentity:{flex:1,flexDirection:'row',alignItems:'center',gap:10,marginHorizontal:8},
   headerInfo: {alignItems:'flex-start'},
-  title: {
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  status: {
-    fontSize: 11,
-    marginTop: 1,
-  },
+  title: { fontSize: 15, fontWeight: 'bold' },
+  status: { fontSize: 11, marginTop: 1 },
   infoButton:{width:40,height:40,alignItems:'center',justifyContent:'center'},
-  messageRow: {
-    marginVertical: 4,
-    maxWidth: '80%',
-  },
-  ownRow: {
-    alignSelf: 'flex-end',
-    alignItems: 'flex-end',
-  },
-  otherRow: {
-    alignSelf: 'flex-start',
-    alignItems: 'flex-start',
-  },
-  bubble: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 16,
-  },
-  ownBubble: {
-    borderTopRightRadius: 2,
-  },
-  otherBubble: {
-    borderWidth: 1,
-    borderTopLeftRadius: 2,
-  },
-  messageText: {
-    fontSize: 14,
-    lineHeight: 19,
-  },
-  ownText: {
-    color: '#ffffff',
-  },
+  messageRow: { marginVertical: 4, maxWidth: '80%' },
+  ownRow: { alignSelf: 'flex-end', alignItems: 'flex-end' },
+  otherRow: { alignSelf: 'flex-start', alignItems: 'flex-start' },
+  bubble: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 16 },
+  ownBubble: { borderTopRightRadius: 2 },
+  otherBubble: { borderWidth: 1, borderTopLeftRadius: 2 },
+  messageText: { fontSize: 14, lineHeight: 19 },
+  ownText: { color: '#ffffff' },
   otherText: {},
-  senderName: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginBottom: 2,
-  },
-  receipt: {
-    fontSize: 10,
-    marginTop: 3,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    padding: 12,
-    borderTopWidth: 1,
-    gap: 10,alignItems:'center',
-  },
-  input: {
-    flex: 1,
-    height: 44,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    fontSize: 14,
-  },
-  sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendError: {
-    fontSize: 12,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  emptyContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  emptySub: {
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  attachmentImage:{width:220,height:220,borderRadius:12,marginBottom:6},attachmentVideo:{width:240,height:220,borderRadius:12,backgroundColor:'#000'},audio:{minWidth:190,flexDirection:'row',alignItems:'center',gap:10,paddingVertical:4},recording:{borderTopWidth:1,padding:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},recordActions:{flexDirection:'row',alignItems:'center',gap:15},stop:{paddingHorizontal:15,paddingVertical:8,borderRadius:10},preview:{borderTopWidth:1,padding:10,flexDirection:'row',alignItems:'center',gap:10},selectedThumb:{width:44,height:44,borderRadius:9},audioSend:{minHeight:38,paddingHorizontal:13,borderRadius:11,alignItems:'center',justifyContent:'center'},
+  senderName: { fontSize: 10, fontWeight: 'bold', marginBottom: 2 },
+  receipt: { fontSize: 10, marginTop: 3 },
+  inputRow: { flexDirection: 'row', padding: 12, borderTopWidth: 1, gap: 10,alignItems:'center' },
+  input: { flex: 1, height: 44, borderWidth: 1, borderRadius: 14, paddingHorizontal: 16, fontSize: 14 },
+  sendBtn: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  sendError: { fontSize: 12, paddingHorizontal: 16, paddingTop: 8 },
+  emptyContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  emptyState: { alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontSize: 15, fontWeight: 'bold', marginTop: 10, marginBottom: 4 },
+  emptySub: { fontSize: 12, textAlign: 'center' },
+  attachmentImage:{width:220,height:220,borderRadius:12,marginBottom:6},
+  attachmentVideo:{width:240,height:220,borderRadius:12,backgroundColor:'#000'},
+  audio:{minWidth:190,flexDirection:'row',alignItems:'center',gap:10,paddingVertical:4},
+  recording:{borderTopWidth:1,padding:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
+  recordActions:{flexDirection:'row',alignItems:'center',gap:15},
+  stop:{paddingHorizontal:15,paddingVertical:8,borderRadius:10},
+  preview:{borderTopWidth:1,padding:10,flexDirection:'row',alignItems:'center',gap:10},
+  selectedThumb:{width:44,height:44,borderRadius:9},
+  audioSend:{minHeight:38,paddingHorizontal:13,borderRadius:11,alignItems:'center',justifyContent:'center'},
+  viewOnceToggle:{marginHorizontal:10,marginBottom:8,borderWidth:1,borderRadius:15,padding:10,flexDirection:'row',alignItems:'center',gap:10},
+  viewOnceIcon:{width:36,height:36,borderRadius:18,alignItems:'center',justifyContent:'center'},
+  viewOnceCard:{minWidth:218,borderWidth:1,borderRadius:14,padding:12,flexDirection:'row',alignItems:'center',gap:10,marginBottom:4},
+  viewOnceViewer:{flex:1,backgroundColor:'#020807'},
+  viewOnceViewerTop:{position:'absolute',top:0,left:0,right:0,paddingTop:46,paddingHorizontal:18,paddingBottom:16,backgroundColor:'#0008',flexDirection:'row',justifyContent:'space-between',alignItems:'center'},
+  viewOnceViewerTitle:{color:'#fff',fontSize:16,fontWeight:'900'},
+  viewOnceViewerHint:{color:'#ffffffaa',fontSize:10,marginTop:3},
+  viewOnceClose:{width:44,height:44,borderRadius:22,backgroundColor:'#ffffff18',alignItems:'center',justifyContent:'center'},
   infoContent:{padding:18,paddingBottom:42},infoTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:10},infoTitle:{fontSize:15,fontWeight:'900'},infoHero:{height:250,borderWidth:1,borderRadius:28,alignItems:'center',justifyContent:'center',overflow:'hidden',marginTop:10},halo:{position:'absolute',width:260,height:160,borderRadius:130,backgroundColor:'rgba(20,184,166,.22)',transform:[{scaleX:1.5}]},infoName:{fontSize:20,fontWeight:'900',marginTop:12},infoSection:{fontSize:13,fontWeight:'900',marginTop:24,marginBottom:12},mediaRail:{gap:8},mediaTile:{width:76,height:76,borderRadius:14},mediaType:{alignItems:'center',justifyContent:'center',gap:5},infoCard:{borderWidth:1,borderRadius:18,padding:16,marginTop:22},infoOption:{flexDirection:'row',alignItems:'center',gap:12},deleteOption:{borderWidth:1,borderRadius:18,padding:16,marginTop:12,flexDirection:'row',alignItems:'center',gap:12},
   reactionRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:3},reactionChip:{borderWidth:1,borderRadius:14,paddingHorizontal:7,paddingVertical:3},reactionAdd:{padding:4},reactionPicker:{flexDirection:'row',gap:8,borderWidth:1,borderRadius:20,paddingHorizontal:10,paddingVertical:6,marginTop:5},optionLabel:{fontSize:10,fontWeight:'900',marginBottom:9},nicknameRow:{flexDirection:'row',gap:8},nicknameInput:{flex:1,borderWidth:1,borderRadius:12,paddingHorizontal:11,height:42},smallButton:{borderRadius:12,paddingHorizontal:12,justifyContent:'center'},smallButtonText:{color:'#fff',fontSize:11,fontWeight:'800'},themeChip:{borderWidth:1,borderRadius:16,paddingHorizontal:12,paddingVertical:8},
   commonCircle:{width:64,alignItems:'center',gap:5},
