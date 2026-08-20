@@ -8,18 +8,22 @@ import com.socialtush.modules.users.entity.User;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final ProfileRepository profileRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final ApplicationEventPublisher eventPublisher;
 
     public void createNotification(User receiver, User sender, String type, UUID targetId) {
         if (receiver.getId().equals(sender.getId())) {
@@ -51,6 +55,16 @@ public class NotificationService {
 
         // 3. Push real-time alert via WebSocket STOMP topic specific to receiver username
         messagingTemplate.convertAndSend("/topic/user." + receiver.getUsername() + ".notifications", dto);
+
+        // Web Push delivery is handled asynchronously after the surrounding transaction commits.
+        try {
+            eventPublisher.publishEvent(new NotificationCreatedEvent(
+                    receiver.getId(), notification.getId(), notification.getNotificationType(),
+                    notification.getTargetId(), sender.getUsername()));
+        } catch (RuntimeException exception) {
+            // Push delivery is best-effort and must never invalidate the stored notification.
+            log.warn("No se pudo programar Web Push para notification {}", notification.getId(), exception);
+        }
     }
 
     @Data

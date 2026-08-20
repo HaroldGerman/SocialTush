@@ -147,6 +147,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      // Remove only this browser endpoint from the authenticated user before
+      // invalidating the session. Keep the browser subscription reusable.
+      if ('serviceWorker' in navigator && 'PushManager' in window) {
+        const registration = await navigator.serviceWorker.getRegistration('/');
+        const subscription = await registration?.pushManager.getSubscription();
+        if (subscription) {
+          try {
+            await api.delete('/push/web/subscriptions', { data: { endpoint: subscription.endpoint } });
+          } catch (pushError: any) {
+            if (pushError?.response?.status !== 404) console.error('Web Push logout cleanup:', pushError);
+          } finally {
+            // Invalidating the browser capability prevents pushes for the old
+            // account even if backend cleanup was temporarily unavailable.
+            try { await subscription.unsubscribe(); } catch (unsubscribeError) {
+              console.error('Web Push browser unsubscribe:', unsubscribeError);
+            }
+          }
+        }
+      }
       await api.post('/auth/logout');
     } catch (err) {
       // Ignore network errors on logout

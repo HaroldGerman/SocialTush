@@ -1,0 +1,13 @@
+{
+  "name": "Lifonk",
+  "short_name": "Lifonk",
+  "description": "Conecta, comparte Momentos y conversa en Lifonk.",
+  "start_url": "/feed",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f766e",
+  "icons": [
+    { "src": "/icons/lifonk.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

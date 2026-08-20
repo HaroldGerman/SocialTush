@@ -3,10 +3,17 @@ import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { CreateHubProvider } from "@/context/CreateHubContext";
 import "./globals.css";
+import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 
 export const metadata: Metadata = {
   title: "Lifonk - Premium Social Network & Chat",
   description: "Connect, chat, share posts and stories in a premium, ultra-fast platform.",
+  manifest: "/manifest.webmanifest",
+  applicationName: "Lifonk",
+  themeColor: "#0f766e",
+  icons: {
+    icon: "/icons/lifonk.svg",
+  },
 };
 
 export default function RootLayout({
@@ -36,6 +43,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] transition-colors duration-200">
+        <ServiceWorkerRegistrar />
         <ThemeProvider>
           <AuthProvider>
             <CreateHubProvider>
