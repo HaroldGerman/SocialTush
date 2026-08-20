@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, TextInput, FlatList, TouchableOpacity, Activity
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../theme';
+import UserAvatar from '../components/UserAvatar';
 
 interface UserResult {
   username: string;
@@ -31,12 +32,14 @@ export default function SearchScreen({ onSelectUser, onSelectCircle, onClose }: 
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UserResult[]>([]);
   const [circles, setCircles] = useState<CircleResult[]>([]);
+  const [error,setError]=useState('');
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!query.trim()) {
       setUsers([]);
       setCircles([]);
+      setError('');
       return;
     }
 
@@ -48,9 +51,9 @@ export default function SearchScreen({ onSelectUser, onSelectCircle, onClose }: 
         const res = await api.get(`/search?query=${encodeURIComponent(query.trim())}`);
         setUsers(res.data.users || []);
         setCircles(res.data.circles || []);
+        setError('');
       } catch (err) {
-        setUsers([]);
-        setCircles([]);
+        console.error(err);setError('No se pudo realizar la búsqueda.');
       } finally {
         setLoading(false);
       }
@@ -90,7 +93,7 @@ export default function SearchScreen({ onSelectUser, onSelectCircle, onClose }: 
         <View style={styles.center}>
           <ActivityIndicator size="small" color={theme.accent} />
         </View>
-      ) : query.trim() && users.length === 0 && circles.length === 0 ? (
+      ) : error ? <View style={styles.emptyState}><Ionicons name="alert-circle-outline" size={40} color={theme.textMuted}/><Text style={[styles.emptyTitle,{color:theme.textPrimary}]}>{error}</Text><TouchableOpacity onPress={()=>setQuery(value=>`${value} `)}><Text style={{color:theme.accent,marginTop:8}}>Reintentar</Text></TouchableOpacity></View> : query.trim() && users.length === 0 && circles.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons name="search-outline" size={40} color={theme.textMuted} />
           <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Sin resultados</Text>
@@ -112,11 +115,7 @@ export default function SearchScreen({ onSelectUser, onSelectCircle, onClose }: 
                   style={[styles.resultCard, { borderBottomColor: theme.border }]}
                   onPress={() => { onSelectUser(u.username); onClose(); }}
                 >
-                  <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
-                    <Text style={styles.avatarText}>
-                      {(u.displayName || u.username).charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
+                  <UserAvatar avatarUrl={u.avatarUrl} displayName={u.displayName} username={u.username} size={42}/>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.title, { color: theme.textPrimary }]}>{u.displayName || u.username}</Text>
                     <Text style={[styles.subtitle, { color: theme.textSecondary }]}>@{u.username}</Text>

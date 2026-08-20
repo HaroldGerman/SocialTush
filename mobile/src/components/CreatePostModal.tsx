@@ -4,6 +4,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
+import { useVideoPlayer, VideoView } from 'expo-video';
+
+function PreviewVideo({uri}:{uri:string}){const player=useVideoPlayer(uri);return <VideoView player={player} nativeControls contentFit="contain" style={styles.imagePreview}/>;}
 
 interface CreatePostModalProps {
   visible: boolean;
@@ -45,6 +48,11 @@ export default function CreatePostModal({ visible, onClose, onPostCreated }: Cre
     } catch (err) {
       setErrorMsg('Error al seleccionar archivo.');
     }
+  };
+
+  const handleCamera = async () => {
+    try { const permission=await ImagePicker.requestCameraPermissionsAsync(); if(!permission.granted){setErrorMsg('Permiso de cámara denegado.');return;} const result=await ImagePicker.launchCameraAsync({mediaTypes:['images'],quality:.85}); if(!result.canceled)setSelectedAsset(result.assets[0]); }
+    catch(error){console.error(error);setErrorMsg('No se pudo abrir la cámara.');}
   };
 
   const handlePublish = async () => {
@@ -154,10 +162,7 @@ export default function CreatePostModal({ visible, onClose, onPostCreated }: Cre
             {selectedAsset ? (
               <View style={[styles.previewBox, { borderColor: theme.border }]}>
                 {selectedAsset.type === 'video' ? (
-                  <View style={styles.videoPreviewPlaceholder}>
-                    <Ionicons name="videocam" size={32} color={theme.primary} />
-                    <Text style={[styles.previewText, { color: theme.textPrimary }]}>Video seleccionado</Text>
-                  </View>
+                  <PreviewVideo uri={selectedAsset.uri}/>
                 ) : (
                   <Image source={{ uri: selectedAsset.uri }} style={styles.imagePreview} resizeMode="cover" />
                 )}
@@ -169,6 +174,7 @@ export default function CreatePostModal({ visible, onClose, onPostCreated }: Cre
 
             {/* Action Bar: Add Photo/Video */}
             <View style={styles.actionsRow}>
+              <TouchableOpacity style={[styles.actionOptionBtn,{backgroundColor:theme.surfaceSecondary,borderColor:theme.border}]} onPress={()=>void handleCamera()}><Ionicons name="camera-outline" size={20} color={theme.accent}/><Text style={[styles.actionOptionText,{color:theme.textPrimary}]}>Cámara</Text></TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.actionOptionBtn, { backgroundColor: theme.surfaceSecondary, borderColor: theme.border }]}
                 onPress={() => handlePickMedia('image')}
