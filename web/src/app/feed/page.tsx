@@ -125,6 +125,12 @@ export default function FeedPage() {
     return () => window.removeEventListener('socialtush:story-published', refreshStories);
   }, []);
 
+  useEffect(() => {
+    const refreshPosts = () => { void fetchFeedPosts(); };
+    window.addEventListener('socialtush:post-published', refreshPosts);
+    return () => window.removeEventListener('socialtush:post-published', refreshPosts);
+  }, []);
+
   const fetchFeedPosts = async () => {
     setLoadingPosts(true);
     try {
@@ -350,7 +356,7 @@ export default function FeedPage() {
                 </span>
               )}
             </Link>
-            <Link href={`/profile/${user?.username || 'usuario_A'}`} className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium text-xs transition-all">
+            <Link href={user ? `/profile/${user.username}` : '/login'} className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium text-xs transition-all">
               <User className="w-4 h-4" />
               <span>Perfil</span>
             </Link>
@@ -449,7 +455,7 @@ export default function FeedPage() {
             <NotificationBell />
 
             {/* Profile Avatar */}
-            <Link href={`/profile/${user?.username || 'usuario_A'}`} className="flex items-center gap-2">
+            <Link href={user ? `/profile/${user.username}` : '/login'} className="flex items-center gap-2">
               <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-teal-700 to-emerald-600 p-[2px]">
                 <UserAvatar avatarUrl={user?.avatarUrl} name={user?.displayName || user?.username} className="w-full h-full rounded-full text-xs" />
               </div>
@@ -554,7 +560,7 @@ export default function FeedPage() {
               <MessageSquare className="w-4 h-4 text-slate-500" />
               <span>Mensajes</span>
             </Link>
-            <Link href={`/profile/${user?.username || 'usuario_A'}`} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800/50 font-semibold text-xs transition-all">
+            <Link href={user ? `/profile/${user.username}` : '/login'} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800/50 font-semibold text-xs transition-all">
               <User className="w-4 h-4 text-slate-500" />
               <span>Mi perfil</span>
             </Link>

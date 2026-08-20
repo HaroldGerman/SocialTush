@@ -48,7 +48,7 @@ export default function CirclesScreen() {
   };
 
   const renderCircleItem = ({ item }: { item: Circle }) => (
-    <TouchableOpacity style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <TouchableOpacity disabled accessibilityLabel="Detalle de círculo, disponible en web" style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, opacity: 0.75 }]}>
       <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
         <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
       </View>

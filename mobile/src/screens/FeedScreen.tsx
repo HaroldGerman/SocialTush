@@ -35,9 +35,10 @@ interface FeedScreenProps {
   onOpenProfile?: () => void;
   onOpenUser?: (username: string) => void;
   onOpenCircle?: (slug: string) => void;
+  onOpenReels?: () => void;
 }
 
-export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenUser, onOpenCircle }: FeedScreenProps) {
+export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenUser, onOpenCircle, onOpenReels }: FeedScreenProps) {
   const { api, user } = useAuth();
   const { theme } = useAppTheme();
   
@@ -47,6 +48,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
   const [refreshing, setRefreshing] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [failedImageUrls, setFailedImageUrls] = useState<Record<string, boolean>>({});
+  const [actionError, setActionError] = useState('');
 
   const fetchFeed = useCallback(async (clear = false) => {
     try {
@@ -93,12 +95,8 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
         return p;
       }));
     } catch (err) {
-      setPosts(prev => prev.map(p => {
-        if (p.postId === postId) {
-          return { ...p, hasLiked: !p.hasLiked, likesCount: p.hasLiked ? p.likesCount - 1 : p.likesCount + 1 };
-        }
-        return p;
-      }));
+      console.error(err);
+      setActionError('No se pudo actualizar el Me gusta.');
     }
   };
 
@@ -112,12 +110,8 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
         return p;
       }));
     } catch (err) {
-      setPosts(prev => prev.map(p => {
-        if (p.postId === postId) {
-          return { ...p, isSaved: !p.isSaved };
-        }
-        return p;
-      }));
+      console.error(err);
+      setActionError('No se pudo actualizar Guardados.');
     }
   };
 
@@ -159,7 +153,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
             {item.location ? (
               <Text style={[styles.locationText, { color: theme.textMuted }]}>{item.location}</Text>
             ) : null}
-            <TouchableOpacity>
+            <TouchableOpacity disabled accessibilityLabel="Opciones de publicación, disponible próximamente" style={{ opacity: 0.45 }}>
               <Ionicons name="ellipsis-horizontal" size={18} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
@@ -209,7 +203,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
             </TouchableOpacity>
 
             {/* Comment */}
-            <TouchableOpacity style={styles.actionBtn}>
+            <TouchableOpacity disabled accessibilityLabel="Comentarios, disponibles próximamente" style={[styles.actionBtn, { opacity: 0.45 }]}>
               <Ionicons name="chatbubble-outline" size={20} color={theme.textSecondary} />
               <Text style={[styles.actionLabel, { color: theme.textSecondary }]}>{item.commentsCount}</Text>
             </TouchableOpacity>
@@ -243,6 +237,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {actionError ? <TouchableOpacity onPress={() => setActionError('')} style={{ backgroundColor: '#7f1d1d', padding: 9 }}><Text style={{ color: '#fee2e2', textAlign: 'center', fontSize: 12 }}>{actionError}</Text></TouchableOpacity> : null}
       {/* Top Header Navigation Bar */}
       <View style={[styles.topNav, { borderBottomColor: theme.border }]}>
         <View style={styles.brandContainer}>
@@ -253,6 +248,13 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
         </View>
 
         <View style={styles.topNavActions}>
+          <TouchableOpacity
+            style={[styles.navIconBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            onPress={onOpenReels}
+            disabled={!onOpenReels}
+          >
+            <Ionicons name="play-circle-outline" size={20} color={theme.textSecondary} />
+          </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.navIconBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} 
             onPress={() => setShowSearch(true)}
@@ -286,7 +288,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
           data={stories}
           keyExtractor={(item) => item.userId}
           ListHeaderComponent={
-            <TouchableOpacity style={styles.createStoryBtn}>
+            <TouchableOpacity disabled accessibilityLabel="Crear historia, disponible en web" style={[styles.createStoryBtn, { opacity: 0.5 }]}>
               <View style={[styles.createStoryCircle, { borderColor: theme.accent, backgroundColor: theme.surface }]}>
                 <Ionicons name="add" size={20} color={theme.accent} />
               </View>
@@ -294,7 +296,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
             </TouchableOpacity>
           }
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.storyBtn}>
+            <TouchableOpacity disabled accessibilityLabel="Ver historia, disponible en web" style={[styles.storyBtn, { opacity: 0.5 }]}>
               <View style={[styles.storyOuterCircle, { backgroundColor: theme.primary }]}>
                 <View style={[styles.storyInnerCircle, { backgroundColor: theme.background }]}>
                   <Text style={styles.storyAvatarText}>

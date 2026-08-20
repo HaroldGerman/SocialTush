@@ -66,7 +66,7 @@ export default function MobileBottomBar({ onOpenCreate }: MobileBottomBarProps) 
 
       {/* 5. Perfil */}
       <Link 
-        href={`/profile/${user?.username || 'usuario_A'}`} 
+        href={user ? `/profile/${user.username}` : '/login'}
         className={`flex flex-col items-center gap-0.5 ${pathname.startsWith('/profile') ? 'text-teal-700 dark:text-teal-400 font-bold' : 'text-slate-500 dark:text-slate-400'}`}
       >
         <User className="w-5 h-5" />

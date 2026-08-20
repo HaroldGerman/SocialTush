@@ -48,8 +48,7 @@ export default function PostComposer({ isOpen, onClose }: PostComposerProps) {
         setFilePreview(null);
       }
       onClose();
-      // Reload page to display new post
-      window.location.reload();
+      window.dispatchEvent(new CustomEvent('socialtush:post-published'));
     } catch (err: any) {
       alert(err.response?.data?.message || 'Error al publicar momento');
     } finally {
