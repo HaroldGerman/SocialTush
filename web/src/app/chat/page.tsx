@@ -662,8 +662,8 @@ function ChatContent() {
   const totalUnreadAll = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
 
   return (
-    <main className="min-h-[100dvh] h-[100dvh] bg-[#f4f6f9] dark:bg-[#090d16] text-slate-800 dark:text-slate-100 flex items-stretch justify-stretch p-0 select-none overflow-hidden font-sans transition-colors duration-200">
-      <div className="w-full h-full border-none overflow-hidden flex relative">
+    <main className="min-h-[100dvh] h-[100dvh] bg-[#eef4f4] dark:bg-[#061217] text-slate-800 dark:text-slate-100 flex items-stretch justify-stretch p-0 select-none overflow-hidden font-sans transition-colors duration-200 lg:p-4">
+      <div className="mx-auto w-full h-full max-w-[1500px] border-none overflow-hidden flex relative bg-white dark:bg-[#07151d] lg:rounded-[28px] lg:border lg:border-slate-200 lg:dark:border-cyan-950/70 lg:shadow-2xl">
         
         {/* ================= FAR LEFT MINI NAVIGATION ================= */}
         <aside className="hidden lg:flex w-60 bg-white dark:bg-[#0f172a] border-r border-slate-200 dark:border-slate-800 flex-col justify-between p-4 flex-shrink-0 z-20 shadow-sm">
@@ -730,7 +730,7 @@ function ChatContent() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <span className="text-xs font-extrabold text-slate-900 dark:text-slate-200 block truncate">{user?.username || 'Usuario'}</span>
-                  <span className="text-[10px] text-teal-700 dark:text-teal-400 block font-semibold">Conectado</span>
+                  <span className="text-[10px] text-slate-400 block font-semibold">Tu espacio</span>
                 </div>
               </div>
             </div>
@@ -744,7 +744,7 @@ function ChatContent() {
           {/* Header & Tabs */}
           <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3 bg-white dark:bg-[#0f172a]">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-wide">Centro de conexiones</h2>
+              <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-teal-600">Lifonk</p><h2 className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">Conversaciones</h2></div>
               <div className="flex items-center gap-1.5">
                 {/* Mobile Theme switch */}
                 <button
@@ -757,7 +757,7 @@ function ChatContent() {
                 <button 
                   onClick={() => setIsNewChatModalOpen(true)}
                   className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/80 hover:bg-teal-100 border border-teal-200 dark:border-teal-800 transition-all text-teal-800 dark:text-teal-400"
-                  title="Nuevo chat"
+                  title="Nueva conversación"
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -772,7 +772,7 @@ function ChatContent() {
             </div>
 
             {/* Navigation Tabs */}
-            <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] font-bold">
+            <div className="flex bg-slate-100 dark:bg-[#07151d] p-1 rounded-xl border border-slate-200 dark:border-cyan-950/70 text-[11px] font-bold">
               <button 
                 onClick={() => setActiveTab('directos')}
                 className={`flex-1 py-1.5 rounded-lg transition-all ${
@@ -789,19 +789,11 @@ function ChatContent() {
               >
                 Círculos
               </button>
-              <button 
-                onClick={() => setActiveTab('nodos')}
-                className={`flex-1 py-1.5 rounded-lg transition-all ${
-                  activeTab === 'nodos' ? 'bg-teal-700 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                Nodos
-              </button>
             </div>
           </div>
 
           {/* Conversations List */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#f4f6f9] dark:bg-slate-900/50">
+          <div className="flex-1 overflow-y-auto p-3 space-y-1 bg-[#f4f7f7] dark:bg-[radial-gradient(circle_at_50%_0%,rgba(15,118,110,.12),transparent_38%),#07151d]">
             {conversations
               .filter(c => {
                 if (activeTab === 'directos') return !c.isGroup;
@@ -827,7 +819,7 @@ function ChatContent() {
                     className={`p-3 rounded-2xl cursor-pointer transition-all flex items-center gap-3 border ${
                       isSelected
                         ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-300 dark:border-teal-900 text-slate-900 dark:text-slate-100 shadow-sm' 
-                        : 'bg-white dark:bg-[#0f172a] border-slate-200 dark:border-slate-800 hover:bg-slate-100/60 dark:hover:bg-slate-800/60'
+                        : 'bg-white/90 dark:bg-transparent border-transparent hover:bg-white dark:hover:bg-cyan-950/35'
                     }`}
                   >
                     <div className="relative flex-shrink-0">
@@ -863,16 +855,16 @@ function ChatContent() {
                 );
               })}
 
-            {conversations.length === 0 && (
+            {conversations.filter(c => activeTab === 'directos' ? !c.isGroup : c.isGroup).length === 0 && (
               <div className="text-center py-20 text-slate-400 dark:text-slate-400 text-xs font-medium">
-                No hay conexiones activas en esta sección.
+                No hay conversaciones en esta sección.
               </div>
             )}
           </div>
         </div>
 
         {/* ================= CENTER MAIN CHAT CANVAS ================= */}
-        <div className={`flex-1 flex flex-col justify-between bg-slate-50 dark:bg-slate-900/40 relative ${
+        <div className={`flex-1 flex flex-col justify-between bg-slate-50 dark:bg-[#07151d] relative ${
           !activeConversation ? 'hidden md:flex' : 'flex'
         }`}>
           {activeConversation ? (
@@ -924,7 +916,7 @@ function ChatContent() {
               </div>
 
               {/* Chat Messages Area */}
-              <div className="flex-1 p-5 overflow-y-auto space-y-4 bg-slate-100/60 dark:bg-slate-900/40">
+              <div className="flex-1 p-4 md:p-6 overflow-y-auto space-y-4 bg-[radial-gradient(circle_at_80%_10%,rgba(20,184,166,.08),transparent_25%),radial-gradient(circle_at_20%_60%,rgba(14,116,144,.07),transparent_30%)] dark:bg-[radial-gradient(circle_at_75%_15%,rgba(20,184,166,.10),transparent_26%),radial-gradient(circle_at_20%_65%,rgba(8,47,73,.45),transparent_32%),#07151d]">
                 {/* Date separator */}
                 <div className="flex items-center justify-center my-2">
                   <span className="px-3 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-teal-800 dark:text-teal-400 shadow-sm">
@@ -1079,7 +1071,7 @@ function ChatContent() {
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 dark:text-white mb-1">Tus Conexiones Lifonk</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm leading-relaxed">
-                  Selecciona una conversación en el centro de conexiones o inicia un nuevo chat para enviar mensajes.
+                  Selecciona una conversación o inicia una nueva para comenzar.
                 </p>
               </div>
             </div>
@@ -1088,7 +1080,7 @@ function ChatContent() {
 
         {/* ================= RIGHT DETAILS & CONNECTION PANEL ================= */}
         {activeConversation && showRightPanel && (
-          <aside className="hidden xl:flex w-72 bg-white dark:bg-[#0f172a] border-l border-slate-200 dark:border-slate-800 flex-col p-4 flex-shrink-0 z-20 space-y-5 overflow-y-auto shadow-sm">
+          <aside className="hidden xl:flex w-72 bg-white dark:bg-[#07151d] border-l border-slate-200 dark:border-cyan-950/70 flex-col p-4 flex-shrink-0 z-20 space-y-5 overflow-y-auto shadow-sm">
             {/* User Details Header */}
             <div className="text-center p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-3">
               <div className="relative mx-auto w-16 h-16">
@@ -1098,7 +1090,10 @@ function ChatContent() {
                 <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">{activeConversation.name}</h4>
                 <span className="text-[10px] text-teal-700 dark:text-teal-400 font-semibold">@{activeConversation.otherUsername || activeConversation.name}</span>
               </div>
+              {!activeConversation.isGroup && activeConversation.otherUsername && <Link href={`/profile/${encodeURIComponent(activeConversation.otherUsername)}`} className="block rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-700 dark:border-cyan-950 dark:text-slate-200">Ver espacio</Link>}
             </div>
+            {!activeConversation.isGroup && activeConversation.otherUsername && <div className="grid grid-cols-2 gap-2"><button onClick={() => triggerCall('AUDIO')} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-700 dark:border-cyan-950 dark:bg-[#0b2028] dark:text-slate-200"><Phone className="mx-auto mb-1 h-4 w-4"/>Llamar</button><button onClick={() => triggerCall('VIDEO')} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-700 dark:border-cyan-950 dark:bg-[#0b2028] dark:text-slate-200"><Video className="mx-auto mb-1 h-4 w-4"/>Video</button></div>}
+            {!activeConversation.isDraft && <button onClick={() => setDeleteConversationId(activeConversation.conversationId)} className="mt-auto rounded-xl border border-rose-200 px-4 py-3 text-left text-xs font-bold text-rose-600 dark:border-rose-950">Eliminar conversación</button>}
           </aside>
         )}
 

@@ -792,10 +792,10 @@ const styles = StyleSheet.create({
   handle: { fontSize: 13, marginTop: 5 },
   profileBody: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 16 },
   bio: { fontSize: 13, lineHeight: 19, marginBottom: 14 },
-  stats: { flexDirection: "row", borderWidth: 1, borderRadius: 20, overflow: "hidden" },
-  stat: { flex: 1, alignItems: "center", paddingVertical: 11 },
+  stats: { flexDirection: "row", flexWrap: "wrap", borderWidth: 1, borderRadius: 20, overflow: "hidden", padding: 4 },
+  stat: { width: "50%", alignItems: "center", paddingVertical: 11, paddingHorizontal: 3 },
   statValue: { fontSize: 17, fontWeight: "900" },
-  statLabel: { fontSize: 10, fontWeight: "700" },
+  statLabel: { fontSize: 9, fontWeight: "800", textAlign: "center", textTransform: "uppercase" },
   buttons: { flexDirection: "row", gap: 9, marginTop: 14 },
   primary: {
     minHeight: 42,

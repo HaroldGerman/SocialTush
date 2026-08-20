@@ -500,20 +500,20 @@ export default function ProfilePage() {
               </div>
 
               {/* Stats Bar */}
-              <div className="grid grid-cols-4 gap-1 bg-[#f4f7f6] dark:bg-[#0b1516] border border-slate-200/80 dark:border-slate-800 px-2 py-3 rounded-[20px] w-full md:w-auto md:min-w-[470px] shadow-sm">
-                <div className="text-center flex-1 md:flex-none">
+              <div className="grid grid-cols-2 gap-2 bg-[#f4f7f6] dark:bg-[#0b1516] border border-slate-200/80 dark:border-slate-800 p-2 rounded-[20px] w-full md:grid-cols-4 md:w-auto md:min-w-[540px] shadow-sm">
+                <div className="min-w-0 rounded-xl px-1 py-2 text-center md:flex-none">
                   <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profile.postCount}</span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Contribuciones</span>
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-normal sm:tracking-wide">Contribuciones</span>
                 </div>
-                <div className="text-center flex-1 md:flex-none">
+                <div className="min-w-0 rounded-xl px-1 py-2 text-center md:flex-none">
                   <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profile.followersCount}</span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Conexiones</span>
+                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-normal sm:tracking-wide">Conexiones</span>
                 </div>
-                <div className="text-center flex-1 md:flex-none">
+                <div className="min-w-0 rounded-xl px-1 py-2 text-center md:flex-none">
                   <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profile.followingCount}</span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{currentUser?.username?.toLowerCase() === profile.username.toLowerCase() ? 'Tus conexiones' : 'Conexiones'}</span>
+                  <span className="block text-[9px] font-bold leading-tight text-slate-400 uppercase tracking-normal sm:tracking-wide">{currentUser?.username?.toLowerCase() === profile.username.toLowerCase() ? 'Tus conexiones' : 'Conectados'}</span>
                 </div>
-                <div className="text-center flex-1 md:flex-none">
+                <div className="min-w-0 rounded-xl px-1 py-2 text-center md:flex-none">
                   <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profileCircles.length}</span>
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Círculos</span>
                 </div>
