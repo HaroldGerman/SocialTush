@@ -183,6 +183,14 @@ public class PostController {
         }
     }
 
+    @GetMapping("/{postId}")
+    public ResponseEntity<?> getPost(@PathVariable UUID postId, @AuthenticationPrincipal User currentUser) {
+        Post post = postRepository.findById(postId).orElse(null);
+        if (post == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Publicación no encontrada"));
+        if (!postService.canViewPost(post, currentUser)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "No tienes acceso a esta publicación"));
+        return ResponseEntity.ok(postService.convertToDto(post, currentUser));
+    }
+
     @GetMapping("/reels")
     public ResponseEntity<?> getReels(
             @RequestParam(defaultValue = "0") int page,

@@ -167,6 +167,26 @@ public class PostControllerIntegrationTest {
     }
 
     @Test
+    void reelRequiresVideoAndExposesMediaType() throws Exception {
+        mockMvc.perform(multipart("/api/v1/posts")
+                        .param("caption", "No basta texto")
+                        .param("isShortVideo", "true"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(multipart("/api/v1/posts")
+                        .file(new MockMultipartFile("files", "cover.jpg", "image/jpeg", new byte[]{1}))
+                        .param("isShortVideo", "true"))
+                .andExpect(status().isBadRequest());
+
+        when(storageService.uploadFile(anyString(), any(byte[].class), eq("video/mp4")))
+                .thenReturn("https://cdn.example/reel.mp4");
+        mockMvc.perform(multipart("/api/v1/posts")
+                        .file(new MockMultipartFile("files", "reel.mp4", "video/mp4", new byte[]{1, 2}))
+                        .param("isShortVideo", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mediaTypes[0]").value("VIDEO"));
+    }
+
+    @Test
     void privateCirclePostsAreFilteredUntilViewerBecomesMember() throws Exception {
         Circle publicCircle = circle("public-posts", "PUBLIC", otherUser);
         Circle privateCircle = circle("private-posts", "PRIVATE", otherUser);
@@ -186,11 +206,13 @@ public class PostControllerIntegrationTest {
         mockMvc.perform(post("/api/v1/posts/" + hidden.getId() + "/save")).andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/comments/" + hidden.getId())).andExpect(status().isForbidden());
         mockMvc.perform(post("/api/v1/likes/" + hidden.getId())).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/posts/" + hidden.getId())).andExpect(status().isForbidden());
 
         circleMemberRepository.save(CircleMember.builder().circle(privateCircle).user(testUser).build());
         mockMvc.perform(get("/api/v1/posts/feed")).andExpect(jsonPath("$.posts.length()").value(2));
         mockMvc.perform(get("/api/v1/posts/explore")).andExpect(jsonPath("$.length()").value(2));
         mockMvc.perform(get("/api/v1/posts/user/other_user")).andExpect(jsonPath("$.length()").value(2));
+        mockMvc.perform(get("/api/v1/posts/" + hidden.getId())).andExpect(status().isOk());
     }
 
     @Test

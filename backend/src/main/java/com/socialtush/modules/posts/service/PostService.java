@@ -48,6 +48,19 @@ public class PostService {
         if ((caption == null || caption.isBlank()) && (files == null || files.length == 0)) {
             throw new IllegalArgumentException("Se requiere al menos texto o archivo multimedia");
         }
+        if (isShortVideo) {
+            boolean hasVideo = files != null && java.util.Arrays.stream(files)
+                    .filter(java.util.Objects::nonNull).filter(file -> !file.isEmpty())
+                    .anyMatch(file -> file.getContentType() != null
+                            && file.getContentType().toLowerCase(java.util.Locale.ROOT).startsWith("video/"));
+            boolean hasNonVideo = files != null && java.util.Arrays.stream(files)
+                    .filter(java.util.Objects::nonNull).filter(file -> !file.isEmpty())
+                    .anyMatch(file -> file.getContentType() == null
+                            || !file.getContentType().toLowerCase(java.util.Locale.ROOT).startsWith("video/"));
+            if (!hasVideo || hasNonVideo) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Un Reel debe contener un archivo de video válido");
+            }
+        }
 
         Circle circle = null;
         if (circleId != null) {

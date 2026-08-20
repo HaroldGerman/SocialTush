@@ -1,265 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, Image, Dimensions } from 'react-native';
-import { useAuth } from '../context/AuthContext';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Dimensions, FlatList, Image, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View, ViewToken } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { useAuth } from '../context/AuthContext';
 
-interface Reel {
-  postId: string;
-  userId: string;
-  username: string;
-  displayName: string;
-  avatarUrl: string;
-  caption: string;
-  location: string;
-  musicTitle: string;
-  mediaUrls: string[];
-  likesCount: number;
-  commentsCount: number;
-  hasLiked: boolean;
-  isSaved: boolean;
+interface Reel { postId:string; userId:string; username:string; displayName:string; avatarUrl?:string; caption:string; mediaUrls:string[]; mediaTypes:string[]; likesCount:number; commentsCount:number; hasLiked:boolean; isSaved:boolean; }
+interface Comment { commentId:string; username:string; displayName:string; avatarUrl?:string; content:string; createdAt:string; }
+const ITEM_HEIGHT = Dimensions.get('window').height - 120;
+
+function ReelVideo({ reel, active, muted, onToggle }: { reel:Reel; active:boolean; muted:boolean; onToggle:()=>void }) {
+  const source = reel.mediaTypes?.[0] === 'VIDEO' ? reel.mediaUrls?.[0] : null;
+  const player = useVideoPlayer(source || null, instance => { instance.loop = true; instance.muted = muted; });
+  useEffect(() => { player.muted = muted; active && source ? player.play() : player.pause(); return () => player.pause(); }, [active, muted, player, source]);
+  if (!source) return <View style={styles.placeholder}><Text style={styles.mutedText}>Reel sin video válido</Text></View>;
+  return <TouchableOpacity activeOpacity={1} onPress={onToggle} style={StyleSheet.absoluteFill}><VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false}/></TouchableOpacity>;
 }
 
-const { height: WINDOW_HEIGHT } = Dimensions.get('window');
-
-export default function ReelsScreen() {
+export default function ReelsScreen({ onOpenProfile }: { onOpenProfile?: (username:string)=>void }) {
   const { api } = useAuth();
-  
-  const [reels, setReels] = useState<Reel[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchReels = async () => {
-    try {
-      const res = await api.get('/posts/reels?page=0&size=10');
-      setReels(res.data?.posts || []);
-    } catch (err) {
-      setReels([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchReels();
-  }, []);
-
-  const handleLikeToggle = async (postId: string) => {
-    try {
-      const res = await api.post(`/likes/${postId}`);
-      setReels(prev => prev.map(r => r.postId === postId ? { ...r, hasLiked: res.data.liked, likesCount: res.data.count } : r));
-    } catch (err) {
-      setReels(prev => prev.map(r => r.postId === postId ? { ...r, hasLiked: !r.hasLiked, likesCount: r.hasLiked ? r.likesCount - 1 : r.likesCount + 1 } : r));
-    }
-  };
-
-  const renderReelItem = ({ item }: { item: Reel }) => (
-    <View style={styles.reelContainer}>
-      {item.mediaUrls && item.mediaUrls.length > 0 ? (
-        <Image 
-          source={{ uri: item.mediaUrls[0] }} 
-          style={styles.backgroundImage}
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={styles.mediaPlaceholder}>
-          <Ionicons name="film-outline" size={48} color="#334155" />
-        </View>
-      )}
-      
-      {/* Overlay Darkner */}
-      <View style={styles.darkOverlay} />
-
-      {/* Right Side Social Actions Panel */}
-      <View style={styles.actionsPanel}>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => handleLikeToggle(item.postId)}>
-          <Ionicons name={item.hasLiked ? "heart" : "heart-outline"} size={28} color={item.hasLiked ? "#ef4444" : "#ffffff"} />
-          <Text style={styles.actionCount}>{item.likesCount}</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.actionBtn}>
-          <Ionicons name="chatbubble-outline" size={26} color="#ffffff" />
-          <Text style={styles.actionCount}>{item.commentsCount}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionBtn}>
-          <Ionicons name={item.isSaved ? "bookmark" : "bookmark-outline"} size={26} color={item.isSaved ? "#14b8a6" : "#ffffff"} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Bottom Info Details */}
-      <View style={styles.bottomDetails}>
-        <View style={styles.authorRow}>
-          <View style={styles.authorAvatar}>
-            <Text style={styles.avatarText}>
-              {(item.displayName || item.username || 'U').charAt(0).toUpperCase()}
-            </Text>
-          </View>
-          <Text style={styles.username}>@{item.username}</Text>
-        </View>
-
-        {item.caption ? (
-          <Text style={styles.caption} numberOfLines={2}>{item.caption}</Text>
-        ) : null}
-
-        {item.musicTitle ? (
-          <View style={styles.musicRow}>
-            <Ionicons name="musical-notes-outline" size={12} color="#14b8a6" />
-            <Text style={styles.musicText}>{item.musicTitle}</Text>
-          </View>
-        ) : null}
-      </View>
-    </View>
-  );
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#14b8a6" />
-      </View>
-    );
-  }
-
-  if (reels.length === 0) {
-    return (
-      <View style={styles.center}>
-        <View style={styles.emptyIconBox}>
-          <Ionicons name="film-outline" size={36} color="#64748b" />
-        </View>
-        <Text style={styles.emptyTitle}>No hay Reels disponibles</Text>
-        <Text style={styles.emptySub}>Vuelve más tarde para descubrir videos verticales.</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      <FlatList
-        data={reels}
-        keyExtractor={(item) => item.postId}
-        renderItem={renderReelItem}
-        pagingEnabled={true}
-        decelerationRate="fast"
-        snapToInterval={WINDOW_HEIGHT - 64}
-        showsVerticalScrollIndicator={false}
-      />
-    </View>
-  );
+  const [reels,setReels]=useState<Reel[]>([]),[loading,setLoading]=useState(true),[loadingMore,setLoadingMore]=useState(false);
+  const [page,setPage]=useState(0),[isLast,setIsLast]=useState(true),[activeId,setActiveId]=useState<string|null>(null),[muted,setMuted]=useState(true);
+  const [manuallyPaused,setManuallyPaused]=useState<Set<string>>(new Set()),[error,setError]=useState('');
+  const [commentsFor,setCommentsFor]=useState<Reel|null>(null),[comments,setComments]=useState<Comment[]>([]),[commentText,setCommentText]=useState('');
+  const loadingRef=useRef(false), viewabilityConfig=useRef({itemVisiblePercentThreshold:70});
+  const fetchPage=useCallback(async(nextPage:number,replace=false)=>{if(loadingRef.current)return;loadingRef.current=true;replace?setLoading(true):setLoadingMore(true);try{const res=await api.get(`/posts/reels?page=${nextPage}&size=10`);const incoming=res.data?.posts||[];setReels(old=>replace?incoming:[...old,...incoming.filter((item:Reel)=>!old.some(value=>value.postId===item.postId))]);if(replace&&incoming[0])setActiveId(incoming[0].postId);setPage(nextPage);setIsLast(Boolean(res.data?.isLast));setError('');}catch(requestError){console.error(requestError);setError('No se pudieron cargar los Reels.');}finally{loadingRef.current=false;setLoading(false);setLoadingMore(false);}},[api]);
+  useEffect(()=>{void fetchPage(0,true);return()=>setActiveId(null);},[fetchPage]);
+  const onViewableItemsChanged=useRef(({viewableItems}:{viewableItems:ViewToken[]})=>{const item=viewableItems[0]?.item as Reel|undefined;if(item)setActiveId(item.postId);}).current;
+  const like=async(id:string)=>{try{const res=await api.post(`/likes/${id}`);setReels(old=>old.map(item=>item.postId===id?{...item,hasLiked:res.data.liked,likesCount:res.data.count}:item));setError('');}catch(requestError){console.error(requestError);setError('No se pudo actualizar el Me gusta.');}};
+  const save=async(id:string)=>{try{const res=await api.post(`/posts/${id}/save`);setReels(old=>old.map(item=>item.postId===id?{...item,isSaved:res.data.saved}:item));setError('');}catch(requestError){console.error(requestError);setError('No se pudo actualizar Guardados.');}};
+  const openComments=async(reel:Reel)=>{setCommentsFor(reel);setComments([]);try{const res=await api.get(`/comments/${reel.postId}`);setComments(res.data||[]);setError('');}catch(requestError){console.error(requestError);setError('No se pudieron cargar los comentarios.');}};
+  const sendComment=async()=>{if(!commentsFor||!commentText.trim())return;try{const res=await api.post(`/comments/${commentsFor.postId}`,{content:commentText.trim()});setComments(old=>[...old,res.data]);setCommentText('');setReels(old=>old.map(item=>item.postId===commentsFor.postId?{...item,commentsCount:item.commentsCount+1}:item));}catch(requestError){console.error(requestError);setError('No se pudo publicar. Conservamos tu texto.');}};
+  const toggle=(id:string)=>setManuallyPaused(old=>{const next=new Set(old);next.has(id)?next.delete(id):next.add(id);return next;});
+  if(loading)return <View style={styles.center}><ActivityIndicator size="large" color="#14b8a6"/></View>;
+  return <View style={styles.container}>{error?<TouchableOpacity onPress={()=>setError('')} style={styles.error}><Text style={styles.errorText}>{error}</Text></TouchableOpacity>:null}<TouchableOpacity onPress={()=>setMuted(value=>!value)} style={styles.mute}><Ionicons name={muted?'volume-mute':'volume-high'} size={23} color="#fff"/></TouchableOpacity><FlatList data={reels} keyExtractor={item=>item.postId} pagingEnabled snapToInterval={ITEM_HEIGHT} decelerationRate="fast" renderItem={({item})=><View style={styles.reel}><ReelVideo reel={item} active={activeId===item.postId&&!manuallyPaused.has(item.postId)&&!commentsFor} muted={muted} onToggle={()=>toggle(item.postId)}/><View pointerEvents="none" style={styles.overlay}/><View style={styles.actions}><TouchableOpacity onPress={()=>void like(item.postId)} style={styles.action}><Ionicons name={item.hasLiked?'heart':'heart-outline'} size={29} color={item.hasLiked?'#ef4444':'#fff'}/><Text style={styles.count}>{item.likesCount}</Text></TouchableOpacity><TouchableOpacity onPress={()=>void openComments(item)} style={styles.action}><Ionicons name="chatbubble-outline" size={27} color="#fff"/><Text style={styles.count}>{item.commentsCount}</Text></TouchableOpacity><TouchableOpacity onPress={()=>void save(item.postId)} style={styles.action}><Ionicons name={item.isSaved?'bookmark':'bookmark-outline'} size={27} color={item.isSaved?'#14b8a6':'#fff'}/></TouchableOpacity></View><View style={styles.details}><TouchableOpacity onPress={()=>onOpenProfile?.(item.username)} style={styles.author}>{item.avatarUrl?<Image source={{uri:item.avatarUrl}} style={styles.avatar}/>:<View style={[styles.avatar,styles.fallback]}><Text style={styles.avatarText}>{(item.displayName||item.username).charAt(0).toUpperCase()}</Text></View>}<Text style={styles.username}>@{item.username}</Text></TouchableOpacity>{item.caption?<Text numberOfLines={3} style={styles.caption}>{item.caption}</Text>:null}</View></View>} onViewableItemsChanged={onViewableItemsChanged} viewabilityConfig={viewabilityConfig.current} onEndReached={()=>{if(!isLast&&!loadingMore)void fetchPage(page+1);}} onEndReachedThreshold={0.7} ListFooterComponent={loadingMore?<ActivityIndicator color="#14b8a6"/>:null} ListEmptyComponent={<View style={styles.center}><Text style={styles.mutedText}>No hay Reels disponibles.</Text><TouchableOpacity onPress={()=>void fetchPage(0,true)}><Text style={styles.retry}>Reintentar</Text></TouchableOpacity></View>}/><Modal visible={Boolean(commentsFor)} transparent animationType="slide" onRequestClose={()=>setCommentsFor(null)}><View style={styles.modalBackdrop}><View style={styles.sheet}><View style={styles.sheetHeader}><Text style={styles.sheetTitle}>Comentarios</Text><TouchableOpacity onPress={()=>setCommentsFor(null)}><Ionicons name="close" size={24}/></TouchableOpacity></View><FlatList data={comments} keyExtractor={item=>item.commentId} renderItem={({item})=><View style={styles.comment}>{item.avatarUrl?<Image source={{uri:item.avatarUrl}} style={styles.commentAvatar}/>:<View style={[styles.commentAvatar,styles.fallback]}/>}<View style={{flex:1}}><Text style={styles.commentUser}>@{item.username}</Text><Text>{item.content}</Text></View></View>} ListEmptyComponent={<Text style={styles.emptyComments}>Sé el primero en comentar.</Text>}/><View style={styles.composer}><TextInput value={commentText} onChangeText={setCommentText} placeholder="Escribe un comentario…" style={styles.input}/><TouchableOpacity disabled={!commentText.trim()} onPress={()=>void sendComment()} style={styles.send}><Text style={styles.sendText}>Enviar</Text></TouchableOpacity></View></View></View></Modal></View>;
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#090d16',
-  },
-  center: {
-    flex: 1,
-    backgroundColor: '#090d16',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  reelContainer: {
-    width: '100%',
-    height: WINDOW_HEIGHT - 64,
-    position: 'relative',
-    backgroundColor: '#090d16',
-  },
-  backgroundImage: {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
-  },
-  mediaPlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0f172a',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  darkOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(9, 13, 22, 0.45)',
-  },
-  actionsPanel: {
-    position: 'absolute',
-    right: 16,
-    bottom: 110,
-    alignItems: 'center',
-    gap: 20,
-    zIndex: 10,
-  },
-  actionBtn: {
-    alignItems: 'center',
-  },
-  actionCount: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: 'bold',
-    marginTop: 4,
-  },
-  bottomDetails: {
-    position: 'absolute',
-    left: 16,
-    right: 72,
-    bottom: 24,
-    zIndex: 10,
-    gap: 8,
-  },
-  authorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  authorAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#0f766e',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  username: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  caption: {
-    color: '#e2e8f0',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  musicRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  musicText: {
-    color: '#14b8a6',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  emptyIconBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: '#1e293b50',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 6,
-  },
-  emptySub: {
-    color: '#64748b',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-});
+const styles=StyleSheet.create({container:{flex:1,backgroundColor:'#090d16'},center:{flex:1,minHeight:300,alignItems:'center',justifyContent:'center',backgroundColor:'#090d16'},reel:{height:ITEM_HEIGHT,backgroundColor:'#090d16'},placeholder:{...StyleSheet.absoluteFillObject,alignItems:'center',justifyContent:'center'},overlay:{...StyleSheet.absoluteFillObject,backgroundColor:'rgba(0,0,0,.25)'},mute:{position:'absolute',right:15,top:15,zIndex:20,padding:10,backgroundColor:'rgba(0,0,0,.45)',borderRadius:30},actions:{position:'absolute',right:16,bottom:80,gap:22,alignItems:'center'},action:{alignItems:'center'},count:{color:'#fff',fontSize:11,fontWeight:'700'},details:{position:'absolute',left:16,right:75,bottom:26,gap:8},author:{flexDirection:'row',alignItems:'center',gap:9},avatar:{width:36,height:36,borderRadius:18},fallback:{backgroundColor:'#0f766e',alignItems:'center',justifyContent:'center'},avatarText:{color:'#fff',fontWeight:'700'},username:{color:'#fff',fontWeight:'800'},caption:{color:'#fff',fontSize:13},mutedText:{color:'#94a3b8'},retry:{color:'#14b8a6',marginTop:12},error:{backgroundColor:'#7f1d1d',padding:9,zIndex:30},errorText:{color:'#fee2e2',textAlign:'center',fontSize:12},modalBackdrop:{flex:1,justifyContent:'flex-end',backgroundColor:'rgba(0,0,0,.55)'},sheet:{height:'72%',backgroundColor:'#fff',borderTopLeftRadius:24,borderTopRightRadius:24,paddingBottom:16},sheetHeader:{flexDirection:'row',justifyContent:'space-between',padding:16,borderBottomWidth:1,borderColor:'#e2e8f0'},sheetTitle:{fontWeight:'800'},comment:{flexDirection:'row',gap:10,paddingHorizontal:16,paddingVertical:10},commentAvatar:{width:30,height:30,borderRadius:15},commentUser:{fontWeight:'700',fontSize:12},emptyComments:{textAlign:'center',padding:30,color:'#64748b'},composer:{flexDirection:'row',gap:8,padding:12,borderTopWidth:1,borderColor:'#e2e8f0'},input:{flex:1,borderWidth:1,borderColor:'#cbd5e1',borderRadius:12,paddingHorizontal:12},send:{backgroundColor:'#0f766e',borderRadius:12,paddingHorizontal:14,justifyContent:'center'},sendText:{color:'#fff',fontWeight:'700'}});
