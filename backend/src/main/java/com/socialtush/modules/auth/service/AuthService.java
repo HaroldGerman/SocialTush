@@ -200,6 +200,7 @@ public class AuthService {
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .displayName(displayName)
+                .avatarUrl(profile.getAvatarUrl())
                 .role(user.getRole())
                 .build();
     }

@@ -15,6 +15,7 @@ import { formatLocalTimestamp } from '@/lib/dateUtils';
 import { useTheme } from '@/context/ThemeContext';
 import { useCreateHub } from '@/context/CreateHubContext';
 import MobileBottomBar from '@/components/MobileBottomBar';
+import UserAvatar from '@/components/UserAvatar';
 
 interface PostData {
   postId: string;
@@ -117,13 +118,7 @@ export default function FeedPage() {
     try {
       const res = await api.get('/posts/feed');
       const data = res.data?.posts || res.data?.content || (Array.isArray(res.data) ? res.data : []);
-      if (Array.isArray(data) && data.length > 0) {
-        setPostsList(data);
-      } else {
-        const exploreRes = await api.get('/posts/explore');
-        const exploreData = exploreRes.data?.posts || exploreRes.data?.content || (Array.isArray(exploreRes.data) ? exploreRes.data : []);
-        setPostsList(exploreData);
-      }
+      setPostsList(Array.isArray(data) ? data : []);
     } catch (err) {
       setPostsList([]);
     } finally {
@@ -207,18 +202,8 @@ export default function FeedPage() {
         }
         return p;
       }));
-    } catch (err) {
-      setPostsList(prev => prev.map(p => {
-        if (p.postId === postId) {
-          const newHasLiked = !p.hasLiked;
-          return {
-            ...p,
-            hasLiked: newHasLiked,
-            likesCount: newHasLiked ? p.likesCount + 1 : Math.max(0, p.likesCount - 1)
-          };
-        }
-        return p;
-      }));
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'No se pudo actualizar el Me gusta.');
     }
   };
 
@@ -227,8 +212,8 @@ export default function FeedPage() {
     try {
       const res = await api.post(`/posts/${postId}/save`);
       setPostsList(prev => prev.map(p => p.postId === postId ? { ...p, isSaved: res.data.saved } : p));
-    } catch (err) {
-      setPostsList(prev => prev.map(p => p.postId === postId ? { ...p, isSaved: !p.isSaved } : p));
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'No se pudo actualizar Guardados.');
     }
   };
 
@@ -290,8 +275,6 @@ export default function FeedPage() {
     const text = commentInputMap[postId]?.trim();
     if (!text) return;
 
-    setCommentInputMap(prev => ({ ...prev, [postId]: '' }));
-
     try {
       const res = await api.post(`/comments/${postId}`, { content: text });
       const newComment = res.data;
@@ -300,8 +283,9 @@ export default function FeedPage() {
         [postId]: [...(prev[postId] || []), newComment]
       }));
       setPostsList(prev => prev.map(p => p.postId === postId ? { ...p, commentsCount: (p.commentsCount || 0) + 1 } : p));
-    } catch (err) {
-      alert('Error al publicar comentario');
+      setCommentInputMap(prev => ({ ...prev, [postId]: '' }));
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Error al publicar comentario');
     }
   };
 
@@ -371,14 +355,14 @@ export default function FeedPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => searchQuery && setShowSearchDropdown(true)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-900/80 border border-slate-800 rounded-full text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-600"
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-full text-xs text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none focus:border-teal-600"
               />
 
               {/* Search Results Dropdown */}
               {showSearchDropdown && searchResults && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setShowSearchDropdown(false)} />
-                  <div className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl z-40 max-h-96 overflow-y-auto divide-y divide-slate-800 p-2">
+                  <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl z-40 max-h-96 overflow-y-auto divide-y divide-slate-200 dark:divide-slate-800 p-2">
                     {/* Users Section */}
                     {searchResults.users && searchResults.users.length > 0 && (
                       <div className="py-2">
@@ -389,11 +373,9 @@ export default function FeedPage() {
                             onClick={() => { router.push(`/profile/${u.username}`); setShowSearchDropdown(false); }}
                             className="flex items-center gap-3 px-3 py-2 hover:bg-slate-800 rounded-xl cursor-pointer transition-colors"
                           >
-                            <div className="w-8 h-8 rounded-full bg-teal-700 text-white font-bold flex items-center justify-center text-xs">
-                              {(u.displayName || u.username).charAt(0).toUpperCase()}
-                            </div>
+                            <UserAvatar avatarUrl={u.avatarUrl} name={u.displayName || u.username} className="w-8 h-8 rounded-full text-xs" />
                             <div>
-                              <h5 className="font-bold text-xs text-white">{u.displayName || u.username}</h5>
+                              <h5 className="font-bold text-xs text-slate-900 dark:text-white">{u.displayName || u.username}</h5>
                               <span className="text-[10px] text-teal-400 font-semibold">@{u.username}</span>
                             </div>
                           </div>
@@ -415,7 +397,7 @@ export default function FeedPage() {
                               {c.name.charAt(0)}
                             </div>
                             <div>
-                              <h5 className="font-bold text-xs text-white">{c.name}</h5>
+                              <h5 className="font-bold text-xs text-slate-900 dark:text-white">{c.name}</h5>
                               <span className="text-[10px] text-slate-400">{c.description}</span>
                             </div>
                           </div>
@@ -436,7 +418,7 @@ export default function FeedPage() {
             {/* Mobile Search Button Toggle */}
             <button 
               onClick={() => setShowMobileSearch(!showMobileSearch)}
-              className="md:hidden p-2 rounded-xl bg-slate-800/80 text-slate-300 hover:text-white"
+              className="md:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:text-teal-600 dark:hover:text-white"
             >
               <Search className="w-5 h-5" />
             </button>
@@ -457,9 +439,7 @@ export default function FeedPage() {
             {/* Profile Avatar */}
             <Link href={`/profile/${user?.username || 'usuario_A'}`} className="flex items-center gap-2">
               <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-teal-700 to-emerald-600 p-[2px]">
-                <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center font-bold text-white text-xs">
-                  {(user?.displayName || 'U').charAt(0).toUpperCase()}
-                </div>
+                <UserAvatar avatarUrl={user?.avatarUrl} name={user?.displayName || user?.username} className="w-full h-full rounded-full text-xs" />
               </div>
             </Link>
           </div>
@@ -467,7 +447,7 @@ export default function FeedPage() {
 
         {/* Mobile Expanded Search Bar + Results */}
         {showMobileSearch && (
-          <div className="md:hidden border-t border-slate-800 bg-[#0f172a]">
+          <div className="md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a]">
             <div className="p-3">
               <div className="relative flex items-center">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -477,7 +457,7 @@ export default function FeedPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus
-                  className="w-full pl-9 pr-10 py-2.5 bg-slate-800 border border-slate-700 rounded-full text-sm text-white focus:outline-none focus:border-teal-500"
+                  className="w-full pl-9 pr-10 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-sm text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
                 />
                 {searchQuery && (
                   <button
@@ -504,11 +484,9 @@ export default function FeedPage() {
                         onClick={() => { router.push(`/profile/${u.username}`); setShowMobileSearch(false); setSearchQuery(''); setSearchResults(null); }}
                         className="flex items-center gap-3 px-4 py-3 active:bg-slate-800 cursor-pointer"
                       >
-                        <div className="w-10 h-10 rounded-full bg-teal-700 text-white font-bold flex items-center justify-center text-sm flex-shrink-0">
-                          {(u.displayName || u.username).charAt(0).toUpperCase()}
-                        </div>
+                        <UserAvatar avatarUrl={u.avatarUrl} name={u.displayName || u.username} className="w-10 h-10 rounded-full text-sm flex-shrink-0" />
                         <div>
-                          <p className="font-bold text-sm text-white">{u.displayName || u.username}</p>
+                          <p className="font-bold text-sm text-slate-900 dark:text-white">{u.displayName || u.username}</p>
                           <p className="text-xs text-teal-400">@{u.username}</p>
                         </div>
                       </div>
@@ -528,7 +506,7 @@ export default function FeedPage() {
                           {c.name.charAt(0)}
                         </div>
                         <div>
-                          <p className="font-bold text-sm text-white">{c.name}</p>
+                          <p className="font-bold text-sm text-slate-900 dark:text-white">{c.name}</p>
                           <p className="text-xs text-slate-400 truncate max-w-[200px]">{c.description}</p>
                         </div>
                       </div>
@@ -551,7 +529,7 @@ export default function FeedPage() {
 
         {/* ================= LEFT SIDEBAR (Desktop >= 1024px) ================= */}
         <aside className="hidden lg:block lg:col-span-3 space-y-6">
-          <div className="bg-[#0f172a] border border-slate-800 rounded-3xl p-4 shadow-sm space-y-1">
+          <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm space-y-1">
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-teal-800/30 text-teal-400 font-bold text-xs border border-teal-700/50">
               <Home className="w-4 h-4 text-teal-400" />
               <span>Inicio</span>
@@ -575,7 +553,7 @@ export default function FeedPage() {
         <main className="lg:col-span-6 space-y-6">
 
           {/* STORIES BAR */}
-          <div className="bg-[#0f172a] border border-slate-800 rounded-3xl p-4 shadow-sm overflow-x-auto">
+          <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm overflow-x-auto">
             <div className="flex items-center gap-4">
               {/* Button: Crear Historia */}
               <div 
@@ -585,7 +563,7 @@ export default function FeedPage() {
                 <div className="w-14 h-14 md:w-16 md:h-16 rounded-full border-2 border-dashed border-teal-500 bg-teal-950/40 flex items-center justify-center text-teal-400 group-hover:bg-teal-900/60 transition-all shadow-sm">
                   <Plus className="w-5 h-5 stroke-[2.5]" />
                 </div>
-                <span className="text-[11px] font-bold text-slate-300">Tu Historia</span>
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Tu Historia</span>
               </div>
 
               {/* Grouped Active Stories */}
@@ -596,11 +574,9 @@ export default function FeedPage() {
                   className="flex-shrink-0 flex flex-col items-center gap-1.5 cursor-pointer group"
                 >
                   <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-tr from-teal-600 via-emerald-500 to-amber-500 p-[2px] shadow-sm group-hover:scale-105 transition-transform">
-                    <div className="w-full h-full rounded-full bg-[#090d16] flex items-center justify-center font-extrabold text-teal-400 text-xs md:text-sm">
-                      {gs.displayName.charAt(0).toUpperCase()}
-                    </div>
+                    <UserAvatar avatarUrl={gs.avatarUrl} name={gs.displayName} className="w-full h-full rounded-full text-xs md:text-sm" />
                   </div>
-                  <span className="text-[11px] font-bold text-slate-300 truncate max-w-[64px]">
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate max-w-[64px]">
                     {gs.displayName}
                   </span>
                 </div>
@@ -609,8 +585,8 @@ export default function FeedPage() {
           </div>
 
           {/* Publisher Form Card (Desktop full card, Mobile compact bar) */}
-          <div className="bg-[#0f172a] border border-slate-800 rounded-3xl p-4 md:p-6 shadow-sm space-y-3">
-            <h3 className="hidden md:block text-sm font-extrabold text-white">Crear un momento</h3>
+          <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 md:p-6 shadow-sm space-y-3">
+            <h3 className="hidden md:block text-sm font-extrabold text-slate-900 dark:text-white">Crear un momento</h3>
 
             <div className="space-y-3">
               <input 
@@ -618,7 +594,7 @@ export default function FeedPage() {
                 placeholder="¿Qué quieres compartir hoy?..."
                 value={newMomentText}
                 onChange={(e) => setNewMomentText(e.target.value)}
-                className="w-full px-4 py-3 bg-[#090d16] border border-slate-800 rounded-2xl text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-teal-600"
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-[#090d16] border border-slate-200 dark:border-slate-800 rounded-2xl text-xs md:text-sm text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none focus:border-teal-600"
               />
 
               {selectedFile && (
@@ -631,7 +607,7 @@ export default function FeedPage() {
               )}
 
               <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold text-xs cursor-pointer transition-all border border-slate-800">
+                <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs cursor-pointer transition-all border border-slate-200 dark:border-slate-800">
                   <ImageIcon className="w-4 h-4 text-emerald-400" />
                   <span>Foto/Video</span>
                   <input 
@@ -656,15 +632,13 @@ export default function FeedPage() {
           {/* Feed Posts List */}
           <div className="space-y-4">
             {postsList.map(post => (
-              <div key={post.postId} className="bg-[#0f172a] border border-slate-800 rounded-3xl p-4 md:p-6 shadow-sm space-y-3">
+              <div key={post.postId} className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 md:p-6 shadow-sm space-y-3">
                 {/* Author Header */}
                 <div className="flex items-center justify-between">
                   <Link href={`/profile/${post.username}`} className="flex items-center gap-3 group">
-                    <div className="w-10 h-10 rounded-full bg-teal-800 text-white font-bold flex items-center justify-center text-xs shadow-sm group-hover:scale-105 transition-transform border border-teal-600/40">
-                      {(post.displayName || post.username || 'U').charAt(0).toUpperCase()}
-                    </div>
+                    <UserAvatar avatarUrl={post.avatarUrl} name={post.displayName || post.username} className="w-10 h-10 rounded-full text-xs shadow-sm group-hover:scale-105 transition-transform border border-teal-600/40" />
                     <div>
-                      <h5 className="font-bold text-sm text-white group-hover:text-teal-400 transition-colors">{post.displayName || post.username}</h5>
+                      <h5 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">{post.displayName || post.username}</h5>
                       <span className="text-[10px] text-slate-400 font-medium">@{post.username}</span>
                     </div>
                   </Link>
@@ -674,7 +648,7 @@ export default function FeedPage() {
                       <div className="relative">
                         <button
                           onClick={() => setPostMenuOpenId(postMenuOpenId === post.postId ? null : post.postId)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors font-bold text-base leading-none"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-base leading-none"
                           aria-label="Opciones"
                         >
                           ···
@@ -682,7 +656,7 @@ export default function FeedPage() {
                         {postMenuOpenId === post.postId && (
                           <>
                             <div className="fixed inset-0 z-40" onClick={() => setPostMenuOpenId(null)} />
-                            <div className="absolute right-0 mt-1 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden">
+                            <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden">
                               <button
                                 onClick={() => { setDeleteConfirmPostId(post.postId); setPostMenuOpenId(null); }}
                                 className="w-full flex items-center gap-2 px-4 py-2.5 text-rose-400 hover:bg-rose-500/10 text-sm font-semibold transition-colors"
@@ -699,7 +673,7 @@ export default function FeedPage() {
 
                 {/* Caption Text */}
                 {post.caption ? (
-                  <p className="text-sm text-slate-200 font-normal leading-relaxed">
+                  <p className="text-sm text-slate-700 dark:text-slate-200 font-normal leading-relaxed">
                     {post.caption}
                   </p>
                 ) : null}
@@ -724,7 +698,7 @@ export default function FeedPage() {
                 ) : null}
 
                 {/* Post Actions Bar (Like, Comment, Share, Save) */}
-                <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 text-xs text-slate-400 font-semibold">
+                <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800/80 text-xs text-slate-500 dark:text-slate-400 font-semibold">
                   <div className="flex items-center gap-6">
                     <button 
                       onClick={() => handleToggleLike(post.postId)}
@@ -760,14 +734,14 @@ export default function FeedPage() {
 
                 {/* Inline Comments Section */}
                 {expandedComments[post.postId] && (
-                  <div className="pt-3 border-t border-slate-800/80 space-y-3">
+                  <div className="pt-3 border-t border-slate-200 dark:border-slate-800/80 space-y-3">
                     <form onSubmit={(e) => handleAddComment(post.postId, e)} className="flex items-center gap-2">
                       <input
                         type="text"
                         placeholder="Escribe un comentario..."
                         value={commentInputMap[post.postId] || ''}
                         onChange={(e) => setCommentInputMap(prev => ({ ...prev, [post.postId]: e.target.value }))}
-                        className="flex-1 px-3 py-2 bg-[#090d16] border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-teal-600"
+                        className="flex-1 px-3 py-2 bg-slate-50 dark:bg-[#090d16] border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-teal-600"
                       />
                       <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-xl text-xs font-bold hover:bg-teal-600 transition-all">
                         Enviar
@@ -779,9 +753,9 @@ export default function FeedPage() {
                     ) : (
                       <div className="space-y-2 max-h-48 overflow-y-auto">
                         {(postCommentsMap[post.postId] || []).map((c: any, i: number) => (
-                          <div key={c.commentId || i} className="bg-slate-900/60 border border-slate-800/60 rounded-xl p-2.5 text-xs">
+                          <div key={c.commentId || i} className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/60 rounded-xl p-2.5 text-xs">
                             <span className="font-bold text-teal-400 block text-[11px]">@{c.authorUsername || c.username || 'usuario'}</span>
-                            <span className="text-slate-300">{c.content || c.text}</span>
+                            <span className="text-slate-700 dark:text-slate-300">{c.content || c.text}</span>
                           </div>
                         ))}
                         {(!postCommentsMap[post.postId] || postCommentsMap[post.postId].length === 0) && (
@@ -795,10 +769,10 @@ export default function FeedPage() {
             ))}
 
             {postsList.length === 0 && !loadingPosts && (
-              <div className="bg-[#0f172a] border border-slate-800 rounded-3xl p-12 text-center text-slate-400 space-y-2">
+              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center text-slate-500 dark:text-slate-400 space-y-2">
                 <Sparkles className="w-8 h-8 mx-auto text-teal-400" />
-                <p className="text-sm font-bold text-white">Tu feed está listo</p>
-                <p className="text-xs text-slate-400">Sigue a otros usuarios o publica un momento para comenzar.</p>
+                <p className="text-sm font-bold text-slate-900 dark:text-white">Tu feed está tranquilo.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Sigue personas o publica un Momento.</p>
               </div>
             )}
           </div>
@@ -807,11 +781,9 @@ export default function FeedPage() {
 
         {/* ================= RIGHT SIDEBAR (Desktop >= 1024px) ================= */}
         <aside className="hidden lg:block lg:col-span-3 space-y-6">
-          <div className="bg-gradient-to-br from-teal-950 to-slate-900 border border-teal-800/60 rounded-3xl p-6 text-white shadow-sm space-y-4">
+          <div className="bg-white dark:bg-gradient-to-br dark:from-teal-950 dark:to-slate-900 border border-slate-200 dark:border-teal-800/60 rounded-3xl p-6 text-slate-900 dark:text-white shadow-sm space-y-4">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-teal-800 text-white flex items-center justify-center font-black text-xl border border-teal-600/40">
-                {(user?.displayName || 'U').charAt(0).toUpperCase()}
-              </div>
+              <UserAvatar avatarUrl={user?.avatarUrl} name={user?.displayName || user?.username} className="w-14 h-14 rounded-2xl text-xl border border-teal-600/40" />
               <div>
                 <h4 className="font-extrabold text-base leading-tight">{user?.displayName || user?.username}</h4>
                 <span className="text-xs text-teal-300 font-medium">@{user?.username}</span>
@@ -831,16 +803,16 @@ export default function FeedPage() {
       {deleteConfirmPostId && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center p-4" onClick={() => !isDeletingPost && setDeleteConfirmPostId(null)}>
           <div
-            className="bg-[#0f172a] border border-slate-700 rounded-2xl w-full max-w-sm p-6 space-y-4"
+            className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 rounded-2xl w-full max-w-sm p-6 space-y-4"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="font-bold text-white text-base">Eliminar publicación</h3>
+            <h3 className="font-bold text-slate-900 dark:text-white text-base">Eliminar publicación</h3>
             <p className="text-sm text-slate-400">¿Seguro que quieres eliminar esta publicación? Esta acción no se puede deshacer.</p>
             <div className="flex gap-3 pt-1">
               <button
                 onClick={() => setDeleteConfirmPostId(null)}
                 disabled={isDeletingPost}
-                className="flex-1 py-2.5 border border-slate-600 text-slate-300 rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors"
+                className="flex-1 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 Cancelar
               </button>

@@ -92,6 +92,14 @@ public class PostControllerIntegrationTest {
     }
 
     @Test
+    void emptyFeedRemainsEmpty() throws Exception {
+        mockMvc.perform(get("/api/v1/posts/feed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.posts.length()").value(0))
+                .andExpect(jsonPath("$.totalItems").value(0));
+    }
+
+    @Test
     void createPost_createsPostSuccessfully() throws Exception {
         mockMvc.perform(multipart("/api/v1/posts")
                         .param("caption", "Mi primer post en SocialTush"))

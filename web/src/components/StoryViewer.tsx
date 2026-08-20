@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Play, Pause, Send, MoreHorizontal } from 'lucide-react';
 
 import { api, useAuth } from '@/context/AuthContext';
+import UserAvatar from '@/components/UserAvatar';
 
 interface Story {
   storyId: string;
@@ -228,13 +229,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
         <div className="absolute top-6 left-4 right-4 z-30 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {isOwnStory && <button onClick={(event) => { event.stopPropagation(); setIsMenuOpen(open => !open); }} className="p-1.5 rounded-full bg-black/40 text-white"><MoreHorizontal className="h-4 w-4" /></button>}
-            {currentUserStories.avatarUrl ? (
-              <img src={currentUserStories.avatarUrl} alt={currentUserStories.displayName} className="h-9 w-9 rounded-full object-cover border border-white/20" />
-            ) : (
-              <div className="h-9 w-9 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-white">
-                {currentUserStories.displayName.charAt(0).toUpperCase()}
-              </div>
-            )}
+            <UserAvatar avatarUrl={currentUserStories.avatarUrl} name={currentUserStories.displayName} className="h-9 w-9 rounded-full text-xs border border-white/20" />
             <div>
               <span className="text-white text-xs font-bold block">{currentUserStories.displayName}</span>
               <span className="text-[10px] text-zinc-400 block">@{currentUserStories.username}{formatRelativeTime(currentStory.createdAt)}</span>

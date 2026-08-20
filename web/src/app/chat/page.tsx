@@ -10,6 +10,7 @@ import { Client } from '@stomp/stompjs';
 import NotificationBell from '@/components/NotificationBell';
 import MobileBottomBar from '@/components/MobileBottomBar';
 import CallModal from '@/components/CallModal';
+import UserAvatar from '@/components/UserAvatar';
 import { 
   Search, Plus, Send, Smile, Paperclip, Phone, Video, Info, User, ChevronLeft, LogOut, CheckCheck, 
   Users, MessageSquare, X, Filter, Home, Layers, Compass, Bell, Bookmark, Settings, Image as ImageIcon,
@@ -394,7 +395,7 @@ function ChatContent() {
           <div className="space-y-6">
             {/* SocialTush Brand Logo */}
             <Link href="/feed" className="flex items-center gap-3 px-2 py-1 group">
-              <div className="h-10 w-10 rounded-2xl bg-teal-705 flex items-center justify-center text-white font-extrabold shadow-md shadow-teal-700/20 group-hover:scale-105 transition-transform">
+              <div className="h-10 w-10 rounded-2xl bg-teal-700 flex items-center justify-center text-white font-extrabold shadow-md shadow-teal-700/20 group-hover:scale-105 transition-transform">
                 <span className="text-xl">S</span>
               </div>
               <span className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
@@ -408,9 +409,9 @@ function ChatContent() {
                 <Home className="h-4 w-4" />
                 <span>Inicio</span>
               </Link>
-              <Link href="/chat" className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-teal-50 dark:bg-teal-800/30 text-teal-900 dark:text-teal-405 border-l-4 border-teal-700 font-bold shadow-sm">
+              <Link href="/chat" className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-teal-50 dark:bg-teal-800/30 text-teal-900 dark:text-teal-400 border-l-4 border-teal-700 font-bold shadow-sm">
                 <div className="flex items-center gap-3">
-                  <MessageSquare className="h-4 w-4 text-teal-700 dark:text-teal-405" />
+                  <MessageSquare className="h-4 w-4 text-teal-700 dark:text-teal-400" />
                   <span>Mensajes</span>
                 </div>
                 {totalUnreadAll > 0 && (
@@ -434,7 +435,7 @@ function ChatContent() {
             >
               {theme === 'light' ? (
                 <>
-                  <Moon className="h-4.5 w-4.5 text-slate-650" />
+                  <Moon className="h-[18px] w-[18px] text-slate-600" />
                   <span>Usar tema oscuro</span>
                 </>
               ) : (
@@ -449,9 +450,7 @@ function ChatContent() {
             <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-3 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <div className="h-9 w-9 rounded-full bg-teal-700 flex items-center justify-center font-extrabold text-white text-xs shadow-md">
-                    {user?.username ? user.username.charAt(0).toUpperCase() : 'U'}
-                  </div>
+                  <UserAvatar avatarUrl={user?.avatarUrl} name={user?.displayName || user?.username} className="h-9 w-9 rounded-full text-xs shadow-md" />
                   <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-slate-50 dark:border-slate-900" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -502,7 +501,7 @@ function ChatContent() {
               <button 
                 onClick={() => setActiveTab('directos')}
                 className={`flex-1 py-1.5 rounded-lg transition-all ${
-                  activeTab === 'directos' ? 'bg-teal-700 text-white shadow-sm' : 'text-slate-650 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  activeTab === 'directos' ? 'bg-teal-700 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
                 Directos ({conversations.filter(c => !c.isGroup).length})
@@ -510,7 +509,7 @@ function ChatContent() {
               <button 
                 onClick={() => setActiveTab('circulos')}
                 className={`flex-1 py-1.5 rounded-lg transition-all ${
-                  activeTab === 'circulos' ? 'bg-teal-700 text-white shadow-sm' : 'text-slate-650 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  activeTab === 'circulos' ? 'bg-teal-700 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
                 Círculos
@@ -518,7 +517,7 @@ function ChatContent() {
               <button 
                 onClick={() => setActiveTab('nodos')}
                 className={`flex-1 py-1.5 rounded-lg transition-all ${
-                  activeTab === 'nodos' ? 'bg-teal-700 text-white shadow-sm' : 'text-slate-650 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  activeTab === 'nodos' ? 'bg-teal-700 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
                 Nodos
@@ -553,13 +552,13 @@ function ChatContent() {
                     className={`p-3 rounded-2xl cursor-pointer transition-all flex items-center gap-3 border ${
                       isSelected
                         ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-300 dark:border-teal-900 text-slate-900 dark:text-slate-100 shadow-sm' 
-                        : 'bg-white dark:bg-[#0f172a] border-slate-200 dark:border-slate-800 hover:bg-slate-100/60 dark:hover:bg-slate-850/60'
+                        : 'bg-white dark:bg-[#0f172a] border-slate-200 dark:border-slate-800 hover:bg-slate-100/60 dark:hover:bg-slate-800/60'
                     }`}
                   >
                     <div className="relative flex-shrink-0">
-                      <div className="h-10 w-10 rounded-full bg-teal-700 text-white flex items-center justify-center font-extrabold text-xs shadow-sm">
-                        {c.isGroup ? <Users className="h-5 w-5 text-teal-100" /> : c.name.charAt(0).toUpperCase()}
-                      </div>
+                      {c.isGroup
+                        ? <div className="h-10 w-10 rounded-full bg-teal-700 text-white flex items-center justify-center shadow-sm"><Users className="h-5 w-5 text-teal-100" /></div>
+                        : <UserAvatar avatarUrl={c.avatarUrl} name={c.name} className="h-10 w-10 rounded-full text-xs shadow-sm" />}
                       <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
                     </div>
 
@@ -591,7 +590,7 @@ function ChatContent() {
               })}
 
             {conversations.length === 0 && (
-              <div className="text-center py-20 text-slate-405 dark:text-slate-400 text-xs font-medium">
+              <div className="text-center py-20 text-slate-400 dark:text-slate-400 text-xs font-medium">
                 No hay conexiones activas en esta sección.
               </div>
             )}
@@ -605,7 +604,7 @@ function ChatContent() {
           {activeConversation ? (
             <>
               {/* Main Chat Header */}
-              <div className="p-3.5 px-5 border-b border-slate-205 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-sm flex items-center justify-between z-10">
+              <div className="p-3.5 px-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-sm flex items-center justify-between z-10">
                 <div className="flex items-center gap-3">
                   <button 
                     onClick={() => { setActiveConversation(null); setMessages([]); setChatError(''); }}
@@ -615,7 +614,9 @@ function ChatContent() {
                   </button>
 
                   <div className="relative">
-                    {activeConversation.avatarUrl ? <img src={activeConversation.avatarUrl} alt="" className="h-10 w-10 rounded-full object-cover" /> : <div className="h-10 w-10 rounded-full bg-teal-700 flex items-center justify-center font-extrabold text-white text-xs shadow-sm">{activeConversation.isGroup ? <Users className="h-5 w-5 text-teal-100" /> : activeConversation.name.charAt(0).toUpperCase()}</div>}
+                    {activeConversation.isGroup
+                      ? <div className="h-10 w-10 rounded-full bg-teal-700 flex items-center justify-center text-white"><Users className="h-5 w-5 text-teal-100" /></div>
+                      : <UserAvatar avatarUrl={activeConversation.avatarUrl} name={activeConversation.name} className="h-10 w-10 rounded-full text-xs shadow-sm" />}
                     <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
                   </div>
 
@@ -654,7 +655,7 @@ function ChatContent() {
               <div className="flex-1 p-5 overflow-y-auto space-y-4 bg-slate-100/60 dark:bg-slate-900/40">
                 {/* Date separator */}
                 <div className="flex items-center justify-center my-2">
-                  <span className="px-3 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-750 text-[10px] font-bold text-teal-800 dark:text-teal-400 shadow-sm">
+                  <span className="px-3 py-1 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-teal-800 dark:text-teal-400 shadow-sm">
                     Hoy
                   </span>
                 </div>
@@ -672,7 +673,7 @@ function ChatContent() {
                           : 'bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-none shadow-sm'
                       }`}>
                         {!isOwn && activeConversation.isGroup && (
-                          <strong className="text-[10px] text-teal-750 dark:text-teal-400 block mb-1">@{m.senderUsername}</strong>
+                          <strong className="text-[10px] text-teal-700 dark:text-teal-400 block mb-1">@{m.senderUsername}</strong>
                         )}
                         <p className="whitespace-pre-wrap">{m.content}</p>
                       </div>
@@ -681,7 +682,7 @@ function ChatContent() {
                         <span className="text-[9px] text-slate-400 font-medium">
                           {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                        {isOwn && <CheckCheck className="h-3.5 w-3.5 text-teal-605" />}
+                        {isOwn && <CheckCheck className="h-3.5 w-3.5 text-teal-600" />}
                       </div>
                     </div>
                   );
@@ -713,7 +714,7 @@ function ChatContent() {
                       value={inputText}
                       onChange={handleInputChange}
                       placeholder="Escribe un mensaje..."
-                      className="w-full pl-4 pr-24 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-202 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-teal-700 transition-all"
+                      className="w-full pl-4 pr-24 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-teal-700 transition-all"
                     />
                     <div className="absolute right-3 flex items-center gap-2 text-slate-400">
                       <button type="button" className="hover:text-teal-700 transition-colors"><Smile className="h-4 w-4" /></button>
@@ -752,9 +753,7 @@ function ChatContent() {
             {/* User Details Header */}
             <div className="text-center p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-3">
               <div className="relative mx-auto w-16 h-16">
-                <div className="w-full h-full rounded-full bg-teal-700 flex items-center justify-center font-black text-white text-lg shadow-md">
-                  {activeConversation.name.charAt(0).toUpperCase()}
-                </div>
+                <UserAvatar avatarUrl={activeConversation.avatarUrl} name={activeConversation.name} className="w-full h-full rounded-full text-lg shadow-md" />
                 <span className="absolute bottom-1 right-1 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
               </div>
               <div>
@@ -767,7 +766,7 @@ function ChatContent() {
             </div>
 
             {/* Shared Nodes */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-202 dark:border-slate-800 rounded-2xl space-y-2">
+            <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
               <div className="flex items-center justify-between text-xs font-extrabold text-slate-900 dark:text-white">
                 <span>Nodos en común</span>
                 <span className="text-teal-700 dark:text-teal-400 text-[10px]">3</span>
@@ -785,30 +784,30 @@ function ChatContent() {
             </div>
 
             {/* Shared Circles */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-202 dark:border-slate-800 rounded-2xl space-y-2">
+            <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
               <div className="flex items-center justify-between text-xs font-extrabold text-slate-900 dark:text-white">
                 <span>Círculos en común</span>
                 <span className="text-teal-700 dark:text-teal-400 text-[10px]">2</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                <span className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-850 text-teal-800 dark:text-teal-300 font-bold text-[10px]">
+                <span className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-300 font-bold text-[10px]">
                   Círculo Creativo
                 </span>
-                <span className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-855 text-teal-800 dark:text-teal-300 font-bold text-[10px]">
+                <span className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-300 font-bold text-[10px]">
                   Fotógrafos Urbanos
                 </span>
               </div>
             </div>
 
             {/* Recent Activity */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-202 dark:border-slate-800 rounded-2xl space-y-2">
+            <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
               <span className="text-xs font-extrabold text-slate-900 dark:text-white block">Actividad reciente</span>
               <div className="space-y-2 text-[10px]">
-                <div className="flex items-center gap-2 text-slate-650 dark:text-slate-400">
+                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                   <Heart className="h-3 w-3 text-rose-500" />
                   <span>Respondió a tu historia · hace 2 min</span>
                 </div>
-                <div className="flex items-center gap-2 text-slate-655 dark:text-slate-400">
+                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
                   <MessageSquare className="h-3 w-3 text-teal-700" />
                   <span>Comentó en tu post · Ayer</span>
                 </div>
@@ -826,7 +825,7 @@ function ChatContent() {
           <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Nuevo Chat Directo</h3>
-              <button onClick={() => setIsNewChatModalOpen(false)} className="text-slate-450 hover:text-slate-600 dark:hover:text-slate-350">
+              <button onClick={() => setIsNewChatModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -837,7 +836,7 @@ function ChatContent() {
                   type="text" 
                   value={searchUsername}
                   onChange={(e) => setSearchUsername(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-105 focus:outline-none focus:border-teal-700"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-700"
                   placeholder="ej: kathely"
                   required
                 />
@@ -859,7 +858,7 @@ function ChatContent() {
           <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Crear Círculo o Nodo</h3>
-              <button onClick={() => setIsNewGroupModalOpen(false)} className="text-slate-450 hover:text-slate-600 dark:hover:text-slate-350">
+              <button onClick={() => setIsNewGroupModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -870,7 +869,7 @@ function ChatContent() {
                   type="text" 
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-105 focus:outline-none focus:border-teal-700"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-700"
                   placeholder="ej: Círculo Creativo"
                   required
                 />
@@ -881,7 +880,7 @@ function ChatContent() {
                   type="text" 
                   value={groupParticipants}
                   onChange={(e) => setGroupParticipants(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-105 focus:outline-none focus:border-teal-700"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-700"
                   placeholder="ej: alex, kathely"
                   required
                 />
@@ -935,7 +934,7 @@ export default function ChatPage() {
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] flex items-center justify-center">
         <div className="animate-pulse flex flex-col items-center gap-3">
           <div className="h-10 w-10 bg-teal-700 rounded-xl" />
-          <span className="text-teal-805 dark:text-teal-400 text-sm font-semibold">Cargando SocialTush Chat...</span>
+          <span className="text-teal-800 dark:text-teal-400 text-sm font-semibold">Cargando SocialTush Chat...</span>
         </div>
       </div>
     }>

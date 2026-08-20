@@ -2,6 +2,7 @@ package com.socialtush.modules.auth.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.socialtush.modules.users.repository.UserRepository;
+import com.socialtush.modules.profiles.repository.ProfileRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -29,6 +30,9 @@ public class AuthControllerIntegrationTest {
     private UserRepository userRepository;
 
     @Autowired
+    private ProfileRepository profileRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Test
@@ -45,6 +49,7 @@ public class AuthControllerIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().is2xxSuccessful())
                 .andExpect(jsonPath("$.username").value("nuevo_int_user"))
+                .andExpect(jsonPath("$.avatarUrl").isEmpty())
                 .andExpect(jsonPath("$.accessToken").exists());
     }
 
@@ -111,9 +116,15 @@ public class AuthControllerIntegrationTest {
                 "password", "password123"
         );
 
-        mockMvc.perform(post("/api/v1/auth/register")
+        var registration = mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(regRequest)));
+                .content(objectMapper.writeValueAsString(regRequest)))
+                .andReturn();
+
+        var user = userRepository.findByUsernameIgnoreCase("login_test_user").orElseThrow();
+        var profile = profileRepository.findById(user.getId()).orElseThrow();
+        profile.setAvatarUrl("https://cdn.example/avatar-login.webp");
+        profileRepository.saveAndFlush(profile);
 
         Map<String, String> loginRequest = Map.of(
                 "usernameOrEmail", "login_test_user",
@@ -125,7 +136,17 @@ public class AuthControllerIntegrationTest {
                         .content(objectMapper.writeValueAsString(loginRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").exists())
-                .andExpect(jsonPath("$.username").value("login_test_user"));
+                .andExpect(jsonPath("$.username").value("login_test_user"))
+                .andExpect(jsonPath("$.avatarUrl").value("https://cdn.example/avatar-login.webp"));
+
+        Map<String, Object> registrationBody = objectMapper.readValue(
+                registration.getResponse().getContentAsString(), Map.class);
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "refreshToken", registrationBody.get("refreshToken")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatarUrl").value("https://cdn.example/avatar-login.webp"));
     }
 
     @Test

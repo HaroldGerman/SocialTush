@@ -20,7 +20,7 @@ interface AuthContextType {
   login: (usernameOrEmail: string, password: String) => Promise<void>;
   register: (email: string, username: string, displayName: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateAvatarUrl: (url: string) => void;
+  updateUserProfile: (profile: Pick<UserSession, 'displayName' | 'avatarUrl'>) => void;
   axiosInstance: AxiosInstance;
 }
 
@@ -36,6 +36,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const accessTokenRef = React.useRef<string | null>(null);
+
+  const sessionFromResponse = (data: any): UserSession => ({
+    userId: data.userId,
+    username: data.username,
+    email: data.email,
+    displayName: data.displayName,
+    avatarUrl: data.avatarUrl ?? undefined,
+    role: data.role,
+  });
 
   // Helper to keep ref and state in sync
   const setToken = (token: string | null) => {
@@ -74,13 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const newAccessToken = res.data.accessToken;
             setToken(newAccessToken);
             
-            setUser({
-              userId: res.data.userId,
-              username: res.data.username,
-              email: res.data.email,
-              displayName: res.data.displayName,
-              role: res.data.role,
-            });
+            setUser(sessionFromResponse(res.data));
 
             originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
             return api(originalRequest);
@@ -105,13 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
         setToken(res.data.accessToken);
-        setUser({
-          userId: res.data.userId,
-          username: res.data.username,
-          email: res.data.email,
-          displayName: res.data.displayName,
-          role: res.data.role,
-        });
+        setUser(sessionFromResponse(res.data));
       } catch (err) {
         // No valid session cookie found
       } finally {
@@ -127,13 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await api.post('/auth/login', { usernameOrEmail, password });
       setToken(res.data.accessToken);
-      setUser({
-        userId: res.data.userId,
-        username: res.data.username,
-        email: res.data.email,
-        displayName: res.data.displayName,
-        role: res.data.role,
-      });
+      setUser(sessionFromResponse(res.data));
     } catch (err: any) {
       throw new Error(err.response?.data?.message || 'Error al iniciar sesión');
     } finally {
@@ -146,13 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await api.post('/auth/register', { email, username, displayName, password });
       setToken(res.data.accessToken);
-      setUser({
-        userId: res.data.userId,
-        username: res.data.username,
-        email: res.data.email,
-        displayName: res.data.displayName,
-        role: res.data.role,
-      });
+      setUser(sessionFromResponse(res.data));
     } catch (err: any) {
       throw new Error(err.response?.data?.message || 'Error al registrarse');
     } finally {
@@ -172,12 +157,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateAvatarUrl = (url: string) => {
-    setUser(prev => prev ? { ...prev, avatarUrl: url } : prev);
+  const updateUserProfile = (profile: Pick<UserSession, 'displayName' | 'avatarUrl'>) => {
+    setUser(prev => prev ? { ...prev, ...profile } : prev);
   };
 
   return (
-    <AuthContext.Provider value={{ user, accessToken, isLoading, login, register, logout, updateAvatarUrl, axiosInstance: api }}>
+    <AuthContext.Provider value={{ user, accessToken, isLoading, login, register, logout, updateUserProfile, axiosInstance: api }}>
       {children}
     </AuthContext.Provider>
   );

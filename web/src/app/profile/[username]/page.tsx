@@ -7,6 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import NotificationBell from '@/components/NotificationBell';
 import MobileBottomBar from '@/components/MobileBottomBar';
+import UserAvatar from '@/components/UserAvatar';
 import { 
   User, Lock, Settings, LogOut, Grid, Bookmark, Users, ChevronLeft, Check, Plus, Edit2, ShieldAlert, Sparkles, MessageSquare, MapPin, Radio, Calendar, Home, Compass, Search, Bell, Heart, Activity, Award, X, Camera, Sun, Moon
 } from 'lucide-react';
@@ -47,7 +48,7 @@ interface PostData {
 
 export default function ProfilePage() {
   const { username } = useParams() as { username: string };
-  const { user: currentUser, logout, updateAvatarUrl, isLoading: authLoading } = useAuth();
+  const { user: currentUser, logout, updateUserProfile, isLoading: authLoading } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
 
@@ -94,23 +95,9 @@ export default function ProfilePage() {
         setUserPosts([]);
       }
     } catch (err: any) {
-      setProfile({
-        userId: 'fallback-id',
-        username: username,
-        displayName: username,
-        bio: 'Construyendo comunidad desde las pequeñas cosas. Amante del café y el diseño.',
-        avatarUrl: '',
-        isPrivate: false,
-        isSelf: currentUser ? currentUser.username.toLowerCase() === username.toLowerCase() : false,
-        isFollowing: false,
-        followersCount: 142,
-        followingCount: 88,
-        whoCanMessage: 'EVERYONE',
-        whoCanComment: 'EVERYONE',
-        readReceiptsEnabled: true
-      });
-      setEditDisplayName(username);
-      setEditBio('Construyendo comunidad desde las pequeñas cosas. Amante del café y el diseño.');
+      setProfile(null);
+      setUserPosts([]);
+      setError(err.response?.status === 404 ? 'Usuario no encontrado' : 'No se pudo cargar el perfil.');
     } finally {
       setLoading(false);
     }
@@ -154,23 +141,15 @@ export default function ProfilePage() {
 
   const handleLikeToggle = async (postId: string) => {
     try {
-      await api.post(`/likes/${postId}?type=POST`);
-    } catch (err) {
-      try {
-        await api.post('/likes/toggle', { targetId: postId, targetType: 'POST' });
-      } catch (e) {}
+      const res = await api.post(`/likes/${postId}`);
+      setUserPosts(prev => prev.map(p => p.postId === postId ? {
+        ...p,
+        hasLiked: res.data.liked,
+        likesCount: res.data.count
+      } : p));
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'No se pudo actualizar el Me gusta.');
     }
-    setUserPosts(prev => prev.map(p => {
-      if (p.postId === postId) {
-        const newLiked = !p.hasLiked;
-        return {
-          ...p,
-          hasLiked: newLiked,
-          likesCount: newLiked ? p.likesCount + 1 : Math.max(0, p.likesCount - 1)
-        };
-      }
-      return p;
-    }));
   };
 
   const toggleComments = async (postId: string) => {
@@ -195,8 +174,6 @@ export default function ProfilePage() {
     const text = commentInputMap[postId]?.trim();
     if (!text) return;
 
-    setCommentInputMap(prev => ({ ...prev, [postId]: '' }));
-
     try {
       const res = await api.post(`/comments/${postId}`, { content: text });
       const newComment = res.data;
@@ -205,19 +182,9 @@ export default function ProfilePage() {
         [postId]: [...(prev[postId] || []), newComment]
       }));
       setUserPosts(prev => prev.map(p => p.postId === postId ? { ...p, commentsCount: (p.commentsCount || 0) + 1 } : p));
-    } catch (err) {
-      const mockComment = {
-        commentId: 'temp-' + Date.now(),
-        displayName: currentUser?.displayName || currentUser?.username || 'Yo',
-        username: currentUser?.username || 'yo',
-        content: text,
-        createdAt: 'Ahora mismo'
-      };
-      setPostCommentsMap(prev => ({
-        ...prev,
-        [postId]: [...(prev[postId] || []), mockComment]
-      }));
-      setUserPosts(prev => prev.map(p => p.postId === postId ? { ...p, commentsCount: (p.commentsCount || 0) + 1 } : p));
+      setCommentInputMap(prev => ({ ...prev, [postId]: '' }));
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'No se pudo publicar el comentario.');
     }
   };
 
@@ -274,16 +241,15 @@ export default function ProfilePage() {
         setAvatarFile(null);
 
         // Instantly update navbar and local layout using global context handler
-        if (res.data.avatarUrl) {
-          updateAvatarUrl(res.data.avatarUrl);
-        }
+        updateUserProfile({ displayName: res.data.displayName, avatarUrl: res.data.avatarUrl || undefined });
       } else {
         // Normal JSON payload
-        await api.put('/profiles/me', {
+        const res = await api.put('/profiles/me', {
           displayName: editDisplayName,
           bio: editBio,
           isPrivate: editIsPrivate
         });
+        updateUserProfile({ displayName: res.data.displayName, avatarUrl: res.data.avatarUrl || currentUser?.avatarUrl });
       }
       
       setIsEditing(false);
@@ -315,7 +281,18 @@ export default function ProfilePage() {
     );
   }
 
-  if (!profile) return null;
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-[#f4f6f9] dark:bg-[#090d16] flex items-center justify-center px-4">
+        <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center space-y-4 max-w-sm w-full">
+          <p className="font-bold text-slate-900 dark:text-white">{error}</p>
+          {error !== 'Usuario no encontrado' && (
+            <button onClick={fetchProfile} className="px-4 py-2 rounded-xl bg-teal-700 text-white text-sm font-bold">Reintentar</button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f4f6f9] dark:bg-[#090d16] text-[#1e293b] dark:text-slate-100 flex flex-col font-sans pb-16 md:pb-0 transition-colors duration-200">
@@ -323,7 +300,7 @@ export default function ProfilePage() {
       <header className="bg-white dark:bg-[#0f172a] border-b border-slate-200 dark:border-slate-800 sticky top-0 z-45 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/feed')}>
-            <div className="h-9 w-9 rounded-xl bg-teal-805 flex items-center justify-center text-white font-black shadow-md shadow-teal-900/20">
+            <div className="h-9 w-9 rounded-xl bg-teal-800 flex items-center justify-center text-white font-black shadow-md shadow-teal-900/20">
               S
             </div>
             <span className="font-extrabold text-xl tracking-tight text-slate-800 dark:text-white">
@@ -332,20 +309,20 @@ export default function ProfilePage() {
           </div>
 
           <nav className="hidden md:flex items-center gap-1">
-            <Link href="/feed" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-650 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
+            <Link href="/feed" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
               <Home className="w-4 h-4" />
               <span>Inicio</span>
             </Link>
-            <Link href="/circles" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-650 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
+            <Link href="/circles" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
               <Compass className="w-4 h-4" />
               <span>Círculos</span>
             </Link>
-            <Link href="/chat" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-650 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
+            <Link href="/chat" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
               <MessageSquare className="w-4 h-4" />
               <span>Mensajes</span>
             </Link>
             <button className="flex items-center gap-2 px-5 py-2 rounded-xl bg-teal-50 dark:bg-teal-800/30 text-teal-800 dark:text-teal-400 font-bold text-sm">
-              <User className="w-4 h-4 text-teal-850 dark:text-teal-400" />
+              <User className="w-4 h-4 text-teal-800 dark:text-teal-400" />
               <span>Perfil</span>
             </button>
           </nav>
@@ -362,7 +339,7 @@ export default function ProfilePage() {
             </button>
 
             <NotificationBell />
-            <button onClick={() => router.push('/feed')} className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-teal-850 dark:text-teal-400 hover:underline">
+            <button onClick={() => router.push('/feed')} className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-teal-800 dark:text-teal-400 hover:underline">
               <ChevronLeft className="w-4 h-4" />
               Volver al Feed
             </button>
@@ -374,7 +351,7 @@ export default function ProfilePage() {
       <main className="max-w-[1200px] mx-auto w-full px-4 md:px-6 py-6 md:py-8 flex-1 space-y-6">
         
         {/* Profile Card Header */}
-        <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-850 rounded-3xl overflow-hidden shadow-sm">
+        <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
           {/* Top Banner Gradient */}
           <div className="h-28 md:h-44 bg-gradient-to-r from-teal-900 via-teal-800 to-emerald-800 relative flex items-end">
             <div className="absolute top-3 right-3 md:top-4 md:right-4 flex items-center gap-2">
@@ -407,7 +384,7 @@ export default function ProfilePage() {
                   >
                     {profile.isFollowing ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-teal-750" />
+                        <Check className="w-3.5 h-3.5 text-teal-700" />
                         Siguiendo
                       </>
                     ) : (
@@ -429,7 +406,7 @@ export default function ProfilePage() {
             </div>
 
             {/* DisplayName inside the banner at the bottom left */}
-            <div className="pl-24 md:pl-36 pb-3 text-left">
+            <div className="pl-24 md:pl-36 pb-2 text-left">
               <h1 className="text-lg md:text-2xl font-black text-white tracking-tight flex items-center gap-1.5 drop-shadow-md">
                 {profile.displayName}
                 {profile.isPrivate && <Lock className="w-4 h-4 text-white/85" />}
@@ -442,27 +419,17 @@ export default function ProfilePage() {
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4 md:mb-6">
               
               {/* Avatar & @username */}
-              <div className="flex items-end gap-3 md:gap-5 -mt-10 md:-mt-16">
-                <div className="w-20 h-20 md:w-28 md:h-28 rounded-full bg-gradient-to-tr from-teal-800 to-emerald-600 p-[3px] shadow-xl relative z-10">
-                  {profile.avatarUrl ? (
-                    <img 
-                      src={profile.avatarUrl} 
-                      alt="Avatar" 
-                      className="w-full h-full rounded-full bg-white object-cover border-2 border-white"
-                    />
-                  ) : (
-                    <div className="w-full h-full rounded-full bg-slate-100 flex items-center justify-center font-black text-teal-800 text-3xl border-2 border-white">
-                      {profile.displayName.charAt(0).toUpperCase()}
-                    </div>
-                  )}
+              <div className="flex items-start gap-3 md:gap-5">
+                <div className="w-20 h-20 md:w-28 md:h-28 rounded-full bg-gradient-to-tr from-teal-800 to-emerald-600 p-[3px] shadow-xl relative z-10 -mt-10 md:-mt-16">
+                  <UserAvatar avatarUrl={profile.avatarUrl} name={profile.displayName} className="w-full h-full rounded-full text-3xl border-2 border-white" />
                 </div>
-                <div className="pb-1 relative z-10">
+                <div className="pt-1 md:pt-1.5 relative z-10">
                   <span className="text-xs md:text-sm font-semibold text-slate-500 block">@{profile.username}</span>
                 </div>
               </div>
 
               {/* Stats Bar */}
-              <div className="flex items-center justify-around md:justify-end gap-2 md:gap-6 bg-slate-50 dark:bg-slate-900 border border-slate-205 dark:border-slate-800 px-4 py-2.5 md:px-6 md:py-3 rounded-2xl w-full md:w-auto">
+              <div className="flex items-center justify-around md:justify-end gap-2 md:gap-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-2.5 md:px-6 md:py-3 rounded-2xl w-full md:w-auto">
                 <div className="text-center flex-1 md:flex-none">
                   <span className="block text-base font-black text-slate-800 dark:text-slate-200">{userPosts.length}</span>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Momentos</span>
@@ -481,8 +448,8 @@ export default function ProfilePage() {
             </div>
 
             {/* Biography */}
-            <p className="text-xs md:text-sm text-slate-600 dark:text-slate-350 font-medium max-w-2xl leading-relaxed whitespace-pre-wrap">
-              {profile.bio || '¡Hola! Bienvenido a mi espacio en SocialTush. 🚀'}
+            <p className="text-xs md:text-sm text-slate-600 dark:text-slate-300 font-medium max-w-2xl leading-relaxed whitespace-pre-wrap">
+              {profile.bio || ''}
             </p>
 
             {/* Mobile Edit Profile Button Call-to-action */}
@@ -537,11 +504,11 @@ export default function ProfilePage() {
                     {c.name.charAt(0)}
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm text-slate-850 dark:text-white">{c.name}</h4>
+                    <h4 className="font-bold text-sm text-slate-800 dark:text-white">{c.name}</h4>
                     <span className="text-[10px] text-slate-400 font-semibold">{c.members}</span>
                   </div>
                 </div>
-                <p className="text-xs text-slate-650 dark:text-slate-400 font-medium leading-relaxed">{c.desc}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-relaxed">{c.desc}</p>
                 <button className="w-full py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all">
                   Ver círculo
                 </button>
@@ -554,24 +521,14 @@ export default function ProfilePage() {
               <div key={post.postId} className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 md:p-6 shadow-sm space-y-3 mx-1 md:mx-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-teal-800 text-white font-bold flex items-center justify-center text-xs shadow-sm border border-teal-600/40">
-                      {profile.avatarUrl ? (
-                        <img 
-                          src={profile.avatarUrl} 
-                          alt="Avatar" 
-                          className="w-full h-full rounded-full object-cover"
-                        />
-                      ) : (
-                        post.displayName ? post.displayName.charAt(0).toUpperCase() : 'U'
-                      )}
-                    </div>
+                    <UserAvatar avatarUrl={post.avatarUrl} name={post.displayName || post.username} className="w-10 h-10 rounded-full text-xs shadow-sm border border-teal-600/40" />
                     <div>
                       <h5 className="font-bold text-sm text-slate-800 dark:text-white">{post.displayName || post.username}</h5>
                       <span className="text-[10px] text-slate-400 font-medium">@{post.username}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-slate-450 dark:text-slate-400 font-semibold">{formatLocalTimestamp(post.createdAt)}</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-400 font-semibold">{formatLocalTimestamp(post.createdAt)}</span>
                     {currentUser && post.userId && currentUser.userId === post.userId && (
                       <div className="relative">
                         <button
@@ -683,11 +640,11 @@ export default function ProfilePage() {
           <div className="relative w-full md:max-w-md bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] md:max-h-none overflow-hidden z-10 animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-base font-extrabold text-slate-850 dark:text-white flex items-center gap-2">
+              <h3 className="text-base font-extrabold text-slate-800 dark:text-white flex items-center gap-2">
                 <Edit2 className="w-4 h-4 text-teal-800" />
                 Editar Perfil
               </h3>
-              <button onClick={handleCancelEdit} className="text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 text-xs font-bold p-1">
+              <button onClick={handleCancelEdit} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs font-bold p-1">
                 Cancelar
               </button>
             </div>
@@ -699,7 +656,7 @@ export default function ProfilePage() {
                 {/* Avatar Selector Area */}
                 <div className="flex flex-col items-center justify-center py-2 space-y-2">
                   <div className="relative group">
-                    <div className="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-900 overflow-hidden border-2 border-slate-200 dark:border-slate-850 flex items-center justify-center shadow-inner">
+                    <div className="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-900 overflow-hidden border-2 border-slate-200 dark:border-slate-800 flex items-center justify-center shadow-inner">
                       {avatarPreview ? (
                         <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
                       ) : profile.avatarUrl ? (
@@ -711,7 +668,7 @@ export default function ProfilePage() {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="absolute bottom-0 right-0 p-1.5 bg-teal-850 hover:bg-teal-900 text-white rounded-full shadow-md transition-colors"
+                      className="absolute bottom-0 right-0 p-1.5 bg-teal-800 hover:bg-teal-900 text-white rounded-full shadow-md transition-colors"
                     >
                       <Camera className="w-3.5 h-3.5" />
                     </button>
@@ -734,7 +691,7 @@ export default function ProfilePage() {
 
                 {/* Name field */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-350 mb-1">Nombre Visible</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nombre Visible</label>
                   <input 
                     type="text" 
                     value={editDisplayName}
@@ -746,7 +703,7 @@ export default function ProfilePage() {
 
                 {/* Bio field */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-350 mb-1">Biografía</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Biografía</label>
                   <textarea 
                     rows={3}
                     value={editBio}
@@ -757,10 +714,10 @@ export default function ProfilePage() {
                 </div>
 
                 {/* Privacy settings */}
-                <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-805 rounded-2xl">
+                <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
                   <div>
                     <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Perfil Privado</span>
-                    <span className="text-[10px] text-slate-450 dark:text-slate-400">Requiere aprobación para seguirte</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-400">Requiere aprobación para seguirte</span>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input 
@@ -769,20 +726,20 @@ export default function ProfilePage() {
                       onChange={(e) => setEditIsPrivate(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-850"></div>
+                    <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-800"></div>
                   </label>
                 </div>
               </div>
 
               {/* Action Buttons - Sticky Footer */}
               <div 
-                className="p-5 border-t border-slate-150 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end"
+                className="p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end"
                 style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
               >
                 <button
                   type="submit"
                   disabled={updating}
-                  className="w-full py-3 rounded-xl bg-teal-850 hover:bg-teal-900 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
+                  className="w-full py-3 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
                 >
                   {updating ? 'Guardando...' : 'Guardar cambios'}
                 </button>
@@ -805,7 +762,7 @@ export default function ProfilePage() {
               <button
                 onClick={() => setDeleteConfirmPostId(null)}
                 disabled={isDeletingPost}
-                className="flex-1 py-2.5 border border-slate-300 dark:border-slate-700 text-slate-650 dark:text-slate-300 rounded-xl text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="flex-1 py-2.5 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 Cancelar
               </button>
