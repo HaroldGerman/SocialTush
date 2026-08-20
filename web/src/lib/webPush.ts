@@ -38,18 +38,48 @@ async function syncSubscription(subscription: PushSubscription): Promise<void> {
   });
 }
 
+function applicationServerKeyMatches(subscription: PushSubscription): boolean {
+  const existing = subscription.options.applicationServerKey;
+  if (!existing) return false;
+  const expected = new Uint8Array(urlBase64ToArrayBuffer(PUBLIC_KEY));
+  const actual = new Uint8Array(existing);
+  if (actual.length !== expected.length) return false;
+  for (let index = 0; index < actual.length; index += 1) {
+    if (actual[index] !== expected[index]) return false;
+  }
+  return true;
+}
+
+async function removeStaleSubscription(subscription: PushSubscription): Promise<void> {
+  try {
+    await api.delete('/push/web/subscriptions', { data: { endpoint: subscription.endpoint } });
+  } catch (error: any) {
+    if (error?.response?.status !== 404) console.error('Stale Web Push cleanup:', error);
+  }
+  await subscription.unsubscribe();
+}
+
+async function currentMatchingSubscription(registration: ServiceWorkerRegistration): Promise<PushSubscription | null> {
+  const subscription = await registration.pushManager.getSubscription();
+  if (!subscription) return null;
+  if (applicationServerKeyMatches(subscription)) return subscription;
+  await removeStaleSubscription(subscription);
+  return null;
+}
+
 export async function currentWebPushState(): Promise<WebPushState> {
   if (!webPushSupported()) return 'unsupported';
   if (Notification.permission === 'denied') return 'blocked';
   if (Notification.permission !== 'granted') return 'disabled';
   const registration = await registerLifonkServiceWorker();
-  return (await registration?.pushManager.getSubscription()) ? 'enabled' : 'disabled';
+  if (!registration) return 'unsupported';
+  return (await currentMatchingSubscription(registration)) ? 'enabled' : 'disabled';
 }
 
 export async function syncExistingWebPush(): Promise<boolean> {
   if (!webPushSupported() || Notification.permission !== 'granted') return false;
   const registration = await registerLifonkServiceWorker();
-  const subscription = await registration?.pushManager.getSubscription();
+  const subscription = registration ? await currentMatchingSubscription(registration) : null;
   if (!subscription) return false;
   await syncSubscription(subscription);
   return true;
@@ -58,10 +88,10 @@ export async function syncExistingWebPush(): Promise<boolean> {
 export async function enableWebPush(): Promise<void> {
   if (!webPushSupported()) throw new Error('Web Push no está disponible o falta configurar VAPID.');
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') throw new Error('El permiso de notificaciones no fue concedido.');
+  if (permission !== 'granted') throw new Error('El permiso de señales no fue concedido.');
   const registration = await registerLifonkServiceWorker();
   if (!registration) throw new Error('No se pudo activar el Service Worker.');
-  let subscription = await registration.pushManager.getSubscription();
+  let subscription = await currentMatchingSubscription(registration);
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,

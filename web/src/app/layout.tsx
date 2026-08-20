@@ -4,9 +4,10 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { CreateHubProvider } from "@/context/CreateHubContext";
 import "./globals.css";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
+import { RealtimeActivityProvider } from "@/context/RealtimeActivityContext";
 
 export const metadata: Metadata = {
-  title: "Lifonk - Premium Social Network & Chat",
+  title: "Lifonk - Red social",
   description: "Connect, chat, share posts and stories in a premium, ultra-fast platform.",
   manifest: "/manifest.webmanifest",
   applicationName: "Lifonk",
@@ -46,9 +47,11 @@ export default function RootLayout({
         <ServiceWorkerRegistrar />
         <ThemeProvider>
           <AuthProvider>
-            <CreateHubProvider>
-              {children}
-            </CreateHubProvider>
+            <RealtimeActivityProvider>
+              <CreateHubProvider>
+                {children}
+              </CreateHubProvider>
+            </RealtimeActivityProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

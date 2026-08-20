@@ -11,6 +11,7 @@ import NotificationBell from '@/components/NotificationBell';
 import MobileBottomBar from '@/components/MobileBottomBar';
 import CallModal, { CallMode } from '@/components/CallModal';
 import UserAvatar from '@/components/UserAvatar';
+import { useRealtimeActivity } from '@/context/RealtimeActivityContext';
 import { 
   Search, Plus, Send, Smile, Paperclip, Phone, Video, Info, User, ChevronLeft, LogOut, CheckCheck, 
   Users, MessageSquare, X, Filter, Home, Layers, Compass, Bell, Bookmark, Settings, Image as ImageIcon,
@@ -59,6 +60,7 @@ const CHAT_EMOJIS = ['😊', '😂', '❤️', '😭', '🔥', '👍', '👎', '
 function ChatContent() {
   const { user, isLoading, accessToken } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { markConversationReadLocal } = useRealtimeActivity();
   const router = useRouter();
   const searchParams = useSearchParams();
   const targetUsername = searchParams ? searchParams.get('username') : null;
@@ -182,7 +184,7 @@ function ChatContent() {
         setActiveConversation(await createDraft(targetUsername));
       } catch (err) {
         console.error('Error al cargar perfil para el borrador de chat:', err);
-        setChatError('No pudimos abrir este chat. Verifica el usuario.');
+        setChatError('No pudimos abrir esta conversación. Verifica el usuario.');
       }
     };
 
@@ -238,13 +240,14 @@ function ChatContent() {
       setConversations(previous => previous.map(conversation =>
         conversation.conversationId === conversationId ? { ...conversation, unreadCount: 0 } : conversation
       ));
+      markConversationReadLocal(conversationId);
       return true;
     } catch (error) {
       console.error('No se pudo marcar la conversación como leída:', error);
       setChatError('Los mensajes se cargaron, pero no pudimos marcar la conversación como leída. Reintenta al abrirla.');
       return false;
     }
-  }, []);
+  }, [markConversationReadLocal]);
 
   // Load messages when active conversation changes
   useEffect(() => {
@@ -650,7 +653,7 @@ function ChatContent() {
       setConversationMenuId(null);
     } catch (err: any) {
       console.error('Error al eliminar chat:', err);
-      setChatError(err.response?.data?.message || 'No se pudo eliminar el chat.');
+      setChatError(err.response?.data?.message || 'No se pudo eliminar la conversación.');
     } finally {
       setIsDeletingConversation(false);
     }
@@ -679,12 +682,12 @@ function ChatContent() {
             <nav className="space-y-1 text-xs font-semibold">
               <Link href="/feed" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-teal-800 dark:hover:text-teal-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
                 <Home className="h-4 w-4" />
-                <span>Inicio</span>
+                <span>Ritmo</span>
               </Link>
               <Link href="/chat" className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-teal-50 dark:bg-teal-800/30 text-teal-900 dark:text-teal-400 border-l-4 border-teal-700 font-bold shadow-sm">
                 <div className="flex items-center gap-3">
                   <MessageSquare className="h-4 w-4 text-teal-700 dark:text-teal-400" />
-                  <span>Mensajes</span>
+                  <span>Conversaciones</span>
                 </div>
                 {totalUnreadAll > 0 && (
                   <span className="px-2 py-0.5 rounded-full bg-teal-700 text-white font-extrabold text-[10px]">
@@ -1113,7 +1116,7 @@ function ChatContent() {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Nuevo Chat Directo</h3>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Nueva conversación</h3>
               <button onClick={() => setIsNewChatModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                 <X className="h-4 w-4" />
               </button>
@@ -1226,7 +1229,7 @@ export default function ChatPage() {
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] flex items-center justify-center">
         <div className="animate-pulse flex flex-col items-center gap-3">
           <div className="h-10 w-10 bg-teal-700 rounded-xl" />
-          <span className="text-teal-800 dark:text-teal-400 text-sm font-semibold">Cargando Lifonk Chat...</span>
+          <span className="text-teal-800 dark:text-teal-400 text-sm font-semibold">Cargando conversaciones...</span>
         </div>
       </div>
     }>

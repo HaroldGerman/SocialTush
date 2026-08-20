@@ -12,9 +12,9 @@ self.addEventListener('push', event => {
     ? payload.url
     : '/feed';
   event.waitUntil(self.registration.showNotification(title, {
-    body: typeof payload.body === 'string' ? payload.body : 'Tienes una nueva notificación.',
-    icon: '/icons/lifonk.svg',
-    badge: '/icons/lifonk.svg',
+    body: typeof payload.body === 'string' ? payload.body : 'Tienes una nueva señal.',
+    icon: '/icons/lifonk-192.png',
+    badge: '/icons/lifonk-192.png',
     tag: payload.notificationId ? `lifonk-${payload.notificationId}` : undefined,
     data: { url: safePath },
   }));

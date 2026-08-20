@@ -16,6 +16,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -35,11 +37,31 @@ class WebPushServiceTest {
         when(sender.send(eq(second), any())).thenReturn(201);
 
         WebPushService service = new WebPushService(repository, sender, new ObjectMapper());
-        assertDoesNotThrow(() -> service.sendToUser(receiver, payload()));
+        WebPushDeliverySummary summary = assertDoesNotThrow(() -> service.sendToUser(receiver, payload()));
+        assertEquals(2, summary.attempted());
+        assertEquals(1, summary.success());
+        assertEquals(1, summary.failed());
 
         verify(sender).send(eq(first), any());
         verify(sender).send(eq(second), any());
         verify(repository).saveAll(List.of(first, second));
+    }
+
+    @Test
+    void authorizationFailureCountsAsFailedWithoutDeactivatingSubscription() throws Exception {
+        User receiver = User.builder().id(UUID.randomUUID()).username("receiver3").email("r3@example.com").passwordHash("x").build();
+        WebPushSubscription subscription = subscription(receiver, "https://push.example/forbidden");
+        when(sender.isConfigured()).thenReturn(true);
+        when(repository.findByUserAndActiveTrue(receiver)).thenReturn(List.of(subscription));
+        when(sender.send(eq(subscription), any())).thenReturn(403);
+
+        WebPushDeliverySummary summary = new WebPushService(repository, sender, new ObjectMapper())
+                .sendToUser(receiver, payload());
+
+        assertEquals(1, summary.attempted());
+        assertEquals(0, summary.success());
+        assertEquals(1, summary.failed());
+        assertTrue(subscription.isActive());
     }
 
     @ParameterizedTest

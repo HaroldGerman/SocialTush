@@ -19,6 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -63,6 +65,30 @@ class WebPushControllerIntegrationTest {
                 .andExpect(status().isNotFound());
 
         assertTrue(repository.findByEndpoint("https://push.example.test/private").isPresent());
+    }
+
+    @Test
+    void statusAndTestExposeOnlySafeDeliveryDiagnosticsForAuthenticatedUser() throws Exception {
+        User user = user("push_diagnostics", "push-diagnostics@example.com");
+        var auth = authentication(new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList()));
+        mockMvc.perform(post("/api/v1/push/web/subscriptions").with(auth)
+                .contentType("application/json").content(subscriptionJson("https://push.example.test/diagnostics")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/push/web/status").with(auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.configured").isBoolean())
+                .andExpect(jsonPath("$.activeSubscriptions").value(1))
+                .andExpect(jsonPath("$.endpoint").doesNotExist())
+                .andExpect(jsonPath("$.p256dh").doesNotExist())
+                .andExpect(jsonPath("$.auth").doesNotExist());
+
+        mockMvc.perform(post("/api/v1/push/web/test").with(auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.attempted").isNumber())
+                .andExpect(jsonPath("$.success").isNumber())
+                .andExpect(jsonPath("$.failed").isNumber())
+                .andExpect(jsonPath("$.expired").isNumber());
     }
 
     private User user(String username, String email) {

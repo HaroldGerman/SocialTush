@@ -12,4 +12,5 @@ public interface WebPushSubscriptionRepository extends JpaRepository<WebPushSubs
     List<WebPushSubscription> findByUserAndActiveTrue(User user);
     Optional<WebPushSubscription> findByEndpoint(String endpoint);
     Optional<WebPushSubscription> findByUserAndEndpoint(User user, String endpoint);
+    long countByUserAndActiveTrue(User user);
 }

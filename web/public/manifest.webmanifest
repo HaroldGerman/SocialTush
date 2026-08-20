@@ -1,13 +1,14 @@
 {
   "name": "Lifonk",
   "short_name": "Lifonk",
-  "description": "Conecta, comparte Momentos y conversa en Lifonk.",
+  "description": "Conecta, comparte momentos y conversa en Lifonk.",
   "start_url": "/feed",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f8fafc",
   "theme_color": "#0f766e",
   "icons": [
-    { "src": "/icons/lifonk.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "/icons/lifonk-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/lifonk-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

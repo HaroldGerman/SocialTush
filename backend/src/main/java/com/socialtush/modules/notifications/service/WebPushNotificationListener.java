@@ -25,15 +25,15 @@ public class WebPushNotificationListener {
     private WebPushPayload payload(NotificationCreatedEvent event) {
         String username = "@" + event.senderUsername();
         String body = switch (event.type()) {
-            case "MESSAGE" -> "Nuevo mensaje de " + username;
-            case "LIKE_POST" -> username + " indicó que le gusta tu Momento";
-            case "LIKE_COMMENT" -> username + " indicó que le gusta tu comentario";
-            case "COMMENT" -> username + " comentó tu Momento";
-            case "COMMENT_REPLY" -> username + " respondió a tu comentario";
-            case "FOLLOW" -> username + " comenzó a seguirte";
-            case "FOLLOW_REQUEST" -> username + " quiere seguirte";
-            case "STORY_REPLY" -> username + " respondió a tu historia";
-            default -> "Tienes una nueva notificación de " + username;
+            case "MESSAGE" -> username + " te escribió";
+            case "LIKE_POST" -> username + " resonó con tu contribución";
+            case "LIKE_COMMENT" -> username + " resonó con tu eco";
+            case "COMMENT" -> username + " dejó un eco en tu contribución";
+            case "COMMENT_REPLY" -> username + " respondió a tu eco";
+            case "FOLLOW" -> username + " conectó contigo";
+            case "FOLLOW_REQUEST" -> username + " quiere conectar contigo";
+            case "STORY_REPLY" -> username + " respondió a tu momento";
+            default -> "Tienes una nueva señal";
         };
         return WebPushPayload.builder()
                 .title("Lifonk")

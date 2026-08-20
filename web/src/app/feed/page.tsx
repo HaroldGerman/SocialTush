@@ -16,6 +16,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useCreateHub } from '@/context/CreateHubContext';
 import MobileBottomBar from '@/components/MobileBottomBar';
 import UserAvatar from '@/components/UserAvatar';
+import { useRealtimeActivity } from '@/context/RealtimeActivityContext';
 
 interface PostData {
   postId: string;
@@ -61,6 +62,7 @@ export default function FeedPage() {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const { openCreateHub, openStoryComposer } = useCreateHub();
+  const { totalUnreadMessages } = useRealtimeActivity();
 
   // State
   const [postsList, setPostsList] = useState<PostData[]>([]);
@@ -101,8 +103,6 @@ export default function FeedPage() {
   const [commentInputMap, setCommentInputMap] = useState<Record<string, string>>({});
   const [loadingCommentsMap, setLoadingCommentsMap] = useState<Record<string, boolean>>({});
 
-  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
-
   // Delete Post State
   const [deleteConfirmPostId, setDeleteConfirmPostId] = useState<string | null>(null);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
@@ -112,11 +112,6 @@ export default function FeedPage() {
   useEffect(() => {
     fetchFeedPosts();
     fetchActiveStories();
-    if (user) {
-      api.get('/notifications/unread-messages-count')
-        .then(res => setUnreadMessagesCount(res.data.count || 0))
-        .catch(() => setUnreadMessagesCount(0));
-    }
   }, [user]);
 
   useEffect(() => {
@@ -221,7 +216,7 @@ export default function FeedPage() {
         return p;
       }));
     } catch (err: any) {
-      alert(err.response?.data?.message || 'No se pudo actualizar el Me gusta.');
+      alert(err.response?.data?.message || 'No se pudo actualizar la resonancia.');
     }
   };
 
@@ -231,7 +226,7 @@ export default function FeedPage() {
       const res = await api.post(`/posts/${postId}/save`);
       setPostsList(prev => prev.map(p => p.postId === postId ? { ...p, isSaved: res.data.saved } : p));
     } catch (err: any) {
-      alert(err.response?.data?.message || 'No se pudo actualizar Guardados.');
+      alert(err.response?.data?.message || 'No se pudo actualizar Colecciones.');
     }
   };
 
@@ -327,7 +322,7 @@ export default function FeedPage() {
           <nav className="hidden md:flex items-center gap-1">
             <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-50 dark:bg-teal-800/30 text-teal-700 dark:text-teal-400 font-bold text-xs border border-teal-200 dark:border-teal-700/50">
               <Home className="w-4 h-4" />
-              <span>Inicio</span>
+              <span>Ritmo</span>
             </button>
             <Link href="/circles" className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium text-xs transition-all">
               <Compass className="w-4 h-4" />
@@ -342,23 +337,19 @@ export default function FeedPage() {
             </button>
             <Link 
               href="/chat" 
-              onClick={() => {
-                api.patch('/notifications/read-messages').catch(() => {});
-                setUnreadMessagesCount(0);
-              }}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium text-xs transition-all relative"
             >
               <MessageSquare className="w-4 h-4" />
-              <span>Mensajes</span>
-              {unreadMessagesCount > 0 && (
+              <span>Conversaciones</span>
+              {totalUnreadMessages > 0 && (
                 <span className="px-1.5 py-0.5 bg-rose-600 text-white font-extrabold text-[10px] rounded-full min-w-[18px] text-center shadow-sm">
-                  {unreadMessagesCount}
+                  {totalUnreadMessages > 99 ? '99+' : totalUnreadMessages}
                 </span>
               )}
             </Link>
             <Link href={user ? `/profile/${user.username}` : '/login'} className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium text-xs transition-all">
               <User className="w-4 h-4" />
-              <span>Perfil</span>
+              <span>Espacio</span>
             </Link>
           </nav>
 
@@ -369,7 +360,7 @@ export default function FeedPage() {
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input 
                 type="text" 
-                placeholder="Buscar usuarios, círculos..." 
+                placeholder="Descubrir usuarios, círculos..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => searchQuery && setShowSearchDropdown(true)}
@@ -550,19 +541,19 @@ export default function FeedPage() {
           <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm space-y-1">
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-teal-800/30 text-teal-400 font-bold text-xs border border-teal-700/50">
               <Home className="w-4 h-4 text-teal-400" />
-              <span>Inicio</span>
+              <span>Ritmo</span>
             </button>
             <Link href="/circles" className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800/50 font-semibold text-xs transition-all">
               <Compass className="w-4 h-4 text-slate-500" />
-              <span>Explorar círculos</span>
+              <span>Descubrir círculos</span>
             </Link>
             <Link href="/chat" className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800/50 font-semibold text-xs transition-all">
               <MessageSquare className="w-4 h-4 text-slate-500" />
-              <span>Mensajes</span>
+              <span>Conversaciones</span>
             </Link>
             <Link href={user ? `/profile/${user.username}` : '/login'} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800/50 font-semibold text-xs transition-all">
               <User className="w-4 h-4 text-slate-500" />
-              <span>Mi perfil</span>
+              <span>Tu espacio</span>
             </Link>
           </div>
         </aside>
@@ -604,7 +595,7 @@ export default function FeedPage() {
                     <Plus className="h-5 w-5 stroke-[2.5]" />
                   </button>
                 )}
-                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Tu Historia</span>
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Tu momento</span>
               </div>
 
               {/* Grouped Active Stories */}
@@ -664,7 +655,7 @@ export default function FeedPage() {
                   disabled={isPublishing || (!newMomentText.trim() && !selectedFile)}
                   className="px-6 py-2 bg-teal-700 text-white font-bold text-xs rounded-xl hover:bg-teal-600 shadow-md shadow-teal-900/30 disabled:opacity-50 transition-all"
                 >
-                  {isPublishing ? 'Publicando...' : 'Publicar'}
+                  {isPublishing ? 'Contribuyendo...' : 'Contribuir'}
                 </button>
               </div>
             </div>
@@ -768,6 +759,7 @@ export default function FeedPage() {
                   <button 
                     onClick={() => handleSavePost(post.postId)}
                     className="hover:text-teal-400 transition-colors"
+                    aria-label={post.isSaved ? 'Retirar de colección' : 'Coleccionar contribución'}
                   >
                     <Bookmark className={`w-4 h-4 ${post.isSaved ? 'fill-current text-teal-400' : ''}`} />
                   </button>
@@ -779,18 +771,18 @@ export default function FeedPage() {
                     <form onSubmit={(e) => handleAddComment(post.postId, e)} className="flex items-center gap-2">
                       <input
                         type="text"
-                        placeholder="Escribe un comentario..."
+                        placeholder="Escribe un eco..."
                         value={commentInputMap[post.postId] || ''}
                         onChange={(e) => setCommentInputMap(prev => ({ ...prev, [post.postId]: e.target.value }))}
                         className="flex-1 px-3 py-2 bg-slate-50 dark:bg-[#090d16] border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-teal-600"
                       />
                       <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-xl text-xs font-bold hover:bg-teal-600 transition-all">
-                        Enviar
+                        Responder
                       </button>
                     </form>
 
                     {loadingCommentsMap[post.postId] ? (
-                      <p className="text-[11px] text-slate-500 italic">Cargando comentarios...</p>
+                      <p className="text-[11px] text-slate-500 italic">Cargando ecos...</p>
                     ) : (
                       <div className="space-y-2 max-h-48 overflow-y-auto">
                         {(postCommentsMap[post.postId] || []).map((c: any, i: number) => (
@@ -800,7 +792,7 @@ export default function FeedPage() {
                           </div>
                         ))}
                         {(!postCommentsMap[post.postId] || postCommentsMap[post.postId].length === 0) && (
-                          <p className="text-[11px] text-slate-500">Sé el primero en comentar.</p>
+                          <p className="text-[11px] text-slate-500">Sé el primero en responder.</p>
                         )}
                       </div>
                     )}
@@ -812,8 +804,8 @@ export default function FeedPage() {
             {postsList.length === 0 && !loadingPosts && (
               <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center text-slate-500 dark:text-slate-400 space-y-2">
                 <Sparkles className="w-8 h-8 mx-auto text-teal-400" />
-                <p className="text-sm font-bold text-slate-900 dark:text-white">Tu feed está tranquilo.</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Sigue personas o publica un Momento.</p>
+                <p className="text-sm font-bold text-slate-900 dark:text-white">Tu Ritmo está tranquilo.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Conecta con personas o crea una contribución.</p>
               </div>
             )}
           </div>
@@ -831,7 +823,7 @@ export default function FeedPage() {
               </div>
             </div>
             <Link href={`/profile/${user?.username}`} className="block w-full py-2.5 bg-teal-700 text-white font-bold text-xs text-center rounded-xl hover:bg-teal-600 transition-all shadow-md">
-              Ver Mi Perfil
+              Ver tu espacio
             </Link>
           </div>
         </aside>
@@ -847,8 +839,8 @@ export default function FeedPage() {
             className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 rounded-2xl w-full max-w-sm p-6 space-y-4"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="font-bold text-slate-900 dark:text-white text-base">Eliminar publicación</h3>
-            <p className="text-sm text-slate-400">¿Seguro que quieres eliminar esta publicación? Esta acción no se puede deshacer.</p>
+            <h3 className="font-bold text-slate-900 dark:text-white text-base">Eliminar contribución</h3>
+            <p className="text-sm text-slate-400">¿Seguro que quieres eliminar esta contribución? Esta acción no se puede deshacer.</p>
             <div className="flex gap-3 pt-1">
               <button
                 onClick={() => setDeleteConfirmPostId(null)}
