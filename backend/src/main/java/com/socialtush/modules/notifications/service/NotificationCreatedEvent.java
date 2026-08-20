@@ -7,5 +7,6 @@ public record NotificationCreatedEvent(
         UUID notificationId,
         String type,
         UUID targetId,
-        String senderUsername
+        String senderUsername,
+        String messagePreview
 ) {}

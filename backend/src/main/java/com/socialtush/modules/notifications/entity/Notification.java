@@ -42,6 +42,9 @@ public class Notification {
     @Builder.Default
     private boolean isRead = false;
 
+    @Column(name = "message_preview", length = 500)
+    private String messagePreview;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

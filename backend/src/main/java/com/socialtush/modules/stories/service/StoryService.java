@@ -7,11 +7,13 @@ import com.socialtush.modules.stories.repository.StoryReactionRepository;
 import com.socialtush.modules.stories.repository.StoryRepository;
 import com.socialtush.modules.stories.repository.StoryViewRepository;
 import com.socialtush.modules.users.entity.User;
+import com.socialtush.modules.notifications.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -21,6 +23,7 @@ public class StoryService {
     private final StoryRepository storyRepository;
     private final StoryViewRepository storyViewRepository;
     private final StoryReactionRepository storyReactionRepository;
+    private final NotificationService notificationService;
 
     @Transactional
     public boolean recordView(UUID storyId, User viewer) {
@@ -44,13 +47,17 @@ public class StoryService {
         Story story = storyRepository.findById(storyId).orElse(null);
         if (story == null || user == null) return false;
 
-        StoryReaction reaction = storyReactionRepository.findByStoryIdAndUserId(storyId, user.getId())
+        StoryReaction existing = storyReactionRepository.findByStoryIdAndUserId(storyId, user.getId()).orElse(null);
+        String normalizedType = reactionType != null && !reactionType.isBlank() ? reactionType.toUpperCase() : "HEART";
+        StoryReaction reaction = Optional.ofNullable(existing)
                 .orElse(StoryReaction.builder()
                         .story(story)
                         .user(user)
                         .build());
-        reaction.setReactionType(reactionType != null ? reactionType.toUpperCase() : "HEART");
+        boolean changed = existing == null || !normalizedType.equalsIgnoreCase(existing.getReactionType());
+        reaction.setReactionType(normalizedType);
         storyReactionRepository.save(reaction);
+        if (changed) notificationService.createNotification(story.getUser(), user, "STORY_REACTION", story.getId(), normalizedType);
         return true;
     }
 

@@ -5,9 +5,9 @@ import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import UserAvatar from '../components/UserAvatar';
 
-interface Notification { notificationId:string;senderUsername:string;senderDisplayName:string;senderAvatarUrl?:string;notificationType:string;targetId:string;isRead:boolean;createdAt:string }
+interface Notification { notificationId:string;senderUsername:string;senderDisplayName:string;senderAvatarUrl?:string;notificationType:string;targetId:string;messagePreview?:string;isRead:boolean;createdAt:string }
 const relativeTime=(value:string)=>{const time=new Date(value).getTime();if(!Number.isFinite(time))return'';const seconds=Math.max(0,Math.floor((Date.now()-time)/1000));if(seconds<60)return'Ahora';if(seconds<3600)return`Hace ${Math.floor(seconds/60)} min`;if(seconds<86400)return`Hace ${Math.floor(seconds/3600)} h`;if(seconds<172800)return'Ayer';return new Intl.DateTimeFormat('es',{day:'numeric',month:'short'}).format(new Date(time));};
-const copy=(type:string)=>type==='LIKE_POST'?'resonó con tu contribución.':type==='COMMENT'?'dejó un eco en tu contribución.':type==='FOLLOW'?'conectó contigo.':type==='FOLLOW_REQUEST'?'quiere conectar contigo.':type==='STORY_REPLY'?'respondió a tu momento.':'generó una nueva señal.';
+const copy=(type:string)=>type==='LIKE_POST'?'resonó con tu contribución.':type==='COMMENT'?'dejó un eco en tu contribución.':type==='FOLLOW'?'conectó contigo.':type==='FOLLOW_REQUEST'?'quiere conectar contigo.':type==='STORY_REPLY'?'respondió a tu momento.':type==='STORY_REACTION'?'reaccionó a tu momento.':'generó una nueva señal.';
 
 export default function NotificationsScreen({onOpenProfile,onOpenPost}:{onOpenProfile?:(username:string)=>void;onOpenPost?:(postId:string)=>void}) {
   const {api}=useAuth();const {theme}=useAppTheme();const [items,setItems]=useState<Notification[]>([]);const [loading,setLoading]=useState(true);const [refreshing,setRefreshing]=useState(false);const [error,setError]=useState('');

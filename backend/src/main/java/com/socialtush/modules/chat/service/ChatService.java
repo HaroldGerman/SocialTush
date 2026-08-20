@@ -120,7 +120,13 @@ public class ChatService {
                 participantRepository.save(participant);
             }
             if (!participant.getUser().getId().equals(sender.getId())) {
-                notificationService.createNotification(participant.getUser(), sender, "MESSAGE", conversation.getId());
+                boolean storyReply = "STORY_REPLY".equalsIgnoreCase(message.getMessageType()) && message.getStoryPreviewId() != null;
+                if (storyReply) {
+                    notificationService.createNotification(participant.getUser(), sender, "STORY_REPLY",
+                            message.getStoryPreviewId(), message.getContent());
+                } else {
+                    notificationService.createNotification(participant.getUser(), sender, "MESSAGE", conversation.getId());
+                }
             }
         }
         return message;

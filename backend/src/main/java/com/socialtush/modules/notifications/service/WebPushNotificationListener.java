@@ -45,8 +45,12 @@ public class WebPushNotificationListener {
             case "FOLLOW" -> username + " conectó contigo";
             case "FOLLOW_REQUEST" -> username + " quiere conectar contigo";
             case "STORY_REPLY" -> username + " respondió a tu momento";
+            case "STORY_REACTION" -> username + " reaccionó a tu momento";
             default -> "Tienes una nueva señal";
         };
+        if ("STORY_REPLY".equals(event.type()) && event.messagePreview() != null) {
+            body += ": \"" + event.messagePreview() + "\"";
+        }
         return WebPushPayload.builder()
                 .title("Lifonk")
                 .body(body)
@@ -66,6 +70,7 @@ public class WebPushNotificationListener {
             case "FOLLOW", "FOLLOW_REQUEST" -> "/profile/" + event.senderUsername();
             case "LIKE_COMMENT", "COMMENT_REPLY" -> "/feed";
             case "STORY_REPLY" -> "/feed";
+            case "STORY_REACTION" -> "/feed";
             default -> "/feed";
         };
     }

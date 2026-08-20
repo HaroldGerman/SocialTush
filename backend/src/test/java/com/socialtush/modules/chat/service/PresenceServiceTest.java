@@ -50,8 +50,8 @@ class PresenceServiceTest {
         service.connected("phone", "vale");
         service.connected("web", "vale");
         when(sets.members("presence:user:vale:sessions")).thenReturn(Set.of("phone", "web"));
-        when(redis.hasKey("presence:session:phone")).thenReturn(false);
-        when(redis.hasKey("presence:session:web")).thenReturn(true);
+        lenient().when(redis.hasKey("presence:session:phone")).thenReturn(false);
+        lenient().when(redis.hasKey("presence:session:web")).thenReturn(true);
 
         service.disconnected("phone");
 

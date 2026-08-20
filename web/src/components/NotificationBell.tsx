@@ -18,6 +18,7 @@ function signalCopy(type: string): string {
     case 'FOLLOW': return ' conectó contigo.';
     case 'FOLLOW_REQUEST': return ' quiere conectar contigo.';
     case 'STORY_REPLY': return ' respondió a tu momento.';
+    case 'STORY_REACTION': return ' reaccionó a tu momento.';
     default: return ' generó una nueva señal.';
   }
 }

@@ -12,6 +12,7 @@ export interface Signal {
   senderAvatarUrl?: string;
   notificationType: string;
   targetId: string;
+  messagePreview?: string;
   isRead: boolean;
   createdAt: string;
 }

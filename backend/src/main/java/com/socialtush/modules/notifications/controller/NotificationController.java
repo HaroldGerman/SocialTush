@@ -47,6 +47,7 @@ public class NotificationController {
                     .senderAvatarUrl(senderProfile != null ? senderProfile.getAvatarUrl() : "")
                     .notificationType(n.getNotificationType())
                     .targetId(n.getTargetId())
+                    .messagePreview(n.getMessagePreview())
                     .isRead(n.isRead())
                     .createdAt(n.getCreatedAt().toString())
                     .build();
@@ -168,6 +169,7 @@ public class NotificationController {
         private String senderAvatarUrl;
         private String notificationType;
         private UUID targetId;
+        private String messagePreview;
         @JsonProperty("isRead")
         private boolean isRead;
         private String createdAt;

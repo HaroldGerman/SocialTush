@@ -26,6 +26,10 @@ public class NotificationService {
     private final ApplicationEventPublisher eventPublisher;
 
     public void createNotification(User receiver, User sender, String type, UUID targetId) {
+        createNotification(receiver, sender, type, targetId, null);
+    }
+
+    public void createNotification(User receiver, User sender, String type, UUID targetId, String messagePreview) {
         if (receiver.getId().equals(sender.getId())) {
             return; // Don't notify users of their own actions
         }
@@ -36,6 +40,7 @@ public class NotificationService {
                 .sender(sender)
                 .notificationType(type)
                 .targetId(targetId)
+                .messagePreview(limitPreview(messagePreview))
                 .isRead(false)
                 .build();
         notification = notificationRepository.save(notification);
@@ -49,6 +54,7 @@ public class NotificationService {
                 .senderAvatarUrl(senderProfile != null ? senderProfile.getAvatarUrl() : "")
                 .notificationType(notification.getNotificationType())
                 .targetId(notification.getTargetId())
+                .messagePreview(notification.getMessagePreview())
                 .isRead(false)
                 .createdAt(notification.getCreatedAt() != null ? notification.getCreatedAt().toString() : java.time.Instant.now().toString())
                 .build();
@@ -60,11 +66,17 @@ public class NotificationService {
         try {
             eventPublisher.publishEvent(new NotificationCreatedEvent(
                     receiver.getId(), notification.getId(), notification.getNotificationType(),
-                    notification.getTargetId(), sender.getUsername()));
+                    notification.getTargetId(), sender.getUsername(), notification.getMessagePreview()));
         } catch (RuntimeException exception) {
             // Push delivery is best-effort and must never invalidate the stored notification.
             log.warn("No se pudo programar Web Push para notification {}", notification.getId(), exception);
         }
+    }
+
+    private static String limitPreview(String preview) {
+        if (preview == null) return null;
+        String normalized = preview.trim();
+        return normalized.isEmpty() ? null : normalized.substring(0, Math.min(normalized.length(), 500));
     }
 
     @Data
@@ -76,6 +88,7 @@ public class NotificationService {
         private String senderAvatarUrl;
         private String notificationType;
         private UUID targetId;
+        private String messagePreview;
         private boolean isRead;
         private String createdAt;
     }
