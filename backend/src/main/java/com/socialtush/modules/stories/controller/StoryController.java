@@ -10,17 +10,18 @@ import com.socialtush.modules.stories.entity.StoryReaction;
 import com.socialtush.modules.stories.entity.StoryView;
 import com.socialtush.modules.stories.repository.StoryReactionRepository;
 import com.socialtush.modules.stories.repository.StoryRepository;
+import com.socialtush.modules.stories.repository.StoryViewRepository;
 import com.socialtush.modules.users.entity.User;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -39,6 +40,7 @@ public class StoryController {
     private final StorageService storageService;
     private final com.socialtush.modules.stories.service.StoryService storyService;
     private final StoryReactionRepository storyReactionRepository;
+    private final StoryViewRepository storyViewRepository;
 
     @Value("${app.storage.public-url:}")
     private String storagePublicUrl;
@@ -91,7 +93,7 @@ public class StoryController {
 
         story = storyRepository.save(story);
 
-        return ResponseEntity.ok(convertToDto(story));
+        return ResponseEntity.ok(convertToDto(story, currentUser));
     }
 
     @GetMapping("/active")
@@ -100,7 +102,6 @@ public class StoryController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
 
-        // Get followed users
         List<User> followings = followRepository.findByFollower(currentUser).stream()
                 .map(Follow::getFollowing)
                 .collect(Collectors.toList());
@@ -109,35 +110,35 @@ public class StoryController {
                 ? storyRepository.findByUserAndExpiresAtAfterOrderByCreatedAtAsc(currentUser, Instant.now())
                 : storyRepository.findActiveStories(followings, currentUser, Instant.now());
 
-        // Group stories by User
         Map<User, List<Story>> grouped = activeStories.stream()
                 .collect(Collectors.groupingBy(Story::getUser));
 
         List<GroupedStoryDto> responseDtos = new ArrayList<>();
 
         for (Map.Entry<User, List<Story>> entry : grouped.entrySet()) {
-            User user = entry.getKey();
+            User storyOwner = entry.getKey();
             List<Story> stories = entry.getValue();
-
-            Profile profile = profileRepository.findById(user.getId()).orElse(null);
+            Profile profile = profileRepository.findById(storyOwner.getId()).orElse(null);
 
             List<StoryDto> storyDtos = stories.stream()
-                    .map(this::convertToDto)
+                    .map(story -> convertToDto(story, currentUser))
                     .collect(Collectors.toList());
+            boolean hasUnseenStories = storyDtos.stream().anyMatch(story -> !story.isViewedByMe());
 
             responseDtos.add(GroupedStoryDto.builder()
-                    .userId(user.getId())
-                    .username(user.getUsername())
-                    .displayName(profile != null ? profile.getDisplayName() : user.getUsername())
+                    .userId(storyOwner.getId())
+                    .username(storyOwner.getUsername())
+                    .displayName(profile != null ? profile.getDisplayName() : storyOwner.getUsername())
                     .avatarUrl(profile != null ? profile.getAvatarUrl() : "")
+                    .hasUnseenStories(hasUnseenStories)
                     .stories(storyDtos)
                     .build());
         }
 
-        // Sort so that the current user's stories appear first, then recent ones
         responseDtos.sort((a, b) -> {
             if (a.getUserId().equals(currentUser.getId())) return -1;
             if (b.getUserId().equals(currentUser.getId())) return 1;
+            if (a.isHasUnseenStories() != b.isHasUnseenStories()) return a.isHasUnseenStories() ? -1 : 1;
             return 0;
         });
 
@@ -159,9 +160,7 @@ public class StoryController {
         }
 
         String storageKey = ownedStorageKey(story.getMediaUrl());
-        if (storageKey != null) {
-            storageService.deleteFile(storageKey);
-        }
+        if (storageKey != null) storageService.deleteFile(storageKey);
         storyRepository.delete(story);
         return ResponseEntity.noContent().build();
     }
@@ -194,11 +193,8 @@ public class StoryController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
         String type = "HEART";
-        if (reactionTypeParam != null && !reactionTypeParam.isBlank()) {
-            type = reactionTypeParam;
-        } else if (body != null && body.get("reactionType") != null) {
-            type = body.get("reactionType").toString();
-        }
+        if (reactionTypeParam != null && !reactionTypeParam.isBlank()) type = reactionTypeParam;
+        else if (body != null && body.get("reactionType") != null) type = body.get("reactionType").toString();
         if (!storyService.recordReaction(id, currentUser, type)) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Momento no disponible"));
         }
@@ -262,7 +258,10 @@ public class StoryController {
         };
     }
 
-    private StoryDto convertToDto(Story story) {
+    private StoryDto convertToDto(Story story, User currentUser) {
+        boolean ownStory = currentUser != null && story.getUser().getId().equals(currentUser.getId());
+        boolean viewedByMe = ownStory || (currentUser != null
+                && storyViewRepository.existsByStoryIdAndViewerId(story.getId(), currentUser.getId()));
         return StoryDto.builder()
                 .storyId(story.getId())
                 .mediaType(story.getMediaType())
@@ -272,6 +271,7 @@ public class StoryController {
                 .musicTitle(story.getMusicTitle())
                 .isBestFriends(story.isBestFriends())
                 .overlayData(story.getOverlayData())
+                .viewedByMe(viewedByMe)
                 .createdAt(story.getCreatedAt().toString())
                 .expiresAt(story.getExpiresAt().toString())
                 .build();
@@ -288,6 +288,7 @@ public class StoryController {
         private String musicTitle;
         private boolean isBestFriends;
         private String overlayData;
+        private boolean viewedByMe;
         private String createdAt;
         private String expiresAt;
     }
@@ -299,6 +300,7 @@ public class StoryController {
         private String username;
         private String displayName;
         private String avatarUrl;
+        private boolean hasUnseenStories;
         private List<StoryDto> stories;
     }
 }
