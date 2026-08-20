@@ -62,6 +62,10 @@ public class WebPushService {
                 failed++;
                 // Endpoint URLs and keys are deliberately never logged.
                 log.warn("Falló Web Push para subscription {}: {}", subscription.getId(), exception.getMessage());
+            } catch (LinkageError linkageError) {
+                failed++;
+                log.error("Web Push runtime dependency failure subscription={} type={}",
+                        subscription.getId(), linkageError.getClass().getSimpleName(), linkageError);
             }
         }
         repository.saveAll(subscriptions);

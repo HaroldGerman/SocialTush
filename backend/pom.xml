@@ -19,6 +19,7 @@
         <aws.sdk.version>2.25.35</aws.sdk.version>
         <jjwt.version>0.12.5</jjwt.version>
         <web-push.version>5.1.2</web-push.version>
+        <bouncycastle.version>1.81</bouncycastle.version>
     </properties>
 
     <dependencies>
@@ -122,6 +123,12 @@
             <groupId>org.bitbucket.b_c</groupId>
             <artifactId>jose4j</artifactId>
             <version>0.9.6</version>
+        </dependency>
+        <!-- web-push loads the Bouncy Castle EC provider at runtime for VAPID. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>${bouncycastle.version}</version>
         </dependency>
 
         <!-- Testing -->
