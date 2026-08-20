@@ -14,6 +14,7 @@ interface Story {
   backgroundColor: string;
   musicTitle: string;
   overlayData?: string;
+  viewedByMe?: boolean;
   createdAt: string;
 }
 
@@ -22,6 +23,7 @@ interface GroupedStory {
   username: string;
   displayName: string;
   avatarUrl: string;
+  hasUnseenStories?: boolean;
   stories: Story[];
 }
 
@@ -59,6 +61,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
   const [viewersError, setViewersError] = useState('');
   const [videoDuration, setVideoDuration] = useState(5);
   const [selectedResonance, setSelectedResonance] = useState<string | null>(null);
+  const [imageReady, setImageReady] = useState(true);
 
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
   const storyVideoRef = useRef<HTMLVideoElement>(null);
@@ -76,6 +79,10 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
   );
 
   useEffect(() => {
+    setStories(groupedStories);
+  }, [groupedStories]);
+
+  useEffect(() => {
     setStoryIndex(0);
     setProgress(0);
   }, [userIndex]);
@@ -85,13 +92,52 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
   }, [currentStory?.storyId]);
 
   useEffect(() => {
-    if (currentStory && !isOwnStory) {
-      api.post(`/stories/${currentStory.storyId}/view`).catch(() => {});
+    if (!currentStory || currentStory.mediaType !== 'IMAGE' || !currentStory.mediaUrl) {
+      setImageReady(true);
+      return;
     }
-  }, [currentStory, isOwnStory]);
+
+    let active = true;
+    setImageReady(false);
+    const image = new window.Image();
+    image.src = currentStory.mediaUrl;
+    image.onload = () => active && setImageReady(true);
+    image.onerror = () => active && setImageReady(true);
+
+    const nextStory = currentUserStories?.stories[storyIndex + 1] || stories[userIndex + 1]?.stories?.[0];
+    if (nextStory?.mediaType === 'IMAGE' && nextStory.mediaUrl) {
+      const nextImage = new window.Image();
+      nextImage.src = nextStory.mediaUrl;
+    }
+
+    return () => {
+      active = false;
+      image.onload = null;
+      image.onerror = null;
+    };
+  }, [currentStory?.storyId, currentStory?.mediaType, currentStory?.mediaUrl, currentUserStories, storyIndex, stories, userIndex]);
 
   useEffect(() => {
-    if (isPaused || isMenuOpen || isDeleteOpen || isViewersOpen || !currentStory) return;
+    if (!currentStory || isOwnStory || currentStory.viewedByMe) return;
+    let active = true;
+    api.post(`/stories/${currentStory.storyId}/view`).then(() => {
+      if (!active) return;
+      setStories(previous => {
+        const next = previous.map((group, groupIndex) => {
+          if (groupIndex !== userIndex) return group;
+          const nextStories = group.stories.map((story, index) => index === storyIndex ? { ...story, viewedByMe: true } : story);
+          return { ...group, stories: nextStories, hasUnseenStories: nextStories.some(story => !story.viewedByMe) };
+        });
+        onStoriesChange?.(next);
+        return next;
+      });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [currentStory?.storyId, currentStory?.viewedByMe, isOwnStory, onStoriesChange, storyIndex, userIndex]);
+
+  useEffect(() => {
+    const waitingForImage = currentStory?.mediaType === 'IMAGE' && !imageReady;
+    if (isPaused || isMenuOpen || isDeleteOpen || isViewersOpen || !currentStory || waitingForImage) return;
 
     progressInterval.current = setInterval(() => {
       setProgress((prev) => {
@@ -107,7 +153,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     return () => {
       if (progressInterval.current) clearInterval(progressInterval.current);
     };
-  }, [userIndex, storyIndex, isPaused, isMenuOpen, isDeleteOpen, isViewersOpen, currentStory, videoDuration]);
+  }, [userIndex, storyIndex, isPaused, isMenuOpen, isDeleteOpen, isViewersOpen, currentStory, videoDuration, imageReady]);
 
   useEffect(() => {
     const video = storyVideoRef.current;
@@ -180,13 +226,8 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     }
   };
 
-  const handleTouchStart = () => {
-    setIsPaused(true);
-  };
-
-  const handleTouchEnd = () => {
-    setIsPaused(false);
-  };
+  const handleTouchStart = () => setIsPaused(true);
+  const handleTouchEnd = () => setIsPaused(false);
 
   const formatRelativeTime = (dateStr: string) => {
     if (!dateStr) return '';
@@ -203,10 +244,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!replyText.trim() || !currentStory) return;
-    if (isOwnStory) {
-      alert('Es tu propio momento.');
-      return;
-    }
+    if (isOwnStory) return alert('Es tu propio momento.');
     const textToSend = replyText.trim();
     setIsPaused(false);
 
@@ -237,12 +275,12 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
   if (!currentUserStories || !currentStory) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between items-center animate-fade-in select-none h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-      <div className="absolute inset-0 z-0 opacity-40 blur-2xl scale-125 bg-cover bg-center pointer-events-none"
-           style={{ backgroundImage: currentStory.mediaUrl ? `url(${currentStory.mediaUrl})` : 'none', background: currentStory.mediaUrl ? undefined : (currentStory.backgroundColor || '#09090b') }} />
+    <div className="fixed inset-0 z-50 bg-[#061217] flex flex-col justify-between items-center animate-fade-in select-none h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      <div className={`absolute inset-0 z-0 opacity-35 blur-2xl scale-125 bg-cover bg-center pointer-events-none transition-opacity duration-300 ${imageReady ? 'opacity-35' : 'opacity-10'}`}
+           style={{ backgroundImage: currentStory.mediaUrl ? `url(${currentStory.mediaUrl})` : 'none', background: currentStory.mediaUrl ? undefined : (currentStory.backgroundColor || '#061217') }} />
 
       <div
-        className="w-full max-w-lg h-full max-h-[85vh] md:max-h-[90vh] md:mt-4 bg-zinc-950 md:rounded-2xl overflow-hidden relative border border-zinc-900/60 z-10 flex flex-col items-center justify-center"
+        className="w-full max-w-lg h-full max-h-[85vh] md:max-h-[90vh] md:mt-4 bg-[#07151d] md:rounded-2xl overflow-hidden relative border border-teal-950/60 z-10 flex flex-col items-center justify-center"
         onMouseDown={handleTouchStart}
         onMouseUp={handleTouchEnd}
         onTouchStart={handleTouchStart}
@@ -251,10 +289,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
         <div className="absolute top-3 left-3 right-3 z-30 flex gap-1">
           {currentUserStories.stories.map((s, idx) => (
             <div key={s.storyId} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-teal-500 rounded-full transition-all duration-75"
-                style={{ width: idx < storyIndex ? '100%' : idx === storyIndex ? `${progress}%` : '0%' }}
-              />
+              <div className="h-full bg-teal-500 rounded-full transition-all duration-75" style={{ width: idx < storyIndex ? '100%' : idx === storyIndex ? `${progress}%` : '0%' }} />
             </div>
           ))}
         </div>
@@ -276,9 +311,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
             <button type="button" aria-label={isPaused ? 'Reanudar momento' : 'Pausar momento'} onClick={() => setIsPaused(!isPaused)} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
               {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
             </button>
-            <button type="button" aria-label="Cerrar momentos" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
-              <X className="h-4 w-4" />
-            </button>
+            <button type="button" aria-label="Cerrar momentos" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-all"><X className="h-4 w-4" /></button>
           </div>
         </div>
 
@@ -287,91 +320,39 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
           <div className="absolute top-0 bottom-0 right-0 w-1/4 z-20 cursor-pointer" onClick={(e) => { e.stopPropagation(); handleNextStory(); }} />
 
           {currentStory.mediaType === 'IMAGE' && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={currentStory.mediaUrl} alt="story-media" className="w-full h-full object-contain pointer-events-none" />
+            <>
+              {!imageReady && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-b from-[#07151d] to-[#0b2428] text-white"><div className="h-12 w-12 animate-pulse rounded-2xl bg-teal-700 flex items-center justify-center text-xl font-black shadow-lg shadow-teal-950/50">L</div><span className="text-xs font-bold text-teal-100/80">Cargando momento…</span></div>}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={currentStory.mediaUrl} alt="story-media" onLoad={() => setImageReady(true)} className={`w-full h-full object-contain pointer-events-none transition-opacity duration-200 ${imageReady ? 'opacity-100' : 'opacity-0'}`} />
+            </>
           )}
 
-          {currentStory.mediaType === 'VIDEO' && (
-            <video ref={storyVideoRef} src={currentStory.mediaUrl} autoPlay playsInline onLoadedMetadata={(event) => setVideoDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 5)} onEnded={handleNextStory} className="w-full h-full object-contain" />
-          )}
+          {currentStory.mediaType === 'VIDEO' && <video ref={storyVideoRef} src={currentStory.mediaUrl} autoPlay playsInline onLoadedMetadata={(event) => setVideoDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 5)} onEnded={handleNextStory} className="w-full h-full object-contain" />}
 
-          {currentStory.mediaType === 'TEXT' && (
-            <div style={{ background: currentStory.backgroundColor || '#6366f1' }} className="w-full h-full flex items-center justify-center p-8 text-center">
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white leading-relaxed font-sans max-w-sm">{currentStory.textContent}</h2>
-            </div>
-          )}
+          {currentStory.mediaType === 'TEXT' && <div style={{ background: currentStory.backgroundColor || '#0f766e' }} className="w-full h-full flex items-center justify-center p-8 text-center"><h2 className="text-2xl sm:text-3xl font-extrabold text-white leading-relaxed font-sans max-w-sm">{currentStory.textContent}</h2></div>}
 
           {(() => {
             let parsedOverlays: any[] = [];
-            if ((currentStory as any).overlayData) {
-              try {
-                parsedOverlays = JSON.parse((currentStory as any).overlayData);
-              } catch (e) {}
+            if (currentStory.overlayData) {
+              try { parsedOverlays = JSON.parse(currentStory.overlayData); } catch (e) {}
             }
-            return parsedOverlays.map((o: any) => (
-              <div key={o.id} className="absolute pointer-events-none select-none origin-center z-20" style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, transform: `translate(-50%, -50%) scale(${o.scale})`, color: o.color || '#ffffff' }}>
-                <div className={`px-3 py-1.5 rounded-xl font-bold text-center ${o.bg ? 'bg-black/75 text-white' : ''}`}>{o.value}</div>
-              </div>
-            ));
+            return parsedOverlays.map((o: any) => <div key={o.id} className="absolute pointer-events-none select-none origin-center z-20" style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, transform: `translate(-50%, -50%) scale(${o.scale})`, color: o.color || '#ffffff' }}><div className={`px-3 py-1.5 rounded-xl font-bold text-center ${o.bg ? 'bg-black/75 text-white' : ''}`}>{o.value}</div></div>);
           })()}
 
-          {currentStory.musicTitle && (
-            <div className="absolute bottom-6 left-4 bg-black/60 border border-zinc-800 px-3 py-1.5 rounded-full text-xs text-white flex items-center gap-1.5 backdrop-blur-md">
-              <span className="animate-spin text-indigo-400">🎵</span>
-              <span>{currentStory.musicTitle}</span>
-            </div>
-          )}
+          {currentStory.musicTitle && <div className="absolute bottom-6 left-4 bg-black/60 border border-zinc-800 px-3 py-1.5 rounded-full text-xs text-white flex items-center gap-1.5 backdrop-blur-md"><span className="animate-spin text-teal-400">🎵</span><span>{currentStory.musicTitle}</span></div>}
         </div>
       </div>
 
       {!isOwnStory && <div className="w-full max-w-lg p-4 bg-zinc-950 border-t border-zinc-900 z-20 flex flex-col gap-2">
-        <div className="flex items-center justify-around py-1 text-lg">
-          {['❤️', '😂', '😮', '😢', '🔥'].map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              aria-label={`Resonar ${emoji} con el momento`}
-              title="Resonar con este momento"
-              onClick={() => void handleResonate(emoji)}
-              className={`rounded-full p-2 transition-transform ${selectedResonance === emoji ? 'scale-125 bg-white/10' : 'hover:scale-125'}`}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-
-        <form onSubmit={handleSendReply} className="flex-1 flex gap-2">
-          <input
-            type="text"
-            placeholder={`Responder a ${currentUserStories.displayName}...`}
-            value={replyText}
-            onFocus={() => setIsPaused(true)}
-            onChange={(e) => setReplyText(e.target.value)}
-            className="flex-grow px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-teal-500/80 transition-all placeholder-zinc-500"
-          />
-          <button type="submit" className="p-2.5 bg-teal-800 hover:bg-teal-900 text-white rounded-xl active:scale-95 transition-all flex items-center justify-center font-bold text-xs">
-            <Send className="h-4 w-4" />
-          </button>
-        </form>
+        <div className="flex items-center justify-around py-1 text-lg">{['❤️', '😂', '😮', '😢', '🔥'].map((emoji) => <button key={emoji} type="button" aria-label={`Resonar ${emoji} con el momento`} title="Resonar con este momento" onClick={() => void handleResonate(emoji)} className={`rounded-full p-2 transition-transform ${selectedResonance === emoji ? 'scale-125 bg-white/10' : 'hover:scale-125'}`}>{emoji}</button>)}</div>
+        <form onSubmit={handleSendReply} className="flex-1 flex gap-2"><input type="text" placeholder={`Responder a ${currentUserStories.displayName}...`} value={replyText} onFocus={() => setIsPaused(true)} onChange={(e) => setReplyText(e.target.value)} className="flex-grow px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-teal-500/80 transition-all placeholder-zinc-500" /><button type="submit" className="p-2.5 bg-teal-800 hover:bg-teal-900 text-white rounded-xl active:scale-95 transition-all flex items-center justify-center font-bold text-xs"><Send className="h-4 w-4" /></button></form>
       </div>}
 
       {isOwnStory && <button type="button" onClick={() => void openViewers()} className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/55 px-4 py-2 text-xs font-bold text-white backdrop-blur-md"><Eye className="h-4 w-4"/> Vistas</button>}
 
-      {isOwnStory && isMenuOpen && <div className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setIsMenuOpen(false)}>
-        <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-zinc-700 bg-zinc-950 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-2xl" onClick={event => event.stopPropagation()}>
-          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-700" />
-          <button type="button" onClick={() => { setIsMenuOpen(false); void openViewers(); }} className="min-h-12 w-full rounded-xl px-4 text-left text-sm font-bold text-white hover:bg-zinc-900">Ver quién lo vio</button><button type="button" onClick={() => { setIsMenuOpen(false); setIsDeleteOpen(true); }} className="min-h-12 w-full rounded-xl px-4 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar momento</button>
-        </div>
-      </div>}
+      {isOwnStory && isMenuOpen && <div className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setIsMenuOpen(false)}><div className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-zinc-700 bg-zinc-950 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-700" /><button type="button" onClick={() => { setIsMenuOpen(false); void openViewers(); }} className="min-h-12 w-full rounded-xl px-4 text-left text-sm font-bold text-white hover:bg-zinc-900">Ver quién lo vio</button><button type="button" onClick={() => { setIsMenuOpen(false); setIsDeleteOpen(true); }} className="min-h-12 w-full rounded-xl px-4 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar momento</button></div></div>}
 
-      {isDeleteOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !isDeleting && setIsDeleteOpen(false)}>
-        <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 p-5 space-y-4" onClick={event => event.stopPropagation()}>
-          <h3 className="font-bold text-white">¿Eliminar este momento?</h3>
-          <p className="text-sm text-zinc-400">Esta acción no se puede deshacer.</p>
-          {deleteError && <p role="alert" className="text-xs text-rose-400">{deleteError}</p>}
-          <div className="flex gap-3"><button disabled={isDeleting} onClick={() => setIsDeleteOpen(false)} className="flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-white">Cancelar</button><button disabled={isDeleting} onClick={handleDeleteStory} className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">{isDeleting ? 'Eliminando...' : 'Eliminar'}</button></div>
-        </div>
-      </div>}
+      {isDeleteOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !isDeleting && setIsDeleteOpen(false)}><div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 p-5 space-y-4" onClick={event => event.stopPropagation()}><h3 className="font-bold text-white">¿Eliminar este momento?</h3><p className="text-sm text-zinc-400">Esta acción no se puede deshacer.</p>{deleteError && <p role="alert" className="text-xs text-rose-400">{deleteError}</p>}<div className="flex gap-3"><button disabled={isDeleting} onClick={() => setIsDeleteOpen(false)} className="flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-white">Cancelar</button><button disabled={isDeleting} onClick={handleDeleteStory} className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">{isDeleting ? 'Eliminando...' : 'Eliminar'}</button></div></div></div>}
 
       {isViewersOpen && <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/65 md:items-center" onClick={() => setIsViewersOpen(false)}><div className="max-h-[70vh] w-full max-w-md overflow-hidden rounded-t-3xl border border-zinc-700 bg-zinc-950 md:rounded-3xl" onClick={event => event.stopPropagation()}><div className="flex items-center justify-between border-b border-zinc-800 p-4"><div><h3 className="font-bold text-white">Vistas del momento</h3><p className="text-xs text-zinc-400">{viewers.length} {viewers.length === 1 ? 'persona' : 'personas'}</p></div><button onClick={() => setIsViewersOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-white"><X className="h-4 w-4"/></button></div><div className="max-h-[55vh] overflow-y-auto p-3">{viewersLoading ? <p className="p-6 text-center text-sm text-zinc-400">Cargando vistas…</p> : viewersError ? <div className="p-6 text-center"><p className="text-sm text-rose-400">{viewersError}</p><button onClick={() => void openViewers()} className="mt-3 text-xs font-bold text-teal-400">Reintentar</button></div> : viewers.length ? viewers.map(viewer => <div key={viewer.userId} className="flex items-center gap-3 rounded-2xl p-3 hover:bg-zinc-900"><UserAvatar avatarUrl={viewer.avatarUrl} name={viewer.displayName || viewer.username} className="h-11 w-11 rounded-full text-xs"/><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-white">{viewer.displayName || viewer.username}</p><p className="text-xs text-zinc-400">@{viewer.username}{formatRelativeTime(viewer.viewedAt)}</p></div>{viewer.resonance ? <div className="ml-auto flex min-w-12 flex-col items-center"><span className="text-2xl leading-none" aria-label={`Resonó ${viewer.resonance}`}>{viewer.resonance}</span><span className="mt-1 text-[9px] font-bold uppercase tracking-wide text-teal-400">Resonó</span></div> : null}</div>) : <p className="p-8 text-center text-sm text-zinc-400">Aún nadie ha visto este momento.</p>}</div></div></div>}
     </div>
