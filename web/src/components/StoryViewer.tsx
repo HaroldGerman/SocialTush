@@ -51,7 +51,15 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
 
   const currentUserStories = stories[userIndex];
   const currentStory = currentUserStories?.stories[storyIndex];
-  const isOwnStory = user?.username && currentUserStories?.username && user.username.toLowerCase() === currentUserStories.username.toLowerCase();
+  const isOwnStory = Boolean(
+    user
+    && currentUserStories
+    && (
+      (user.userId && currentUserStories.userId && String(user.userId) === String(currentUserStories.userId))
+      || (user.username && currentUserStories.username
+        && user.username.toLowerCase() === currentUserStories.username.toLowerCase())
+    )
+  );
 
   // Reset story index when user index changes
   useEffect(() => {
@@ -123,16 +131,17 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     setDeleteError('');
     try {
       await api.delete(`/stories/${currentStory.storyId}`);
-      const nextGroups = stories
-        .map((group, index) => index === userIndex ? { ...group, stories: group.stories.filter(story => story.storyId !== currentStory.storyId) } : group)
-        .filter(group => group.stories.length > 0);
+      const remainingStories = currentUserStories.stories.filter(story => story.storyId !== currentStory.storyId);
+      const removedCurrentGroup = remainingStories.length === 0;
+      const nextGroups = removedCurrentGroup
+        ? stories.filter((_, index) => index !== userIndex)
+        : stories.map((group, index) => index === userIndex ? { ...group, stories: remainingStories } : group);
       setStories(nextGroups);
       onStoriesChange?.(nextGroups);
       setIsDeleteOpen(false);
       setIsMenuOpen(false);
-      if (nextGroups.length === 0) return onClose();
-      if (!nextGroups[userIndex]) setUserIndex(nextGroups.length - 1);
-      else setStoryIndex(index => Math.min(index, nextGroups[userIndex].stories.length - 1));
+      if (removedCurrentGroup || nextGroups.length === 0) return onClose();
+      setStoryIndex(index => Math.min(index, remainingStories.length - 1));
       setProgress(0);
     } catch (error: any) {
       console.error('Error al eliminar historia:', error);
@@ -225,23 +234,25 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
           ))}
         </div>
 
-        {/* Top bar details (User Avatar, display name, close btn) */}
+        {/* Top bar details (User Avatar, display name, options and controls) */}
         <div className="absolute top-6 left-4 right-4 z-30 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {isOwnStory && <button onClick={(event) => { event.stopPropagation(); setIsMenuOpen(open => !open); }} className="p-1.5 rounded-full bg-black/40 text-white"><MoreHorizontal className="h-4 w-4" /></button>}
             <UserAvatar avatarUrl={currentUserStories.avatarUrl} name={currentUserStories.displayName} className="h-9 w-9 rounded-full text-xs border border-white/20" />
             <div>
               <span className="text-white text-xs font-bold block">{currentUserStories.displayName}</span>
               <span className="text-[10px] text-zinc-400 block">@{currentUserStories.username}{formatRelativeTime(currentStory.createdAt)}</span>
             </div>
           </div>
-          {isOwnStory && isMenuOpen && <button onClick={(event) => { event.stopPropagation(); setIsDeleteOpen(true); }} className="absolute right-16 top-10 rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-xs font-bold text-rose-400 shadow-xl">Eliminar historia</button>}
-
           <div className="flex items-center gap-2">
-            <button onClick={() => setIsPaused(!isPaused)} className="p-1.5 rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
+            <div className="relative hidden md:block">
+              {isOwnStory && <button type="button" aria-label="Opciones de historia" onClick={(event) => { event.stopPropagation(); setDeleteError(''); setIsMenuOpen(open => !open); }} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white transition-all hover:bg-black/60"><MoreHorizontal className="h-5 w-5" /></button>}
+              {isOwnStory && isMenuOpen && <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 p-1 shadow-2xl"><button type="button" onClick={(event) => { event.stopPropagation(); setIsMenuOpen(false); setIsDeleteOpen(true); }} className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar historia</button></div>}
+            </div>
+            {isOwnStory && <button type="button" aria-label="Opciones de historia" onClick={(event) => { event.stopPropagation(); setDeleteError(''); setIsMenuOpen(true); }} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white transition-all hover:bg-black/60 md:hidden"><MoreHorizontal className="h-5 w-5" /></button>}
+            <button type="button" aria-label={isPaused ? 'Reanudar historia' : 'Pausar historia'} onClick={() => setIsPaused(!isPaused)} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
               {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
             </button>
-            <button onClick={onClose} className="p-1.5 rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
+            <button type="button" aria-label="Cerrar historias" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -347,7 +358,14 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
         </form>
       </div>}
 
-      {isDeleteOpen && <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !isDeleting && setIsDeleteOpen(false)}>
+      {isOwnStory && isMenuOpen && <div className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setIsMenuOpen(false)}>
+        <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-zinc-700 bg-zinc-950 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-2xl" onClick={event => event.stopPropagation()}>
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-700" />
+          <button type="button" onClick={() => { setIsMenuOpen(false); setIsDeleteOpen(true); }} className="min-h-12 w-full rounded-xl px-4 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar historia</button>
+        </div>
+      </div>}
+
+      {isDeleteOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !isDeleting && setIsDeleteOpen(false)}>
         <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 p-5 space-y-4" onClick={event => event.stopPropagation()}>
           <h3 className="font-bold text-white">¿Eliminar esta historia?</h3>
           <p className="text-sm text-zinc-400">Esta acción no se puede deshacer.</p>

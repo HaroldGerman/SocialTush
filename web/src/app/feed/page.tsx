@@ -82,6 +82,18 @@ export default function FeedPage() {
   // Stories State
   const [groupedStories, setGroupedStories] = useState<GroupedStory[]>([]);
   const [activeStoryViewerIndex, setActiveStoryViewerIndex] = useState<number | null>(null);
+  const ownStoryIndex = groupedStories.findIndex((group) =>
+    (Boolean(user?.userId) && String(group.userId) === String(user?.userId))
+    || (
+      !user?.userId
+      && Boolean(user?.username)
+      && group.username?.toLowerCase() === user?.username.toLowerCase()
+    )
+  );
+  const ownStoryGroup = ownStoryIndex >= 0 ? groupedStories[ownStoryIndex] : null;
+  const otherStories = groupedStories
+    .map((group, originalIndex) => ({ group, originalIndex }))
+    .filter(({ originalIndex }) => originalIndex !== ownStoryIndex);
 
   // Comments State
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
@@ -555,22 +567,45 @@ export default function FeedPage() {
           {/* STORIES BAR */}
           <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm overflow-x-auto">
             <div className="flex items-center gap-4">
-              {/* Button: Crear Historia */}
-              <div 
-                onClick={openStoryComposer}
-                className="flex-shrink-0 flex flex-col items-center gap-1.5 cursor-pointer group"
-              >
-                <div className="w-14 h-14 md:w-16 md:h-16 rounded-full border-2 border-dashed border-teal-500 bg-teal-950/40 flex items-center justify-center text-teal-400 group-hover:bg-teal-900/60 transition-all shadow-sm">
-                  <Plus className="w-5 h-5 stroke-[2.5]" />
-                </div>
+              {/* Tu Historia: el avatar abre el viewer; el + crea otra historia. */}
+              <div className="relative flex-shrink-0 flex flex-col items-center gap-1.5 group">
+                {ownStoryGroup ? (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      aria-label="Ver tu historia"
+                      onClick={() => setActiveStoryViewerIndex(ownStoryIndex)}
+                      className="block h-14 w-14 rounded-full bg-gradient-to-tr from-teal-600 via-emerald-500 to-amber-500 p-[2px] shadow-sm transition-transform group-hover:scale-105 md:h-16 md:w-16"
+                    >
+                      <UserAvatar avatarUrl={ownStoryGroup.avatarUrl || user?.avatarUrl} name={ownStoryGroup.displayName || user?.displayName || user?.username || 'Tú'} className="h-full w-full rounded-full text-xs md:text-sm" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Crear otra historia"
+                      onClick={(event) => { event.stopPropagation(); openStoryComposer(); }}
+                      className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-teal-700 text-white shadow-md transition-colors hover:bg-teal-600 dark:border-[#0f172a]"
+                    >
+                      <Plus className="h-3.5 w-3.5 stroke-[3]" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label="Crear tu historia"
+                    onClick={openStoryComposer}
+                    className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-dashed border-teal-500 bg-teal-50 text-teal-700 shadow-sm transition-all hover:bg-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:hover:bg-teal-900/60 md:h-16 md:w-16"
+                  >
+                    <Plus className="h-5 w-5 stroke-[2.5]" />
+                  </button>
+                )}
                 <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Tu Historia</span>
               </div>
 
               {/* Grouped Active Stories */}
-              {groupedStories.map((gs, idx) => (
+              {otherStories.map(({ group: gs, originalIndex }) => (
                 <div 
-                  key={gs.userId || idx}
-                  onClick={() => setActiveStoryViewerIndex(idx)}
+                  key={gs.userId || originalIndex}
+                  onClick={() => setActiveStoryViewerIndex(originalIndex)}
                   className="flex-shrink-0 flex flex-col items-center gap-1.5 cursor-pointer group"
                 >
                   <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-tr from-teal-600 via-emerald-500 to-amber-500 p-[2px] shadow-sm group-hover:scale-105 transition-transform">
