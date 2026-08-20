@@ -163,12 +163,8 @@ public class ProfileController {
                 if (oldAvatarUrl != null && !oldAvatarUrl.isBlank()) {
                     String oldKey = extractFileKey(oldAvatarUrl);
                     if (oldKey != null && oldKey.startsWith("avatar_")) {
-                        try {
-                            storageService.deleteFile(oldKey);
-                            log.info("Deleted old avatar [{}] from R2", oldKey);
-                        } catch (Exception ex) {
-                            log.error("Failed to delete old avatar [{}] from R2: {}", oldKey, ex.getMessage());
-                        }
+                        storageService.deleteFile(oldKey);
+                        log.info("Deleted old avatar [{}] from R2", oldKey);
                     }
                 }
             } catch (Exception e) {

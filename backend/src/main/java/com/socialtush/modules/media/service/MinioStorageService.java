@@ -89,8 +89,12 @@ public class MinioStorageService implements StorageService {
 
     @Override
     public void deleteFile(String filename) {
+        if (s3Client == null) {
+            log.error("Storage delete rejected: S3Client is not initialized.");
+            throw new IllegalStateException("El servicio de almacenamiento no está disponible.");
+        }
         try {
-            if (s3Client != null && filename != null && !filename.isBlank()) {
+            if (filename != null && !filename.isBlank()) {
                 DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
                         .bucket(bucketName)
                         .key(filename)
@@ -99,7 +103,8 @@ public class MinioStorageService implements StorageService {
                 log.info("File deleted successfully from S3/R2/MinIO: {}", filename);
             }
         } catch (Exception e) {
-            log.error("Error deleting file [{}] from bucket [{}]: {}", filename, bucketName, e.getMessage());
+            log.error("Error deleting file [{}] from bucket [{}]: {}", filename, bucketName, e.getMessage(), e);
+            throw new RuntimeException("Error al eliminar el archivo del almacenamiento: " + e.getMessage(), e);
         }
     }
 }

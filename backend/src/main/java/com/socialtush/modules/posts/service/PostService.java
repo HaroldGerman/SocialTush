@@ -118,12 +118,8 @@ public class PostService {
             for (PostMedia media : post.getMediaList()) {
                 String key = extractFileKey(media.getOriginalUrl());
                 if (key != null && !key.isBlank()) {
-                    try {
-                        storageService.deleteFile(key);
-                        log.info("Deleted media file [{}] from R2 for post [{}]", key, postId);
-                    } catch (Exception e) {
-                        log.error("Failed to delete media file [{}] from R2 for post [{}]: {}", key, postId, e.getMessage());
-                    }
+                    storageService.deleteFile(key);
+                    log.info("Deleted media file [{}] from R2 for post [{}]", key, postId);
                 }
             }
         }
