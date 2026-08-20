@@ -19,8 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
@@ -42,6 +41,7 @@ public class PostControllerIntegrationTest {
     private ProfileRepository profileRepository;
 
     private User testUser;
+    private User otherUser;
 
     @BeforeEach
     void setUp() {
@@ -55,6 +55,13 @@ public class PostControllerIntegrationTest {
         profileRepository.save(Profile.builder()
                 .user(testUser)
                 .displayName("Post Author")
+                .build());
+
+        otherUser = userRepository.save(User.builder()
+                .username("other_user")
+                .email("other@socialtush.com")
+                .passwordHash("pass")
+                .role("USER")
                 .build());
 
         SecurityContextHolder.getContext().setAuthentication(
@@ -79,5 +86,27 @@ public class PostControllerIntegrationTest {
                         .param("caption", "Mi primer post en SocialTush"))
                 .andExpect(status().is2xxSuccessful())
                 .andExpect(jsonPath("$.caption").value("Mi primer post en SocialTush"));
+    }
+
+    @Test
+    void deletePost_ownPost_returnsNoContent() throws Exception {
+        Post post = postRepository.save(Post.builder()
+                .user(testUser)
+                .caption("Post a eliminar")
+                .build());
+
+        mockMvc.perform(delete("/api/v1/posts/" + post.getId()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deletePost_otherUserPost_returnsForbidden() throws Exception {
+        Post otherPost = postRepository.save(Post.builder()
+                .user(otherUser)
+                .caption("Post ajeno")
+                .build());
+
+        mockMvc.perform(delete("/api/v1/posts/" + otherPost.getId()))
+                .andExpect(status().isForbidden());
     }
 }

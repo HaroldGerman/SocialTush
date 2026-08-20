@@ -11,6 +11,7 @@ import {
   User, MessageSquare, Image as ImageIcon, Mic, HelpCircle, Smile, 
   MapPin, Play, Pause, ChevronRight, Settings, Users, Sparkles, Check, Share2, Layers, Heart, X, Upload
 } from 'lucide-react';
+import { formatLocalTimestamp } from '@/lib/dateUtils';
 
 interface PostData {
   postId: string;
@@ -83,8 +84,12 @@ export default function FeedPage() {
   const [commentInputMap, setCommentInputMap] = useState<Record<string, string>>({});
   const [loadingCommentsMap, setLoadingCommentsMap] = useState<Record<string, boolean>>({});
 
-  // Unread Messages Badge State
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+
+  // Delete Post State
+  const [deleteConfirmPostId, setDeleteConfirmPostId] = useState<string | null>(null);
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
+  const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null);
 
   // Fetch Feed & Stories on Mount
   useEffect(() => {
@@ -253,6 +258,20 @@ export default function FeedPage() {
         navigator.clipboard.writeText(window.location.href);
         alert('¡Enlace copiado al portapapeles!');
       }
+    }
+  };
+
+  // Handle Delete Post (own posts only)
+  const handleDeletePost = async (postId: string) => {
+    setIsDeletingPost(true);
+    try {
+      await api.delete(`/posts/${postId}`);
+      setPostsList(prev => prev.filter(p => p.postId !== postId));
+      setDeleteConfirmPostId(null);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'No se pudo eliminar la publicación.');
+    } finally {
+      setIsDeletingPost(false);
     }
   };
 
@@ -445,20 +464,83 @@ export default function FeedPage() {
           </div>
         </div>
 
-        {/* Mobile Expanded Search Bar */}
+        {/* Mobile Expanded Search Bar + Results */}
         {showMobileSearch && (
-          <div className="md:hidden p-3 border-t border-slate-800 bg-slate-900">
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input 
-                type="text" 
-                placeholder="Buscar usuarios o círculos..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                autoFocus
-                className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-full text-xs text-white focus:outline-none focus:border-teal-500"
-              />
+          <div className="md:hidden border-t border-slate-800 bg-[#0f172a]">
+            <div className="p-3">
+              <div className="relative flex items-center">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input 
+                  type="text" 
+                  placeholder="Buscar usuarios o círculos..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  autoFocus
+                  className="w-full pl-9 pr-10 py-2.5 bg-slate-800 border border-slate-700 rounded-full text-sm text-white focus:outline-none focus:border-teal-500"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => { setSearchQuery(''); setSearchResults(null); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
+            {/* Mobile Search Results */}
+            {isSearching && (
+              <div className="px-4 pb-3 text-sm text-slate-400 font-medium">Buscando...</div>
+            )}
+            {searchResults && !isSearching && (
+              <div className="max-h-72 overflow-y-auto divide-y divide-slate-800/60 pb-2">
+                {searchResults.users && searchResults.users.length > 0 && (
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-2 block">Usuarios</span>
+                    {searchResults.users.map(u => (
+                      <div
+                        key={u.username}
+                        onClick={() => { router.push(`/profile/${u.username}`); setShowMobileSearch(false); setSearchQuery(''); setSearchResults(null); }}
+                        className="flex items-center gap-3 px-4 py-3 active:bg-slate-800 cursor-pointer"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-teal-700 text-white font-bold flex items-center justify-center text-sm flex-shrink-0">
+                          {(u.displayName || u.username).charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm text-white">{u.displayName || u.username}</p>
+                          <p className="text-xs text-teal-400">@{u.username}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {searchResults.circles && searchResults.circles.length > 0 && (
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-2 block">Círculos</span>
+                    {searchResults.circles.map(c => (
+                      <div
+                        key={c.slug}
+                        onClick={() => { router.push(`/circles/${c.slug}`); setShowMobileSearch(false); setSearchQuery(''); setSearchResults(null); }}
+                        className="flex items-center gap-3 px-4 py-3 active:bg-slate-800 cursor-pointer"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-teal-800 text-white font-bold flex items-center justify-center text-sm flex-shrink-0">
+                          {c.name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm text-white">{c.name}</p>
+                          <p className="text-xs text-slate-400 truncate max-w-[200px]">{c.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!searchResults.users?.length && !searchResults.circles?.length && (
+                  <div className="px-4 py-6 text-center text-sm text-slate-500 font-semibold">
+                    Sin resultados para &quot;{searchQuery}&quot;
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </header>
@@ -592,7 +674,33 @@ export default function FeedPage() {
                       <span className="text-[10px] text-slate-400 font-medium">@{post.username}</span>
                     </div>
                   </Link>
-                  <span className="text-[10px] text-slate-500 font-semibold">{post.createdAt || 'Reciente'}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-slate-500 font-semibold">{formatLocalTimestamp(post.createdAt)}</span>
+                    {user && post.userId && user.userId === post.userId && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setPostMenuOpenId(postMenuOpenId === post.postId ? null : post.postId)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors font-bold text-base leading-none"
+                          aria-label="Opciones"
+                        >
+                          ···
+                        </button>
+                        {postMenuOpenId === post.postId && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setPostMenuOpenId(null)} />
+                            <div className="absolute right-0 mt-1 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden">
+                              <button
+                                onClick={() => { setDeleteConfirmPostId(post.postId); setPostMenuOpenId(null); }}
+                                className="w-full flex items-center gap-2 px-4 py-2.5 text-rose-400 hover:bg-rose-500/10 text-sm font-semibold transition-colors"
+                              >
+                                Eliminar publicación
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Caption Text */}
@@ -762,6 +870,35 @@ export default function FeedPage() {
           <span className="text-[10px] font-semibold">Perfil</span>
         </Link>
       </div>
+
+      {/* Delete Post Confirmation Modal */}
+      {deleteConfirmPostId && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center p-4" onClick={() => !isDeletingPost && setDeleteConfirmPostId(null)}>
+          <div
+            className="bg-[#0f172a] border border-slate-700 rounded-2xl w-full max-w-sm p-6 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="font-bold text-white text-base">Eliminar publicación</h3>
+            <p className="text-sm text-slate-400">¿Seguro que quieres eliminar esta publicación? Esta acción no se puede deshacer.</p>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setDeleteConfirmPostId(null)}
+                disabled={isDeletingPost}
+                className="flex-1 py-2.5 border border-slate-600 text-slate-300 rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDeletePost(deleteConfirmPostId)}
+                disabled={isDeletingPost}
+                className="flex-1 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-500 disabled:opacity-60 transition-colors"
+              >
+                {isDeletingPost ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Story Viewer Modal */}
       {activeStoryViewerIndex !== null && (

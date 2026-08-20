@@ -58,6 +58,24 @@ public class PostController {
         return ResponseEntity.ok(dto);
     }
 
+    @DeleteMapping("/{postId}")
+    public ResponseEntity<?> deletePost(@PathVariable UUID postId, @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+
+        try {
+            postService.deletePost(postId, currentUser);
+            return ResponseEntity.noContent().build();
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Publicación no encontrada"));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", e.getMessage()));
+        }
+    }
+
     @GetMapping("/feed")
     public ResponseEntity<?> getFeed(
             @RequestParam(defaultValue = "0") int page,

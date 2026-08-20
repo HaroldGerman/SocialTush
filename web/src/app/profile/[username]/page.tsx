@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth, api } from '@/context/AuthContext';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import NotificationBell from '@/components/NotificationBell';
 import MobileBottomBar from '@/components/MobileBottomBar';
 import { 
-  User, Lock, Settings, LogOut, Grid, Bookmark, Users, ChevronLeft, Check, Plus, Edit2, ShieldAlert, Sparkles, MessageSquare, MapPin, Radio, Calendar, Home, Compass, Search, Bell, Heart, Activity, Award
+  User, Lock, Settings, LogOut, Grid, Bookmark, Users, ChevronLeft, Check, Plus, Edit2, ShieldAlert, Sparkles, MessageSquare, MapPin, Radio, Calendar, Home, Compass, Search, Bell, Heart, Activity, Award, X, Camera
 } from 'lucide-react';
+import { formatLocalTimestamp } from '@/lib/dateUtils';
 
 interface ProfileData {
   userId: string;
@@ -45,7 +46,7 @@ interface PostData {
 
 export default function ProfilePage() {
   const { username } = useParams() as { username: string };
-  const { user: currentUser, logout, isLoading: authLoading } = useAuth();
+  const { user: currentUser, logout, updateAvatarUrl, isLoading: authLoading } = useAuth();
   const router = useRouter();
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -60,6 +61,16 @@ export default function ProfilePage() {
   const [editBio, setEditBio] = useState('');
   const [editIsPrivate, setEditIsPrivate] = useState(false);
   const [updating, setUpdating] = useState(false);
+
+  // Avatar Upload State
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Delete Post State
+  const [deleteConfirmPostId, setDeleteConfirmPostId] = useState<string | null>(null);
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
+  const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null);
 
   const isSelf = profile ? (profile.isSelf || (currentUser && currentUser.username.toLowerCase() === username.toLowerCase())) : false;
 
@@ -212,22 +223,87 @@ export default function ProfilePage() {
     }
   };
 
+  // Handle Delete Post (own posts only)
+  const handleDeletePost = async (postId: string) => {
+    setIsDeletingPost(true);
+    try {
+      await api.delete(`/posts/${postId}`);
+      setUserPosts(prev => prev.filter(p => p.postId !== postId));
+      setDeleteConfirmPostId(null);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'No se pudo eliminar la publicación.');
+    } finally {
+      setIsDeletingPost(false);
+    }
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate MIME type
+      const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      if (!validTypes.includes(file.type)) {
+        alert('Formato no soportado. Usa JPEG, PNG o WEBP.');
+        return;
+      }
+      setAvatarFile(file);
+      const url = URL.createObjectURL(file);
+      setAvatarPreview(url);
+    }
+  };
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpdating(true);
     try {
-      await api.put('/profiles/me', {
-        displayName: editDisplayName,
-        bio: editBio,
-        isPrivate: editIsPrivate
-      });
+      if (avatarFile) {
+        // Multipart payload
+        const formData = new FormData();
+        formData.append('displayName', editDisplayName);
+        formData.append('bio', editBio);
+        formData.append('isPrivate', String(editIsPrivate));
+        formData.append('avatar', avatarFile);
+
+        const res = await api.patch('/profiles/me', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        
+        // Revoke preview blob URL
+        if (avatarPreview) {
+          URL.revokeObjectURL(avatarPreview);
+        }
+        setAvatarPreview(null);
+        setAvatarFile(null);
+
+        // Instantly update navbar and local layout using global context handler
+        if (res.data.avatarUrl) {
+          updateAvatarUrl(res.data.avatarUrl);
+        }
+      } else {
+        // Normal JSON payload
+        await api.put('/profiles/me', {
+          displayName: editDisplayName,
+          bio: editBio,
+          isPrivate: editIsPrivate
+        });
+      }
+      
       setIsEditing(false);
       fetchProfile();
-    } catch (err) {
-      setIsEditing(false);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Error al actualizar el perfil.');
     } finally {
       setUpdating(false);
     }
+  };
+
+  const handleCancelEdit = () => {
+    if (avatarPreview) {
+      URL.revokeObjectURL(avatarPreview);
+    }
+    setAvatarPreview(null);
+    setAvatarFile(null);
+    setIsEditing(false);
   };
 
   if (loading) {
@@ -244,17 +320,15 @@ export default function ProfilePage() {
   if (!profile) return null;
 
   return (
-    <div className="min-h-screen bg-[#f4f6f9] text-[#1e293b] flex flex-col font-sans">
+    <div className="min-h-screen bg-[#f4f6f9] text-[#1e293b] flex flex-col font-sans pb-16 md:pb-0">
       {/* Top Navigation Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-[1600px] mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/feed')}>
-            <div className="h-10 w-10 rounded-2xl bg-teal-800 flex items-center justify-center text-white shadow-md shadow-teal-900/20">
-              <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
-                <path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L4.35 21l3.54-.62C9.44 20.73 10.68 21 12 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm0 16c-1.16 0-2.28-.27-3.28-.76l-.23-.12-2.1.37.42-2.03-.15-.24C6.17 15.22 5.66 13.66 5.66 12c0-3.5 2.84-6.34 6.34-6.34s6.34 2.84 6.34 6.34S15.5 19 12 19z"/>
-              </svg>
+            <div className="h-9 w-9 rounded-xl bg-teal-800 flex items-center justify-center text-white font-black shadow-md shadow-teal-900/20">
+              S
             </div>
-            <span className="font-extrabold text-2xl tracking-tight text-slate-800">
+            <span className="font-extrabold text-xl tracking-tight text-slate-800">
               SocialTush
             </span>
           </div>
@@ -278,9 +352,9 @@ export default function ProfilePage() {
             </button>
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <NotificationBell />
-            <button onClick={() => router.push('/feed')} className="flex items-center gap-1.5 text-xs font-bold text-teal-800 hover:underline">
+            <button onClick={() => router.push('/feed')} className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-teal-800 hover:underline">
               <ChevronLeft className="w-4 h-4" />
               Volver al Feed
             </button>
@@ -289,25 +363,25 @@ export default function ProfilePage() {
       </header>
 
       {/* Main Container */}
-      <main className="max-w-[1200px] mx-auto w-full px-6 py-8 flex-1 space-y-6">
+      <main className="max-w-[1200px] mx-auto w-full px-4 md:px-6 py-6 md:py-8 flex-1 space-y-6">
         
         {/* Profile Card Header */}
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
           {/* Top Banner Gradient */}
-          <div className="h-40 bg-gradient-to-r from-teal-900 via-teal-800 to-emerald-800 p-6 relative flex items-end">
-            <div className="absolute top-4 right-4 flex items-center gap-2">
+          <div className="h-20 md:h-40 bg-gradient-to-r from-teal-900 via-teal-800 to-emerald-800 relative">
+            <div className="absolute top-3 right-3 md:top-4 md:right-4 flex items-center gap-2">
               {isSelf ? (
                 <>
                   <button 
                     onClick={() => setIsEditing(true)}
-                    className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold backdrop-blur-md flex items-center gap-1.5 transition-all"
+                    className="px-3 py-1.5 md:px-4 md:py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold backdrop-blur-md flex items-center gap-1.5 transition-all"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
-                    Editar Perfil
+                    <span className="hidden md:inline">Editar Perfil</span>
                   </button>
                   <button 
                     onClick={logout}
-                    className="p-2 bg-rose-500/20 hover:bg-rose-500/40 text-white rounded-xl backdrop-blur-md transition-all"
+                    className="p-1.5 md:p-2 bg-rose-500/20 hover:bg-rose-500/40 text-white rounded-xl backdrop-blur-md transition-all"
                     title="Cerrar sesión"
                   >
                     <LogOut className="w-4 h-4" />
@@ -317,7 +391,7 @@ export default function ProfilePage() {
                 <>
                   <button 
                     onClick={handleFollowToggle}
-                    className={`px-6 py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 ${
+                    className={`px-4 py-1.5 md:px-6 md:py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 ${
                       profile.isFollowing 
                         ? 'bg-white text-slate-800' 
                         : 'bg-teal-700 hover:bg-teal-600 text-white'
@@ -337,10 +411,10 @@ export default function ProfilePage() {
                   </button>
                   <Link 
                     href="/chat"
-                    className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold backdrop-blur-md flex items-center gap-1.5 transition-all"
+                    className="px-3 py-1.5 md:px-4 md:py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold backdrop-blur-md flex items-center gap-1.5 transition-all"
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
-                    Mensaje
+                    <span className="hidden md:inline">Mensaje</span>
                   </Link>
                 </>
               )}
@@ -348,51 +422,75 @@ export default function ProfilePage() {
           </div>
 
           {/* Profile Header Details */}
-          <div className="px-8 pb-8 pt-0 relative">
-            <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 -mt-16 mb-6">
-              <div className="flex items-end gap-5">
-                <div className="w-28 h-28 rounded-3xl bg-gradient-to-tr from-teal-800 to-emerald-600 p-1 shadow-xl">
-                  <div className="w-full h-full rounded-[22px] bg-white flex items-center justify-center font-black text-teal-800 text-3xl">
-                    {profile.displayName.charAt(0).toUpperCase()}
-                  </div>
+          <div className="px-4 md:px-8 pb-6 md:pb-8 pt-0 relative">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 -mt-10 md:-mt-16 mb-4 md:mb-6">
+              
+              {/* Avatar & Identifiers */}
+              <div className="flex items-end gap-3 md:gap-5">
+                <div className="w-20 h-20 md:w-28 md:h-28 rounded-full bg-gradient-to-tr from-teal-800 to-emerald-600 p-[3px] shadow-xl">
+                  {profile.avatarUrl ? (
+                    <img 
+                      src={profile.avatarUrl} 
+                      alt="Avatar" 
+                      className="w-full h-full rounded-full bg-white object-cover border-2 border-white"
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-full bg-slate-100 flex items-center justify-center font-black text-teal-800 text-3xl border-2 border-white">
+                      {profile.displayName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <div className="pb-1">
+                  <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-1.5">
                     {profile.displayName}
-                    {profile.isPrivate && <span title="Perfil Privado"><Lock className="w-4 h-4 text-slate-400" /></span>}
+                    {profile.isPrivate && <Lock className="w-4 h-4 text-slate-400" />}
                   </h1>
-                  <span className="text-xs font-bold text-teal-800">@{profile.username}</span>
+                  <span className="text-xs md:text-sm font-semibold text-slate-500">@{profile.username}</span>
                 </div>
               </div>
 
               {/* Stats Bar */}
-              <div className="flex items-center gap-6 bg-slate-50 border border-slate-200/80 px-6 py-3 rounded-2xl">
-                <div className="text-center">
+              <div className="flex items-center justify-around md:justify-end gap-2 md:gap-6 bg-slate-50 border border-slate-200/80 px-4 py-2.5 md:px-6 md:py-3 rounded-2xl w-full md:w-auto">
+                <div className="text-center flex-1 md:flex-none">
                   <span className="block text-base font-black text-slate-800">{userPosts.length}</span>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Momentos</span>
                 </div>
                 <div className="h-6 w-px bg-slate-200" />
-                <div className="text-center">
+                <div className="text-center flex-1 md:flex-none">
                   <span className="block text-base font-black text-slate-800">{profile.followersCount}</span>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Seguidores</span>
                 </div>
                 <div className="h-6 w-px bg-slate-200" />
-                <div className="text-center">
+                <div className="text-center flex-1 md:flex-none">
                   <span className="block text-base font-black text-slate-800">{profile.followingCount}</span>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Siguiendo</span>
                 </div>
               </div>
             </div>
 
-            <p className="text-sm text-slate-600 font-medium max-w-2xl leading-relaxed mb-4">
+            {/* Biography */}
+            <p className="text-xs md:text-sm text-slate-600 font-medium max-w-2xl leading-relaxed whitespace-pre-wrap">
               {profile.bio || '¡Hola! Bienvenido a mi espacio en SocialTush. 🚀'}
             </p>
+
+            {/* Mobile Edit Profile Button Call-to-action */}
+            {isSelf && (
+              <div className="md:hidden mt-4">
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="w-full py-2.5 bg-teal-800 hover:bg-teal-900 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  Editar perfil
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Tab Navigation */}
         <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full md:w-auto">
             {[
               { id: 'MOMENTOS', label: 'Momentos', icon: Grid },
               { id: 'CIRCULOS', label: 'Círculos', icon: Compass },
@@ -400,7 +498,7 @@ export default function ProfilePage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all ${
+                className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all ${
                   activeTab === tab.id
                     ? 'bg-teal-800 text-white shadow-sm'
                     : 'text-slate-500 hover:bg-white hover:text-slate-800'
@@ -441,21 +539,55 @@ export default function ProfilePage() {
         ) : (
           <div className="space-y-4">
             {userPosts.map(post => (
-              <div key={post.postId} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-3">
+              <div key={post.postId} className="bg-white border border-slate-200 rounded-3xl p-4 md:p-6 shadow-sm space-y-3 mx-1 md:mx-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-teal-800 text-white font-bold flex items-center justify-center text-xs shadow-sm">
-                      {post.displayName ? post.displayName.charAt(0).toUpperCase() : 'U'}
+                    <div className="w-10 h-10 rounded-full bg-teal-800 text-white font-bold flex items-center justify-center text-xs shadow-sm border border-teal-600/40">
+                      {profile.avatarUrl ? (
+                        <img 
+                          src={profile.avatarUrl} 
+                          alt="Avatar" 
+                          className="w-full h-full rounded-full object-cover"
+                        />
+                      ) : (
+                        post.displayName ? post.displayName.charAt(0).toUpperCase() : 'U'
+                      )}
                     </div>
                     <div>
                       <h5 className="font-bold text-sm text-slate-800">{post.displayName || post.username}</h5>
                       <span className="text-[10px] text-slate-400 font-medium">@{post.username}</span>
                     </div>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-semibold">{post.createdAt || 'Reciente'}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-slate-400 font-semibold">{formatLocalTimestamp(post.createdAt)}</span>
+                    {currentUser && post.userId && currentUser.userId === post.userId && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setPostMenuOpenId(postMenuOpenId === post.postId ? null : post.postId)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors font-bold text-base leading-none"
+                          aria-label="Opciones"
+                        >
+                          ···
+                        </button>
+                        {postMenuOpenId === post.postId && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setPostMenuOpenId(null)} />
+                            <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 overflow-hidden">
+                              <button
+                                onClick={() => { setDeleteConfirmPostId(post.postId); setPostMenuOpenId(null); }}
+                                className="w-full flex items-center gap-2 px-4 py-2.5 text-rose-600 hover:bg-rose-50/10 text-sm font-semibold transition-colors"
+                              >
+                                Eliminar publicación
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <p className="text-sm text-slate-700 font-medium leading-relaxed">
+                <p className="text-sm text-slate-700 font-medium leading-relaxed whitespace-pre-wrap">
                   {post.caption}
                 </p>
 
@@ -530,76 +662,147 @@ export default function ProfilePage() {
 
       </main>
 
-      {/* Edit Profile Modal */}
+      {/* Edit Profile Modal / Mobile Bottom Sheet */}
       {isEditing && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-5">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4">
+          {/* Overlay click to close */}
+          <div className="absolute inset-0" onClick={handleCancelEdit} />
+
+          <div className="relative w-full md:max-w-md bg-white border border-slate-200 rounded-t-3xl md:rounded-3xl p-6 shadow-2xl max-h-[90vh] md:max-h-none overflow-y-auto pb-safe z-10 animate-in slide-in-from-bottom duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5 border-b border-slate-100 pb-3">
               <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
                 <Edit2 className="w-4 h-4 text-teal-800" />
                 Editar Perfil
               </h3>
-              <button onClick={() => setIsEditing(false)} className="text-slate-400 hover:text-slate-600 text-xs font-semibold">
+              <button onClick={handleCancelEdit} className="text-slate-400 hover:text-slate-600 text-xs font-bold p-1">
                 Cancelar
               </button>
             </div>
 
             <form onSubmit={handleSaveProfile} className="space-y-4">
+              
+              {/* Avatar Selector Area */}
+              <div className="flex flex-col items-center justify-center py-2 space-y-2">
+                <div className="relative group">
+                  <div className="w-20 h-20 rounded-full bg-slate-100 overflow-hidden border-2 border-slate-200 flex items-center justify-center shadow-inner">
+                    {avatarPreview ? (
+                      <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
+                    ) : profile.avatarUrl ? (
+                      <img src={profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-8 h-8 text-slate-400" />
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute bottom-0 right-0 p-1.5 bg-teal-800 hover:bg-teal-900 text-white rounded-full shadow-md transition-colors"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs font-bold text-teal-800 hover:underline"
+                >
+                  Cambiar foto
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleAvatarChange}
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                />
+              </div>
+
+              {/* Name field */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Nombre Visible</label>
                 <input 
                   type="text" 
                   value={editDisplayName}
                   onChange={(e) => setEditDisplayName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold focus:outline-none focus:border-teal-700"
+                  className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold focus:outline-none focus:border-teal-700"
                   required
                 />
               </div>
 
+              {/* Bio field */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Biografía</label>
                 <textarea 
                   rows={3}
                   value={editBio}
                   onChange={(e) => setEditBio(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium focus:outline-none focus:border-teal-700 resize-none"
+                  className="w-full min-h-[80px] px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium focus:outline-none focus:border-teal-700 resize-none"
                   placeholder="Cuéntanos sobre ti..."
                 />
               </div>
 
+              {/* Privacy settings */}
               <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-2xl">
                 <div>
                   <span className="block text-xs font-bold text-slate-800">Perfil Privado</span>
                   <span className="text-[10px] text-slate-400">Requiere aprobación para seguirte</span>
                 </div>
-                <input 
-                  type="checkbox"
-                  checked={editIsPrivate}
-                  onChange={(e) => setEditIsPrivate(e.target.checked)}
-                  className="w-4 h-4 accent-teal-800 rounded"
-                />
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox"
+                    checked={editIsPrivate}
+                    onChange={(e) => setEditIsPrivate(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-850"></div>
+                </label>
               </div>
 
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(false)}
-                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50"
-                >
-                  Cancelar
-                </button>
+              {/* Action Buttons */}
+              <div className="pt-2 flex flex-col md:flex-row gap-2">
                 <button
                   type="submit"
                   disabled={updating}
-                  className="px-6 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
+                  className="w-full py-3 rounded-xl bg-teal-850 hover:bg-teal-900 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
                 >
-                  {updating ? 'Guardando...' : 'Guardar Cambios'}
+                  {updating ? 'Guardando...' : 'Guardar cambios'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Delete Post Confirmation Modal */}
+      {deleteConfirmPostId && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center p-4" onClick={() => !isDeletingPost && setDeleteConfirmPostId(null)}>
+          <div
+            className="bg-white border border-slate-200 rounded-2xl w-full max-w-sm p-6 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="font-bold text-slate-800 text-base">Eliminar publicación</h3>
+            <p className="text-sm text-slate-500">¿Seguro que quieres eliminar esta publicación? Esta acción no se puede deshacer.</p>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setDeleteConfirmPostId(null)}
+                disabled={isDeletingPost}
+                className="flex-1 py-2.5 border border-slate-300 text-slate-600 rounded-xl text-sm font-semibold hover:bg-slate-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDeletePost(deleteConfirmPostId)}
+                disabled={isDeletingPost}
+                className="flex-1 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-500 disabled:opacity-60 transition-colors"
+              >
+                {isDeletingPost ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Bottom Navigation Bar */}
       <MobileBottomBar />
     </div>

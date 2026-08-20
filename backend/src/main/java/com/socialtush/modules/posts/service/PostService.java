@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -101,6 +102,43 @@ public class PostService {
         }
 
         return convertToDto(post, currentUser);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void deletePost(UUID postId, User currentUser) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new NoSuchElementException("Publicación no encontrada"));
+
+        if (!post.getUser().getId().equals(currentUser.getId())) {
+            throw new SecurityException("No tienes permiso para eliminar esta publicación");
+        }
+
+        // Delete physical R2/S3 files for all associated media items
+        if (post.getMediaList() != null && !post.getMediaList().isEmpty()) {
+            for (PostMedia media : post.getMediaList()) {
+                String key = extractFileKey(media.getOriginalUrl());
+                if (key != null && !key.isBlank()) {
+                    try {
+                        storageService.deleteFile(key);
+                        log.info("Deleted media file [{}] from R2 for post [{}]", key, postId);
+                    } catch (Exception e) {
+                        log.error("Failed to delete media file [{}] from R2 for post [{}]: {}", key, postId, e.getMessage());
+                    }
+                }
+            }
+        }
+
+        postRepository.delete(post);
+        log.info("Post [{}] deleted successfully by user [{}]", postId, currentUser.getUsername());
+    }
+
+    public static String extractFileKey(String url) {
+        if (url == null || url.isBlank()) return null;
+        int lastSlash = url.lastIndexOf('/');
+        if (lastSlash >= 0 && lastSlash < url.length() - 1) {
+            return url.substring(lastSlash + 1);
+        }
+        return url;
     }
 
     public PostDto convertToDto(Post post, User currentUser) {

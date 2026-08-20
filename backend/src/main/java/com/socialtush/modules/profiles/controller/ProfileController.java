@@ -1,5 +1,6 @@
 package com.socialtush.modules.profiles.controller;
 
+import com.socialtush.modules.media.service.StorageService;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.social.repository.FollowRepository;
@@ -8,15 +9,19 @@ import com.socialtush.modules.users.repository.UserRepository;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Map;
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/profiles")
 @RequiredArgsConstructor
@@ -25,26 +30,17 @@ public class ProfileController {
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final FollowRepository followRepository;
+    private final StorageService storageService;
 
     @GetMapping("/{username}")
     public ResponseEntity<?> getProfile(@PathVariable String username, @AuthenticationPrincipal User currentUser) {
-        System.out.println("[DEBUG PROFILE] getProfile called for target username: " + username);
-        if (currentUser == null) {
-            System.out.println("[DEBUG PROFILE] currentUser is NULL!");
-        } else {
-            System.out.println("[DEBUG PROFILE] currentUser: id=" + currentUser.getId() + ", username=" + currentUser.getUsername());
-        }
-
         User targetUser = userRepository.findByUsernameIgnoreCase(username.trim()).orElse(null);
         if (targetUser == null) {
-            System.out.println("[DEBUG PROFILE] targetUser not found!");
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Usuario no encontrado"));
         }
-        System.out.println("[DEBUG PROFILE] targetUser: id=" + targetUser.getId() + ", username=" + targetUser.getUsername());
 
         Profile profile = profileRepository.findById(targetUser.getId()).orElse(null);
         if (profile == null) {
-            System.out.println("[DEBUG PROFILE] profile missing, auto-creating...");
             profile = Profile.builder()
                     .user(targetUser)
                     .displayName(targetUser.getUsername())
@@ -56,9 +52,7 @@ public class ProfileController {
 
         boolean isSelf = currentUser != null && currentUser.getId().equals(targetUser.getId());
         boolean isFollowing = currentUser != null && followRepository.existsByFollowerIdAndFollowingId(currentUser.getId(), targetUser.getId());
-        System.out.println("[DEBUG PROFILE] isSelf = " + isSelf + ", isFollowing = " + isFollowing);
 
-        // Count metrics
         long followersCount = followRepository.countByFollowing(targetUser);
         long followingCount = followRepository.countByFollower(targetUser);
 
@@ -120,6 +114,87 @@ public class ProfileController {
                 "avatarUrl", profile.getAvatarUrl() != null ? profile.getAvatarUrl() : "",
                 "isPrivate", profile.isPrivate()
         ));
+    }
+
+    @PatchMapping(value = "/me", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> updateProfileMultipart(
+            @RequestParam(value = "displayName", required = false) String displayName,
+            @RequestParam(value = "bio", required = false) String bio,
+            @RequestParam(value = "isPrivate", required = false) Boolean isPrivate,
+            @RequestParam(value = "avatar", required = false) MultipartFile avatarFile,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+
+        Profile profile = profileRepository.findById(currentUser.getId()).orElse(null);
+        if (profile == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Perfil no encontrado"));
+        }
+
+        if (displayName != null && !displayName.isBlank()) {
+            profile.setDisplayName(displayName.trim());
+        }
+        if (bio != null) {
+            profile.setBio(bio.trim());
+        }
+        if (isPrivate != null) {
+            profile.setPrivate(isPrivate);
+        }
+
+        if (avatarFile != null && !avatarFile.isEmpty()) {
+            String contentType = avatarFile.getContentType();
+            if (contentType == null || (!contentType.equals("image/jpeg") && !contentType.equals("image/jpg") && !contentType.equals("image/png") && !contentType.equals("image/webp"))) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Formato de imagen no soportado. Usa JPEG, PNG o WEBP."));
+            }
+
+            String originalFilename = avatarFile.getOriginalFilename();
+            String ext = originalFilename != null && originalFilename.contains(".")
+                    ? originalFilename.substring(originalFilename.lastIndexOf("."))
+                    : ".jpg";
+            String randomFilename = "avatar_" + UUID.randomUUID().toString() + ext;
+
+            try {
+                String oldAvatarUrl = profile.getAvatarUrl();
+                String newAvatarUrl = storageService.uploadFile(randomFilename, avatarFile.getBytes(), contentType);
+                profile.setAvatarUrl(newAvatarUrl);
+
+                if (oldAvatarUrl != null && !oldAvatarUrl.isBlank()) {
+                    String oldKey = extractFileKey(oldAvatarUrl);
+                    if (oldKey != null && oldKey.startsWith("avatar_")) {
+                        try {
+                            storageService.deleteFile(oldKey);
+                            log.info("Deleted old avatar [{}] from R2", oldKey);
+                        } catch (Exception ex) {
+                            log.error("Failed to delete old avatar [{}] from R2: {}", oldKey, ex.getMessage());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Error uploading avatar to R2: {}", e.getMessage(), e);
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Error al subir la foto de perfil: " + e.getMessage()));
+            }
+        }
+
+        profileRepository.save(profile);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Perfil actualizado con éxito",
+                "displayName", profile.getDisplayName(),
+                "bio", profile.getBio() != null ? profile.getBio() : "",
+                "avatarUrl", profile.getAvatarUrl() != null ? profile.getAvatarUrl() : "",
+                "isPrivate", profile.isPrivate()
+        ));
+    }
+
+    private static String extractFileKey(String url) {
+        if (url == null || url.isBlank()) return null;
+        int lastSlash = url.lastIndexOf('/');
+        if (lastSlash >= 0 && lastSlash < url.length() - 1) {
+            return url.substring(lastSlash + 1);
+        }
+        return url;
     }
 
     @PostMapping("/onboarding")

@@ -10,6 +10,7 @@ interface UserSession {
   email: string;
   displayName: string;
   role: string;
+  avatarUrl?: string;
 }
 
 interface AuthContextType {
@@ -19,6 +20,7 @@ interface AuthContextType {
   login: (usernameOrEmail: string, password: String) => Promise<void>;
   register: (email: string, username: string, displayName: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateAvatarUrl: (url: string) => void;
   axiosInstance: AxiosInstance;
 }
 
@@ -170,8 +172,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const updateAvatarUrl = (url: string) => {
+    setUser(prev => prev ? { ...prev, avatarUrl: url } : prev);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, accessToken, isLoading, login, register, logout, axiosInstance: api }}>
+    <AuthContext.Provider value={{ user, accessToken, isLoading, login, register, logout, updateAvatarUrl, axiosInstance: api }}>
       {children}
     </AuthContext.Provider>
   );
