@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl, Image, Share, Modal, TextInput } from 'react-native';
+import { Alert, StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl, Image, Share, Modal, TextInput } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../theme';
@@ -142,6 +142,18 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
     }
   };
 
+  const deletePost = (postId: string) => Alert.alert(
+    '¿Eliminar este Momento?',
+    'Esta acción no se puede deshacer.',
+    [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar', style: 'destructive', onPress: async () => {
+        try { await api.delete(`/posts/${postId}`); setPosts(old => old.filter(post => post.postId !== postId)); }
+        catch (err) { console.error(err); setActionError('No se pudo eliminar el Momento.'); }
+      } },
+    ],
+  );
+
   const openComments = async (post: Post) => {
     setCommentsPost(post); setComments([]); setCommentsLoading(true); setActionError('');
     try { const res = await api.get(`/comments/${post.postId}`); setComments(res.data || []); }
@@ -180,9 +192,9 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
             {item.location ? (
               <Text style={[styles.locationText, { color: theme.textMuted }]}>{item.location}</Text>
             ) : null}
-            <TouchableOpacity disabled accessibilityLabel="Opciones de publicación, disponible próximamente" style={{ opacity: 0.45 }}>
-              <Ionicons name="ellipsis-horizontal" size={18} color={theme.textMuted} />
-            </TouchableOpacity>
+            {item.userId === user?.userId ? <TouchableOpacity accessibilityLabel="Eliminar Momento" onPress={() => deletePost(item.postId)}>
+              <Ionicons name="trash-outline" size={18} color={theme.danger} />
+            </TouchableOpacity> : null}
           </View>
         </View>
 
