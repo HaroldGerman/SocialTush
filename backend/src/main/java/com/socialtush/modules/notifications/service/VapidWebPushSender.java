@@ -5,8 +5,10 @@ import nl.martijndwars.webpush.Notification;
 import nl.martijndwars.webpush.PushService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import java.nio.charset.StandardCharsets;
+import java.security.Security;
 
 @Component
 public class VapidWebPushSender implements WebPushSender {
@@ -21,6 +23,13 @@ public class VapidWebPushSender implements WebPushSender {
         this.publicKey = publicKey;
         this.privateKey = privateKey;
         this.subject = subject;
+        ensureBouncyCastleProvider();
+    }
+
+    private static void ensureBouncyCastleProvider() {
+        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+            Security.addProvider(new BouncyCastleProvider());
+        }
     }
 
     @Override
