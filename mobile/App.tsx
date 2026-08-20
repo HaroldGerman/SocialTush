@@ -11,6 +11,12 @@ import CirclesScreen from './src/screens/CirclesScreen';
 import ReelsScreen from './src/screens/ReelsScreen';
 import PostDetailScreen from './src/screens/PostDetailScreen';
 import CreatePostModal from './src/components/CreatePostModal';
+import OnboardingScreen from './src/screens/OnboardingScreen';
+import UserAvatar from './src/components/UserAvatar';
+import CircleDetailScreen from './src/screens/CircleDetailScreen';
+import CreateHub from './src/components/CreateHub';
+import CreateCircleModal from './src/components/CreateCircleModal';
+import StoryComposer from './src/components/StoryComposer';
 import { StyleSheet, Text, View, StatusBar, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,7 +36,7 @@ interface Conversation {
 type TabType = 'INICIO' | 'CIRCULOS' | 'CREAR' | 'MENSAJES' | 'PERFIL' | 'NOTIFS' | 'REELS';
 
 function MainApp() {
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading, registrationOnboardingPending } = useAuth();
   const { theme, isDark } = useAppTheme();
   const insets = useSafeAreaInsets();
 
@@ -39,8 +45,20 @@ function MainApp() {
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [targetProfileUsername, setTargetProfileUsername] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const [showCreateHub,setShowCreateHub]=useState(false);
+  const [showStoryComposer,setShowStoryComposer]=useState(false);
+  const [showCircleCreator,setShowCircleCreator]=useState(false);
   const [feedRefreshKey, setFeedRefreshKey] = useState<number>(0);
   const [activePostId, setActivePostId] = useState<string | null>(null);
+  const [activeCircleSlug, setActiveCircleSlug] = useState<string | null>(null);
+
+  if (isLoading) {
+    return <View style={[styles.container, { backgroundColor: theme.background }]}><Text style={{ color: theme.textMuted }}>Cargando Lifonk…</Text></View>;
+  }
+
+  if (user && registrationOnboardingPending) {
+    return <View style={[styles.mainWrapper, { paddingTop: insets.top }]}><StatusBar barStyle={isDark ? 'light-content' : 'dark-content'}/><OnboardingScreen/></View>;
+  }
 
   if (user) {
     return (
@@ -53,12 +71,13 @@ function MainApp() {
         
         {/* Main Content Screen */}
         <View style={{ flex: 1 }}>
-          {activePostId ? <PostDetailScreen postId={activePostId} onBack={() => setActivePostId(null)} onOpenProfile={(username) => { setActivePostId(null); setTargetProfileUsername(username); setAuthTab('PERFIL'); }} /> : <>
+          {activePostId ? <PostDetailScreen postId={activePostId} onBack={() => setActivePostId(null)} onOpenProfile={(username) => { setActivePostId(null); setTargetProfileUsername(username); setAuthTab('PERFIL'); }} /> : activeCircleSlug ? <CircleDetailScreen slug={activeCircleSlug} onBack={()=>setActiveCircleSlug(null)} onOpenProfile={(username)=>{setActiveCircleSlug(null);setTargetProfileUsername(username);setAuthTab('PERFIL');}}/> : <>
           {authTab === 'INICIO' && (
             <FeedScreen 
               key={feedRefreshKey}
               onOpenNotifications={() => setAuthTab('NOTIFS')}
               onOpenReels={() => setAuthTab('REELS')}
+              onOpenCircle={setActiveCircleSlug}
               onOpenProfile={() => {
                 setTargetProfileUsername(user.username);
                 setAuthTab('PERFIL');
@@ -70,7 +89,7 @@ function MainApp() {
             />
           )}
           
-          {authTab === 'CIRCULOS' && <CirclesScreen />}
+          {authTab === 'CIRCULOS' && <CirclesScreen onOpenCircle={setActiveCircleSlug} />}
 
           {authTab === 'NOTIFS' && <NotificationsScreen onOpenPost={setActivePostId} onOpenProfile={(username) => { setTargetProfileUsername(username); setAuthTab('PERFIL'); }} />}
 
@@ -95,6 +114,11 @@ function MainApp() {
               username={targetProfileUsername || user.username}
               onLogout={logout}
               onBack={targetProfileUsername && targetProfileUsername !== user.username ? () => setAuthTab('INICIO') : undefined}
+              onOpenPost={setActivePostId}
+              onMessage={(username) => {
+                setActiveConversation({ conversationId: null, isDraft: true, otherUsername: username, name: username, avatarUrl: '', isGroup: false, latestMessage: '', updatedAt: '' });
+                setAuthTab('MENSAJES');
+              }}
             />
           )}
           </>}
@@ -109,9 +133,12 @@ function MainApp() {
             setFeedRefreshKey(prev => prev + 1);
           }}
         />
+        <CreateHub visible={showCreateHub} onClose={()=>setShowCreateHub(false)} onMoment={()=>{setShowCreateHub(false);setShowCreateModal(true);}} onStory={()=>{setShowCreateHub(false);setShowStoryComposer(true);}} onCircle={()=>{setShowCreateHub(false);setShowCircleCreator(true);}}/>
+        <StoryComposer visible={showStoryComposer} onClose={()=>setShowStoryComposer(false)} onPublished={()=>setFeedRefreshKey(value=>value+1)}/>
+        <CreateCircleModal visible={showCircleCreator} onClose={()=>setShowCircleCreator(false)} onCreated={(slug)=>{setActiveCircleSlug(slug);setAuthTab('CIRCULOS');}}/>
 
         {/* Dynamic Theme 5-Tab Navigation Bar */}
-        <View style={[styles.tabBar, { backgroundColor: theme.surface, borderColor: theme.border, paddingBottom: Math.max(insets.bottom, 4) }]}>
+        {!activeConversation && !activePostId && !activeCircleSlug ? <View style={[styles.tabBar, { backgroundColor: theme.surface, borderColor: theme.border, paddingBottom: Math.max(insets.bottom, 4) }]}>
           {/* 1. Inicio */}
           <TouchableOpacity 
             style={styles.tabItem} 
@@ -153,7 +180,7 @@ function MainApp() {
           {/* 3. Crear (Featured Middle Button) */}
           <TouchableOpacity 
             style={styles.tabItemCreate} 
-            onPress={() => setShowCreateModal(true)}
+            onPress={() => setShowCreateHub(true)}
             activeOpacity={0.85}
           >
             <View style={[styles.createBtnCircle, { backgroundColor: theme.primary }]}>
@@ -189,16 +216,12 @@ function MainApp() {
               setActiveConversation(null);
             }}
           >
-            <Ionicons 
-              name={authTab === 'PERFIL' ? 'person' : 'person-outline'} 
-              size={22} 
-              color={authTab === 'PERFIL' ? theme.accent : theme.textMuted} 
-            />
+            <UserAvatar avatarUrl={user.avatarUrl} displayName={user.displayName} username={user.username} size={22}/>
             <Text style={[styles.tabText, { color: theme.textMuted }, authTab === 'PERFIL' && { color: theme.accent, fontWeight: 'bold' }]}>
               Perfil
             </Text>
           </TouchableOpacity>
-        </View>
+        </View> : null}
       </View>
     );
   }
