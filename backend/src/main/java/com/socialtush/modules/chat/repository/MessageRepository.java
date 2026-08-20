@@ -6,6 +6,8 @@ import org.springframework.data.domain.Pageable;
 import java.time.Instant;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -24,4 +26,14 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
     @EntityGraph(attributePaths = {"attachments", "sender"})
     Optional<Message> findFirstByConversationIdAndCreatedAtAfterOrderByCreatedAtDesc(UUID conversationId, Instant clearedAt);
     long countByConversationId(UUID conversationId);
+
+    @Query(value = "select m from Message m join fetch m.sender where m.conversation.id = :conversationId and m.messageType = 'TEXT' and lower(m.content) like lower(concat('%', :content, '%')) and (:clearedAt is null or m.createdAt > :clearedAt) order by m.createdAt desc",
+            countQuery = "select count(m) from Message m where m.conversation.id = :conversationId and m.messageType = 'TEXT' and lower(m.content) like lower(concat('%', :content, '%')) and (:clearedAt is null or m.createdAt > :clearedAt)")
+    Page<Message> searchText(@Param("conversationId") UUID conversationId, @Param("content") String content,
+                             @Param("clearedAt") Instant clearedAt, Pageable pageable);
+
+    @Query(value = "select distinct m from Message m join fetch m.attachments a join fetch m.sender where m.conversation.id = :conversationId and (:clearedAt is null or m.createdAt > :clearedAt) order by m.createdAt desc",
+            countQuery = "select count(distinct m) from Message m join m.attachments a where m.conversation.id = :conversationId and (:clearedAt is null or m.createdAt > :clearedAt)")
+    Page<Message> findMediaByConversationId(@Param("conversationId") UUID conversationId,
+                                            @Param("clearedAt") Instant clearedAt, Pageable pageable);
 }

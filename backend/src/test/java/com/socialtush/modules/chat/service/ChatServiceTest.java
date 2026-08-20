@@ -3,10 +3,12 @@ package com.socialtush.modules.chat.service;
 import com.socialtush.modules.chat.entity.Conversation;
 import com.socialtush.modules.chat.entity.ConversationParticipant;
 import com.socialtush.modules.chat.entity.Message;
+import com.socialtush.modules.chat.entity.MessageReaction;
 import com.socialtush.modules.chat.repository.ConversationParticipantRepository;
 import com.socialtush.modules.chat.repository.ConversationRepository;
 import com.socialtush.modules.chat.repository.MessageRepository;
 import com.socialtush.modules.chat.repository.MessageAttachmentRepository;
+import com.socialtush.modules.chat.repository.MessageReactionRepository;
 import com.socialtush.modules.media.service.StorageService;
 import com.socialtush.modules.notifications.service.NotificationService;
 import com.socialtush.modules.notifications.repository.NotificationRepository;
@@ -35,6 +37,7 @@ class ChatServiceTest {
     @Mock ConversationParticipantRepository participants;
     @Mock MessageRepository messages;
     @Mock MessageAttachmentRepository attachments;
+    @Mock MessageReactionRepository reactions;
     @Mock UserRepository users;
     @Mock NotificationService notifications;
     @Mock NotificationRepository notificationRepository;
@@ -46,7 +49,7 @@ class ChatServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ChatService(conversations, participants, messages, attachments, users, notifications, notificationRepository, storage);
+        service = new ChatService(conversations, participants, messages, attachments, reactions, users, notifications, notificationRepository, storage);
         sender = user("sender");
         recipient = user("recipient");
     }
@@ -178,6 +181,68 @@ class ChatServiceTest {
         assertThat(result.conversation()).isSameAs(existing);
         verify(participants, never()).save(argThat(p -> p.getConversation() == existing));
         verify(messages).save(any(Message.class));
+    }
+
+    @Test
+    void pinAndNicknamePersistOnlyOnCurrentParticipant() {
+        Conversation conversation = conversation();
+        ConversationParticipant own = ConversationParticipant.builder().conversation(conversation).user(sender).build();
+        when(participants.findByConversationIdAndUserId(conversation.getId(), sender.getId())).thenReturn(Optional.of(own));
+        when(participants.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.setPinned(sender, conversation.getId(), true);
+        service.setNickname(sender, conversation.getId(), "Vale");
+
+        assertThat(own.isPinned()).isTrue();
+        assertThat(own.getPinnedAt()).isNotNull();
+        assertThat(own.getNickname()).isEqualTo("Vale");
+    }
+
+    @Test
+    void conversationPreferencesValidateThemeAndPersistMute() {
+        Conversation conversation = conversation();
+        ConversationParticipant own = ConversationParticipant.builder().conversation(conversation).user(sender).build();
+        when(participants.findByConversationIdAndUserId(conversation.getId(), sender.getId())).thenReturn(Optional.of(own));
+        when(participants.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        Instant until = Instant.now().plusSeconds(3600);
+
+        service.setPreferences(sender, conversation.getId(), true, until, "OCEAN");
+
+        assertThat(own.isNotificationsMuted()).isTrue();
+        assertThat(own.getMutedUntil()).isEqualTo(until);
+        assertThat(own.getChatTheme()).isEqualTo("OCEAN");
+        assertThatThrownBy(() -> service.setPreferences(sender, conversation.getId(), null, null, "FAKE"))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("400");
+    }
+
+    @Test
+    void reactionIsCreatedReplacedAndRemovedForParticipant() {
+        Conversation conversation = conversation();
+        Message message = Message.builder().id(UUID.randomUUID()).conversation(conversation).sender(recipient).content("Hola").messageType("TEXT").build();
+        when(messages.findById(message.getId())).thenReturn(Optional.of(message));
+        when(participants.findByConversationIdAndUserId(conversation.getId(), sender.getId()))
+                .thenReturn(Optional.of(ConversationParticipant.builder().conversation(conversation).user(sender).build()));
+        when(reactions.findByMessageIdAndUserId(message.getId(), sender.getId())).thenReturn(Optional.empty());
+        when(reactions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MessageReaction created = service.setReaction(sender, message.getId(), "❤️");
+        assertThat(created.getEmoji()).isEqualTo("❤️");
+        assertThatThrownBy(() -> service.setReaction(sender, message.getId(), "random"))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("400");
+        service.removeReaction(sender, message.getId());
+    }
+
+    @Test
+    void outsiderCannotReactOrChangeConversationPreferences() {
+        Conversation conversation = conversation();
+        Message message = Message.builder().id(UUID.randomUUID()).conversation(conversation).sender(recipient).content("Hola").messageType("TEXT").build();
+        when(messages.findById(message.getId())).thenReturn(Optional.of(message));
+        when(participants.findByConversationIdAndUserId(conversation.getId(), sender.getId())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.setReaction(sender, message.getId(), "👍"))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403");
+        assertThatThrownBy(() -> service.setPinned(sender, conversation.getId(), true))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403");
     }
 
     @Test

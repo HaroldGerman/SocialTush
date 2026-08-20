@@ -47,6 +47,27 @@ public class ConversationParticipant {
     @Column(name = "hidden_at")
     private Instant hiddenAt;
 
+    @Column(name = "is_pinned", nullable = false)
+    @Builder.Default
+    private boolean pinned = false;
+
+    @Column(name = "pinned_at")
+    private Instant pinnedAt;
+
+    @Column(length = 40)
+    private String nickname;
+
+    @Column(name = "notifications_muted", nullable = false)
+    @Builder.Default
+    private boolean notificationsMuted = false;
+
+    @Column(name = "muted_until")
+    private Instant mutedUntil;
+
+    @Column(name = "chat_theme", nullable = false, length = 30)
+    @Builder.Default
+    private String chatTheme = "DEFAULT";
+
     @CreationTimestamp
     @Column(name = "joined_at", nullable = false, updatable = false)
     private Instant joinedAt;

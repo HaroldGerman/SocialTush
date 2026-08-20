@@ -1,5 +1,7 @@
 package com.socialtush.modules.notifications.service;
 
+import com.socialtush.modules.chat.entity.ConversationParticipant;
+import com.socialtush.modules.chat.repository.ConversationParticipantRepository;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -7,19 +9,29 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+import java.time.Instant;
 
 @Component
 @RequiredArgsConstructor
 public class WebPushNotificationListener {
     private final UserRepository userRepository;
     private final WebPushService webPushService;
+    private final ConversationParticipantRepository participantRepository;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void deliver(NotificationCreatedEvent event) {
         User receiver = userRepository.findById(event.receiverId()).orElse(null);
         if (receiver == null) return;
+        if ("MESSAGE".equals(event.type()) && event.targetId() != null && messagePushMuted(receiver, event.targetId())) return;
         webPushService.sendToUser(receiver, payload(event));
+    }
+
+    private boolean messagePushMuted(User receiver, java.util.UUID conversationId) {
+        ConversationParticipant participant = participantRepository
+                .findByConversationIdAndUserId(conversationId, receiver.getId()).orElse(null);
+        if (participant == null || !participant.isNotificationsMuted()) return false;
+        return participant.getMutedUntil() == null || participant.getMutedUntil().isAfter(Instant.now());
     }
 
     private WebPushPayload payload(NotificationCreatedEvent event) {

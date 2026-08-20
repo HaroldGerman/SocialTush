@@ -4,10 +4,12 @@ import com.socialtush.modules.chat.entity.Conversation;
 import com.socialtush.modules.chat.entity.ConversationParticipant;
 import com.socialtush.modules.chat.entity.Message;
 import com.socialtush.modules.chat.entity.MessageAttachment;
+import com.socialtush.modules.chat.entity.MessageReaction;
 import com.socialtush.modules.chat.repository.ConversationParticipantRepository;
 import com.socialtush.modules.chat.repository.ConversationRepository;
 import com.socialtush.modules.chat.repository.MessageRepository;
 import com.socialtush.modules.chat.repository.MessageAttachmentRepository;
+import com.socialtush.modules.chat.repository.MessageReactionRepository;
 import com.socialtush.modules.media.service.StorageService;
 import com.socialtush.modules.notifications.service.NotificationService;
 import com.socialtush.modules.notifications.repository.NotificationRepository;
@@ -23,6 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +34,7 @@ public class ChatService {
     private final ConversationParticipantRepository participantRepository;
     private final MessageRepository messageRepository;
     private final MessageAttachmentRepository attachmentRepository;
+    private final MessageReactionRepository reactionRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final NotificationRepository notificationRepository;
@@ -39,6 +43,8 @@ public class ChatService {
     private static final long IMAGE_MAX_BYTES = 10L * 1024 * 1024;
     private static final long VIDEO_MAX_BYTES = 50L * 1024 * 1024;
     private static final long AUDIO_MAX_BYTES = 15L * 1024 * 1024;
+    private static final Set<String> REACTION_EMOJIS = Set.of("❤️", "😂", "😮", "😢", "🔥", "👍");
+    private static final Set<String> CHAT_THEMES = Set.of("DEFAULT", "DEEP_TEAL", "OCEAN", "FOREST", "NIGHT");
 
     @Transactional(rollbackFor = Exception.class)
     public SendResult sendDirectMessage(User sender, String username, String content, String messageType, UUID storyPreviewId) {
@@ -240,6 +246,67 @@ public class ChatService {
         participantRepository.save(participant);
         notificationRepository.markConversationMessagesAsRead(currentUser, conversationId);
         return new ReadResult(conversationId, participant.getLastReadMessageId(), Instant.now());
+    }
+
+    @Transactional
+    public ConversationParticipant setPinned(User currentUser, UUID conversationId, boolean pinned) {
+        ConversationParticipant participant = requireParticipant(currentUser, conversationId);
+        participant.setPinned(pinned);
+        participant.setPinnedAt(pinned ? Instant.now() : null);
+        return participantRepository.save(participant);
+    }
+
+    @Transactional
+    public ConversationParticipant setNickname(User currentUser, UUID conversationId, String nickname) {
+        ConversationParticipant participant = requireParticipant(currentUser, conversationId);
+        String value = nickname == null ? null : nickname.trim();
+        if (value != null && value.length() > 40) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El apodo no puede superar 40 caracteres");
+        participant.setNickname(value == null || value.isBlank() ? null : value);
+        return participantRepository.save(participant);
+    }
+
+    @Transactional
+    public ConversationParticipant setPreferences(User currentUser, UUID conversationId, Boolean muted, Instant mutedUntil, String chatTheme) {
+        ConversationParticipant participant = requireParticipant(currentUser, conversationId);
+        if (muted != null) {
+            participant.setNotificationsMuted(muted);
+            participant.setMutedUntil(Boolean.TRUE.equals(muted) ? mutedUntil : null);
+        }
+        if (chatTheme != null) {
+            String normalized = chatTheme.trim().toUpperCase();
+            if (!CHAT_THEMES.contains(normalized)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tema de conversación no válido");
+            participant.setChatTheme(normalized);
+        }
+        return participantRepository.save(participant);
+    }
+
+    @Transactional
+    public MessageReaction setReaction(User currentUser, UUID messageId, String emoji) {
+        requireAuthenticated(currentUser);
+        if (!REACTION_EMOJIS.contains(emoji)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Reacción no válida");
+        Message message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Mensaje no encontrado"));
+        requireParticipant(currentUser, message.getConversation().getId());
+        MessageReaction reaction = reactionRepository.findByMessageIdAndUserId(messageId, currentUser.getId())
+                .orElseGet(() -> MessageReaction.builder().message(message).user(currentUser).build());
+        reaction.setEmoji(emoji);
+        return reactionRepository.save(reaction);
+    }
+
+    @Transactional
+    public UUID removeReaction(User currentUser, UUID messageId) {
+        requireAuthenticated(currentUser);
+        Message message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Mensaje no encontrado"));
+        requireParticipant(currentUser, message.getConversation().getId());
+        reactionRepository.findByMessageIdAndUserId(messageId, currentUser.getId()).ifPresent(reactionRepository::delete);
+        return message.getConversation().getId();
+    }
+
+    public ConversationParticipant requireParticipant(User currentUser, UUID conversationId) {
+        requireAuthenticated(currentUser);
+        return participantRepository.findByConversationIdAndUserId(conversationId, currentUser.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "No eres integrante de esta conversación"));
     }
 
     private void requireAuthenticated(User user) {

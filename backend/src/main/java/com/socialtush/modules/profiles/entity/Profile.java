@@ -55,6 +55,9 @@ public class Profile implements Persistable<UUID> {
     @Builder.Default
     private boolean showOnlineStatus = true;
 
+    @Column(name = "last_seen_at")
+    private Instant lastSeenAt;
+
     @Column(name = "who_can_message", nullable = false, length = 20)
     @Builder.Default
     private String whoCanMessage = "EVERYONE";

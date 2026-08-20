@@ -1,5 +1,6 @@
 package com.socialtush.modules.chat.controller;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -12,10 +13,13 @@ import com.socialtush.modules.chat.entity.Conversation;
 import com.socialtush.modules.chat.entity.ConversationParticipant;
 import com.socialtush.modules.chat.entity.Message;
 import com.socialtush.modules.chat.entity.MessageAttachment;
+import com.socialtush.modules.chat.entity.MessageReaction;
 import com.socialtush.modules.chat.repository.ConversationParticipantRepository;
 import com.socialtush.modules.chat.repository.ConversationRepository;
 import com.socialtush.modules.chat.repository.MessageRepository;
+import com.socialtush.modules.chat.repository.MessageReactionRepository;
 import com.socialtush.modules.chat.service.ChatService;
+import com.socialtush.modules.chat.service.PresenceService;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.users.entity.User;
@@ -45,10 +49,12 @@ public class ChatController {
     private final ConversationRepository conversationRepository;
     private final ConversationParticipantRepository participantRepository;
     private final MessageRepository messageRepository;
+    private final MessageReactionRepository reactionRepository;
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final NotificationRepository notificationRepository;
     private final ChatService chatService;
+    private final PresenceService presenceService;
     private final SimpMessagingTemplate messagingTemplate;
 
     @GetMapping("/conversations")
@@ -81,6 +87,8 @@ public class ChatController {
         }
 
         List<ConversationDto> dtos = filteredConversations.stream().map(c -> {
+            ConversationParticipant ownParticipant = c.getParticipants().stream()
+                    .filter(participant -> participant.getUser().getId().equals(currentUser.getId())).findFirst().orElse(null);
             String name = c.getName();
             String avatarUrl = c.getAvatarUrl();
             UUID otherUserId = null;
@@ -101,6 +109,7 @@ public class ChatController {
                     avatarUrl = otherProfile != null ? otherProfile.getAvatarUrl() : "";
                 }
             }
+            if (ownParticipant != null && ownParticipant.getNickname() != null) name = ownParticipant.getNickname();
 
             Optional<Message> latestMessage = messageRepository.findFirstByConversationIdOrderByCreatedAtDesc(c.getId());
             String latestText = latestMessage.map(this::messagePreview).orElse("No hay mensajes");
@@ -119,10 +128,90 @@ public class ChatController {
                     .updatedAt(latestTime)
                     .otherUserId(otherUserId)
                     .otherUsername(otherUsername)
+                    .pinned(ownParticipant != null && ownParticipant.isPinned())
+                    .pinnedAt(ownParticipant != null && ownParticipant.getPinnedAt() != null ? ownParticipant.getPinnedAt().toString() : null)
+                    .nickname(ownParticipant != null ? ownParticipant.getNickname() : null)
+                    .notificationsMuted(isMuted(ownParticipant))
+                    .mutedUntil(ownParticipant != null && ownParticipant.getMutedUntil() != null ? ownParticipant.getMutedUntil().toString() : null)
+                    .chatTheme(ownParticipant != null ? ownParticipant.getChatTheme() : "DEFAULT")
                     .build();
+        }).sorted((left, right) -> {
+            if (left.isPinned() != right.isPinned()) return left.isPinned() ? -1 : 1;
+            String leftSort = left.isPinned() ? left.getPinnedAt() : left.getUpdatedAt();
+            String rightSort = right.isPinned() ? right.getPinnedAt() : right.getUpdatedAt();
+            return java.util.Comparator.nullsLast(java.util.Comparator.<String>reverseOrder()).compare(leftSort, rightSort);
         }).collect(Collectors.toList());
 
         return ResponseEntity.ok(dtos);
+    }
+
+    @GetMapping("/presence/{username}")
+    public ResponseEntity<?> presence(@PathVariable String username, @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        PresenceService.PresenceView view = presenceService.view(username);
+        return ResponseEntity.ok(Map.of("online", view.online(), "onlineVisible", view.onlineVisible(),
+                "lastSeenVisible", view.lastSeenVisible(), "lastSeenAt", view.lastSeenAt() == null ? "" : view.lastSeenAt().toString()));
+    }
+
+    @PatchMapping("/conversations/{conversationId}/pin")
+    public ResponseEntity<?> pin(@PathVariable UUID conversationId, @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(preferencesDto(chatService.setPinned(currentUser, conversationId, true)));
+    }
+
+    @DeleteMapping("/conversations/{conversationId}/pin")
+    public ResponseEntity<?> unpin(@PathVariable UUID conversationId, @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(preferencesDto(chatService.setPinned(currentUser, conversationId, false)));
+    }
+
+    @PatchMapping("/conversations/{conversationId}/nickname")
+    public ResponseEntity<?> nickname(@PathVariable UUID conversationId, @RequestBody NicknameRequest request,
+                                      @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(preferencesDto(chatService.setNickname(currentUser, conversationId, request.getNickname())));
+    }
+
+    @PatchMapping("/conversations/{conversationId}/preferences")
+    public ResponseEntity<?> preferences(@PathVariable UUID conversationId, @RequestBody PreferencesRequest request,
+                                         @AuthenticationPrincipal User currentUser) {
+        Instant until = request.getMutedUntil() == null || request.getMutedUntil().isBlank() ? null : Instant.parse(request.getMutedUntil());
+        return ResponseEntity.ok(preferencesDto(chatService.setPreferences(currentUser, conversationId,
+                request.getNotificationsMuted(), until, request.getChatTheme())));
+    }
+
+    @PutMapping("/messages/{messageId}/reaction")
+    public ResponseEntity<?> react(@PathVariable UUID messageId, @RequestBody ReactionRequest request,
+                                   @AuthenticationPrincipal User currentUser) {
+        MessageReaction reaction = chatService.setReaction(currentUser, messageId, request.getEmoji());
+        broadcastReaction(reaction.getMessage().getConversation().getId(), messageId, currentUser);
+        return ResponseEntity.ok(Map.of("messageId", messageId, "emoji", reaction.getEmoji()));
+    }
+
+    @DeleteMapping("/messages/{messageId}/reaction")
+    public ResponseEntity<?> removeReaction(@PathVariable UUID messageId, @AuthenticationPrincipal User currentUser) {
+        UUID conversationId = chatService.removeReaction(currentUser, messageId);
+        broadcastReaction(conversationId, messageId, currentUser);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/conversations/{conversationId}/messages/search")
+    public ResponseEntity<?> searchMessages(@PathVariable UUID conversationId, @RequestParam String q,
+                                             @RequestParam(defaultValue = "0") int page,
+                                             @RequestParam(defaultValue = "20") int size,
+                                             @AuthenticationPrincipal User currentUser) {
+        ConversationParticipant participant = chatService.requireParticipant(currentUser, conversationId);
+        if (q == null || q.trim().length() < 2) return ResponseEntity.badRequest().body(Map.of("message", "Escribe al menos 2 caracteres"));
+        Page<Message> result = messageRepository.searchText(conversationId, q.trim(), participant.getClearedAt(),
+                PageRequest.of(page, Math.min(size, 50)));
+        return ResponseEntity.ok(result.map(message -> toMessageDto(message, currentUser)));
+    }
+
+    @GetMapping("/conversations/{conversationId}/media")
+    public ResponseEntity<?> conversationMedia(@PathVariable UUID conversationId,
+                                                @RequestParam(defaultValue = "0") int page,
+                                                @RequestParam(defaultValue = "24") int size,
+                                                @AuthenticationPrincipal User currentUser) {
+        ConversationParticipant participant = chatService.requireParticipant(currentUser, conversationId);
+        Page<Message> result = messageRepository.findMediaByConversationId(conversationId, participant.getClearedAt(), PageRequest.of(page, Math.min(size, 50)));
+        return ResponseEntity.ok(result.map(message -> toMessageDto(message, currentUser)));
     }
 
     @PostMapping("/conversations")
@@ -231,8 +320,11 @@ public class ChatController {
                 : messageRepository.findByConversationIdAndCreatedAtAfterOrderByCreatedAtDesc(conversationId, participant.get().getClearedAt(), pageable);
 
         ReceiptContext receiptContext = receiptContext(conversationId, currentUser);
+        Map<UUID, List<MessageReaction>> reactionMap = reactionRepository.findByMessageIdIn(
+                messagePage.getContent().stream().map(Message::getId).toList()).stream()
+                .collect(Collectors.groupingBy(reaction -> reaction.getMessage().getId()));
         List<MessageResponseDto> dtos = messagePage.getContent().stream()
-                .map(message -> toMessageDto(message, currentUser, receiptContext))
+                .map(message -> toMessageDto(message, currentUser, receiptContext, reactionMap.getOrDefault(message.getId(), List.of())))
                 .collect(Collectors.toList());
 
         // Reverse to return messages in chronological order
@@ -352,6 +444,29 @@ public class ChatController {
         messagingTemplate.convertAndSend("/topic/conversation." + conversationId, dto);
     }
 
+    private void broadcastReaction(UUID conversationId, UUID messageId, User actor) {
+        messagingTemplate.convertAndSend("/topic/conversation." + conversationId, Map.of(
+                "type", "MESSAGE_REACTION_UPDATED", "conversationId", conversationId,
+                "messageId", messageId, "actorUsername", actor.getUsername()));
+    }
+
+    private boolean isMuted(ConversationParticipant participant) {
+        if (participant == null || !participant.isNotificationsMuted()) return false;
+        return participant.getMutedUntil() == null || participant.getMutedUntil().isAfter(Instant.now());
+    }
+
+    private Map<String, Object> preferencesDto(ConversationParticipant participant) {
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("conversationId", participant.getConversation().getId());
+        response.put("isPinned", participant.isPinned());
+        response.put("pinnedAt", participant.getPinnedAt());
+        response.put("nickname", participant.getNickname());
+        response.put("notificationsMuted", isMuted(participant));
+        response.put("mutedUntil", participant.getMutedUntil());
+        response.put("chatTheme", participant.getChatTheme());
+        return response;
+    }
+
     private String messagePreview(Message message) {
         if (message.getContent() != null && !message.getContent().isBlank()) return message.getContent();
         if (message.getAttachments().isEmpty()) return "Mensaje";
@@ -377,10 +492,11 @@ public class ChatController {
     }
 
     private MessageResponseDto toMessageDto(Message message, User viewer) {
-        return toMessageDto(message, viewer, receiptContext(message.getConversation().getId(), viewer));
+        List<MessageReaction> reactions = reactionRepository.findByMessageIdIn(List.of(message.getId()));
+        return toMessageDto(message, viewer, receiptContext(message.getConversation().getId(), viewer), reactions);
     }
 
-    private MessageResponseDto toMessageDto(Message message, User viewer, ReceiptContext receipt) {
+    private MessageResponseDto toMessageDto(Message message, User viewer, ReceiptContext receipt, List<MessageReaction> reactions) {
         Profile senderProfile = profileRepository.findById(message.getSender().getId()).orElse(null);
         boolean ownMessage = viewer != null && message.getSender().getId().equals(viewer.getId());
         boolean read = ownMessage && receipt.visible() && receipt.lastReadAt() != null
@@ -393,6 +509,10 @@ public class ChatController {
                 .content(message.getContent()).messageType(message.getMessageType())
                 .storyPreviewId(message.getStoryPreviewId())
                 .attachments(message.getAttachments().stream().map(this::toAttachmentDto).toList())
+                .reactions(reactions.stream().collect(Collectors.groupingBy(MessageReaction::getEmoji)).entrySet().stream()
+                        .map(entry -> ReactionSummaryDto.builder().emoji(entry.getKey()).count(entry.getValue().size())
+                                .reactedByMe(viewer != null && entry.getValue().stream().anyMatch(reaction -> reaction.getUser().getId().equals(viewer.getId())))
+                                .build()).toList())
                 .readReceiptVisible(ownMessage && receipt.visible())
                 .readByRecipient(read)
                 .createdAt((message.getCreatedAt() != null ? message.getCreatedAt() : java.time.Instant.now()).toString()).build();
@@ -446,6 +566,13 @@ public class ChatController {
         private String updatedAt;
         private UUID otherUserId;
         private String otherUsername;
+        @JsonProperty("isPinned")
+        private boolean pinned;
+        private String pinnedAt;
+        private String nickname;
+        private boolean notificationsMuted;
+        private String mutedUntil;
+        private String chatTheme;
     }
 
     @Data
@@ -468,9 +595,31 @@ public class ChatController {
         private String messageType;
         private UUID storyPreviewId;
         private List<AttachmentDto> attachments;
+        private List<ReactionSummaryDto> reactions;
         private String createdAt;
         private Boolean readByRecipient;
         private Boolean readReceiptVisible;
+    }
+
+    @Data
+    public static class NicknameRequest { private String nickname; }
+
+    @Data
+    public static class PreferencesRequest {
+        private Boolean notificationsMuted;
+        private String mutedUntil;
+        private String chatTheme;
+    }
+
+    @Data
+    public static class ReactionRequest { private String emoji; }
+
+    @Data
+    @Builder
+    public static class ReactionSummaryDto {
+        private String emoji;
+        private long count;
+        private boolean reactedByMe;
     }
 
     private record ReceiptContext(boolean visible, Instant lastReadAt) {}
