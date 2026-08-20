@@ -12,6 +12,8 @@ import java.util.UUID;
 
 @Repository
 public interface StoryRepository extends JpaRepository<Story, UUID> {
+    long countByExpiresAtAfter(Instant now);
+    long countByUserAndExpiresAtAfter(User user, Instant now);
     List<Story> findByUserAndExpiresAtAfterOrderByCreatedAtAsc(User user, Instant now);
     List<Story> findByExpiresAtAfterOrderByCreatedAtAsc(Instant now);
 

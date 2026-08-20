@@ -127,6 +127,11 @@ public class AuthService {
         refreshTokenRepository.save(refreshToken);
 
         User user = refreshToken.getUser();
+        if (!user.isActive()) {
+            refreshToken.setRevoked(true);
+            refreshTokenRepository.save(refreshToken);
+            throw new DisabledException("Tu cuenta se encuentra suspendida o inactiva");
+        }
 
         // Issue new tokens & session
         return loginUser(user, httpRequest, httpResponse);

@@ -1,262 +1,50 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useAuth, api } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { 
-  Users, Image, Film, ShieldAlert, ArrowLeft, RefreshCw, CheckCircle, Ban 
-} from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Ban, CheckCircle, ChevronLeft, ChevronRight, CircleUserRound, FileImage, RefreshCw, Search, ShieldCheck, Users } from 'lucide-react';
+import { api, useAuth } from '@/context/AuthContext';
+import UserAvatar from '@/components/UserAvatar';
 
-interface Stats {
-  totalUsers: number;
-  totalPosts: number;
-  totalStories: number;
-  serverTime: string;
-  status: string;
-}
-
-interface AdminUser {
-  userId: string;
-  username: string;
-  email: string;
-  role: string;
-  isActive: boolean;
-  isVerified: boolean;
-  createdAt: string;
-}
+type Filter = 'ALL'|'ACTIVE'|'BLOCKED'|'VERIFIED'|'UNVERIFIED'|'ADMINS';
+interface Stats { totalUsers:number; activeUsers:number; blockedUsers:number; verifiedUsers:number; totalPosts:number; activeStories:number; totalCircles:number; newUsersToday:number; newUsersLast7Days:number; }
+interface AdminUser { userId:string; username:string; email:string; role:string; displayName:string; bio:string; avatarUrl?:string; isActive:boolean; isVerified:boolean; isPrivate:boolean; createdAt:string; postCount:number; followerCount:number; followingCount:number; activeStoryCount:number; }
+interface PageData { users:AdminUser[]; currentPage:number; totalItems:number; totalPages:number; pageSize:number; }
 
 export default function AdminPage() {
-  const { user, isLoading } = useAuth();
-  const router = useRouter();
+  const { user, isLoading } = useAuth(); const router = useRouter();
+  const [stats,setStats]=useState<Stats|null>(null),[pageData,setPageData]=useState<PageData|null>(null);
+  const [loading,setLoading]=useState(true),[error,setError]=useState(''),[actionError,setActionError]=useState('');
+  const [query,setQuery]=useState(''),[debouncedQuery,setDebouncedQuery]=useState(''),[filter,setFilter]=useState<Filter>('ALL'),[page,setPage]=useState(0);
+  const [selected,setSelected]=useState<AdminUser|null>(null),[editing,setEditing]=useState(false),[saving,setSaving]=useState(false),[busyId,setBusyId]=useState('');
+  const [form,setForm]=useState({username:'',email:'',displayName:'',bio:'',isPrivate:false});
 
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  useEffect(()=>{const id=setTimeout(()=>{setDebouncedQuery(query.trim());setPage(0);},300);return()=>clearTimeout(id);},[query]);
+  useEffect(()=>{if(!isLoading){if(!user)router.push('/login');else if(user.role!=='ADMIN')router.push('/');}},[user,isLoading,router]);
 
-  useEffect(() => {
-    // Redirect non-admins or unauthenticated users
-    if (!isLoading) {
-      if (!user) {
-        router.push('/login');
-      } else if (user.role !== 'ADMIN') {
-        alert('Acceso restringido. Se requiere rol de Administrador.');
-        router.push('/');
-      }
-    }
-  }, [user, isLoading, router]);
+  const load=useCallback(async()=>{if(!user||user.role!=='ADMIN')return;setLoading(true);setError('');try{const [s,u]=await Promise.all([api.get('/admin/stats'),api.get('/admin/users',{params:{query:debouncedQuery,filter,page,size:20}})]);setStats(s.data);setPageData(u.data);}catch(e){console.error(e);setStats(null);setPageData(null);setError('No se pudo cargar el panel de administración');}finally{setLoading(false);}},[user,debouncedQuery,filter,page]);
+  useEffect(()=>{void load();},[load]);
 
-  const loadAdminData = async () => {
-    setLoading(true);
-    try {
-      const statsRes = await api.get('/admin/stats');
-      setStats(statsRes.data);
+  const openDetail=async(id:string)=>{setActionError('');try{const res=await api.get(`/admin/users/${id}`);setSelected(res.data);setForm({username:res.data.username,email:res.data.email,displayName:res.data.displayName,bio:res.data.bio||'',isPrivate:res.data.isPrivate});setEditing(false);}catch(e:any){setActionError(e.response?.data?.message||'No se pudo cargar el usuario.');}};
+  const toggleBlock=async(target:AdminUser)=>{setBusyId(target.userId);setActionError('');try{const res=await api.post(`/admin/users/${target.userId}/toggle-block`);setPageData(old=>old?{...old,users:old.users.map(value=>value.userId===target.userId?{...value,isActive:res.data.isActive}:value)}:old);setSelected(old=>old?.userId===target.userId?{...old,isActive:res.data.isActive}:old);await load();}catch(e:any){setActionError(e.response?.data?.message||'No se pudo cambiar el estado del usuario.');}finally{setBusyId('');}};
+  const save=async()=>{if(!selected)return;setSaving(true);setActionError('');try{const res=await api.patch(`/admin/users/${selected.userId}`,form);setSelected(res.data);setEditing(false);await load();}catch(e:any){setActionError(e.response?.data?.message||'No se pudo actualizar el usuario.');}finally{setSaving(false);}};
 
-      const usersRes = await api.get('/admin/users?page=0&size=50');
-      setUsers(usersRes.data.users);
-    } catch (err) {
-      // Mock admin fallback for offline testing
-      setStats({
-        totalUsers: 12,
-        totalPosts: 45,
-        totalStories: 6,
-        serverTime: new Date().toISOString(),
-        status: 'OFFLINE_SANDBOX'
-      });
-      setUsers(getMockAdminUsers());
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (user && user.role === 'ADMIN') {
-      loadAdminData();
-    }
-  }, [user]);
-
-  const handleToggleBlock = async (userId: string) => {
-    try {
-      const res = await api.post(`/admin/users/${userId}/toggle-block`);
-      setUsers(prev => prev.map(u => {
-        if (u.userId === userId) {
-          return { ...u, isActive: res.data.isActive };
-        }
-        return u;
-      }));
-    } catch (err) {
-      // Mock toggle
-      setUsers(prev => prev.map(u => {
-        if (u.userId === userId) {
-          return { ...u, isActive: !u.isActive };
-        }
-        return u;
-      }));
-    }
-  };
-
-  if (isLoading || !user || user.role !== 'ADMIN') {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <RefreshCw className="h-6 w-6 text-indigo-500 animate-spin" />
-      </div>
-    );
-  }
-
-  return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
-      {/* Header */}
-      <div className="w-full max-w-5xl mx-auto flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white transition-colors">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <div>
-            <h2 className="text-base font-bold text-white block">Panel de Administración</h2>
-            <span className="text-[10px] text-zinc-500 block">Moderación General de Lifonk</span>
-          </div>
-        </div>
-
-        <button 
-          onClick={loadAdminData}
-          className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          Actualizar
-        </button>
-      </div>
-
-      {/* Grid Stats */}
-      {stats && (
-        <div className="w-full max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
-          <div className="bg-zinc-900/40 border border-zinc-900 p-5 rounded-2xl flex items-center gap-4">
-            <div className="h-10 w-10 bg-indigo-500/10 text-indigo-400 rounded-xl flex items-center justify-center">
-              <Users className="h-5 w-5" />
-            </div>
-            <div>
-              <span className="text-[10px] text-zinc-500 uppercase tracking-wider block font-semibold">Usuarios Totales</span>
-              <span className="text-xl font-extrabold text-white block">{stats.totalUsers}</span>
-            </div>
-          </div>
-
-          <div className="bg-zinc-900/40 border border-zinc-900 p-5 rounded-2xl flex items-center gap-4">
-            <div className="h-10 w-10 bg-purple-500/10 text-purple-400 rounded-xl flex items-center justify-center">
-              <Image className="h-5 w-5" />
-            </div>
-            <div>
-              <span className="text-[10px] text-zinc-500 uppercase tracking-wider block font-semibold">Publicaciones (Posts)</span>
-              <span className="text-xl font-extrabold text-white block">{stats.totalPosts}</span>
-            </div>
-          </div>
-
-          <div className="bg-zinc-900/40 border border-zinc-900 p-5 rounded-2xl flex items-center gap-4">
-            <div className="h-10 w-10 bg-pink-500/10 text-pink-400 rounded-xl flex items-center justify-center">
-              <Film className="h-5 w-5" />
-            </div>
-            <div>
-              <span className="text-[10px] text-zinc-500 uppercase tracking-wider block font-semibold">Historias Activas</span>
-              <span className="text-xl font-extrabold text-white block">{stats.totalStories}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Users moderation Table card */}
-      <div className="w-full max-w-5xl mx-auto bg-zinc-900/30 border border-zinc-900 rounded-2xl overflow-hidden shadow-xl">
-        <div className="p-4 border-b border-zinc-900 flex items-center justify-between bg-zinc-900/40">
-          <span className="text-xs font-bold text-white flex items-center gap-1.5">
-            <ShieldAlert className="h-4 w-4 text-indigo-400" />
-            Cuentas Registradas
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-zinc-950/40 border-b border-zinc-900 text-zinc-500 font-semibold">
-                <th className="p-4">Usuario</th>
-                <th className="p-4">Email</th>
-                <th className="p-4">Rol</th>
-                <th className="p-4">Estado</th>
-                <th className="p-4 text-right">Acción</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-900/60">
-              {users.map((u) => (
-                <tr key={u.userId} className="hover:bg-zinc-900/10 transition-colors">
-                  <td className="p-4 font-bold text-white">@{u.username}</td>
-                  <td className="p-4 text-zinc-400">{u.email}</td>
-                  <td className="p-4 text-zinc-400">
-                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                      u.role === 'ADMIN' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/20' : 'bg-zinc-800 text-zinc-400'
-                    }`}>
-                      {u.role}
-                    </span>
-                  </td>
-                  <td className="p-4 text-zinc-400">
-                    {u.isActive ? (
-                      <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1">
-                        <CheckCircle className="h-3 w-3" />
-                        Activa
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-rose-500 font-bold flex items-center gap-1">
-                        <Ban className="h-3 w-3" />
-                        Bloqueada
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-4 text-right">
-                    <button 
-                      onClick={() => handleToggleBlock(u.userId)}
-                      disabled={u.userId === user.userId} // Cannot block yourself
-                      className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all disabled:opacity-30 ${
-                        u.isActive 
-                          ? 'bg-rose-600/10 border border-rose-500/20 hover:bg-rose-600 text-rose-500 hover:text-white' 
-                          : 'bg-emerald-600/10 border border-emerald-500/20 hover:bg-emerald-650 text-emerald-500 hover:text-white'
-                      }`}
-                    >
-                      {u.isActive ? 'Bloquear' : 'Desbloquear'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </main>
-  );
-}
-
-function getMockAdminUsers(): AdminUser[] {
-  return [
-    {
-      userId: 'admin-1',
-      username: 'alex_futurist',
-      email: 'alex@socialtush.com',
-      role: 'ADMIN',
-      isActive: true,
-      isVerified: true,
-      createdAt: new Date().toISOString()
-    },
-    {
-      userId: 'user-2',
-      username: 'sophia',
-      email: 'sophia@loren.com',
-      role: 'USER',
-      isActive: true,
-      isVerified: true,
-      createdAt: new Date().toISOString()
-    },
-    {
-      userId: 'user-3',
-      username: 'bot_spammer',
-      email: 'bot@spam.com',
-      role: 'USER',
-      isActive: false,
-      isVerified: false,
-      createdAt: new Date().toISOString()
-    }
-  ];
+  if(isLoading||!user||user.role!=='ADMIN')return <div className="min-h-screen bg-zinc-950 grid place-items-center"><RefreshCw className="h-6 w-6 animate-spin text-indigo-400"/></div>;
+  const cards=stats?[['Usuarios',stats.totalUsers,Users],['Activos',stats.activeUsers,CheckCircle],['Bloqueados',stats.blockedUsers,Ban],['Verificados',stats.verifiedUsers,ShieldCheck],['Momentos',stats.totalPosts,FileImage],['Historias activas',stats.activeStories,CircleUserRound],['Círculos',stats.totalCircles,Users],['Nuevos hoy',stats.newUsersToday,Users],['Nuevos 7 días',stats.newUsersLast7Days,Users]] as const:[];
+  return <main className="min-h-screen bg-zinc-950 p-4 text-zinc-100 md:p-7">
+    <header className="mx-auto mb-7 flex max-w-7xl items-center justify-between"><div className="flex items-center gap-3"><Link href="/feed" className="rounded-xl border border-zinc-800 bg-zinc-900 p-2"><ArrowLeft className="h-4 w-4"/></Link><div><h1 className="font-extrabold">Lifonk • Administración</h1><p className="text-xs text-zinc-500">Dashboard seguro de operaciones</p></div></div><button onClick={()=>void load()} disabled={loading} className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${loading?'animate-spin':''}`}/>Actualizar</button></header>
+    <div className="mx-auto max-w-7xl">
+      {error?<div className="rounded-2xl border border-rose-900 bg-rose-950/30 p-8 text-center"><p>{error}</p><button onClick={()=>void load()} className="mt-4 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold">Reintentar</button></div>:<>
+        <section className="mb-7 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-9">{cards.map(([label,value,Icon])=><div key={label} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4"><Icon className="mb-3 h-4 w-4 text-indigo-400"/><b className="block text-xl">{value}</b><span className="text-[10px] uppercase text-zinc-500">{label}</span></div>)}</section>
+        <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/40"><div className="space-y-3 border-b border-zinc-800 p-4"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar usuario, email o nombre..." className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2 pl-9 pr-3 text-sm outline-none focus:border-indigo-500"/></div><div className="flex flex-wrap gap-2">{([['ALL','Todos'],['ACTIVE','Activos'],['BLOCKED','Bloqueados'],['VERIFIED','Verificados'],['UNVERIFIED','No verificados'],['ADMINS','Admins']] as [Filter,string][]).map(([id,label])=><button key={id} onClick={()=>{setFilter(id);setPage(0);}} className={`rounded-lg px-3 py-1.5 text-[11px] ${filter===id?'bg-indigo-600 text-white':'bg-zinc-800 text-zinc-400'}`}>{label}</button>)}</div></div>
+          {actionError&&<button onClick={()=>setActionError('')} className="w-full bg-rose-950/50 p-2 text-left text-xs text-rose-300">{actionError}</button>}
+          <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="bg-zinc-950/60 text-zinc-500"><tr>{['Usuario','Email','Rol','Estado','Privacidad','Momentos','Seguidores','Registro','Acción'].map(x=><th key={x} className="p-3">{x}</th>)}</tr></thead><tbody className="divide-y divide-zinc-800">{pageData?.users.map(u=><tr key={u.userId} onClick={()=>void openDetail(u.userId)} className="cursor-pointer hover:bg-zinc-800/40"><td className="p-3"><div className="flex items-center gap-2"><UserAvatar avatarUrl={u.avatarUrl} name={u.displayName} className="h-8 w-8 rounded-full text-xs"/><div><b>@{u.username}</b><span className="block text-[10px] text-zinc-500">{u.displayName}</span></div></div></td><td className="p-3 text-zinc-400">{u.email}</td><td className="p-3">{u.role}</td><td className="p-3">{u.isActive?'Activa':'Bloqueada'} · {u.isVerified?'Verificada':'No verificada'}</td><td className="p-3">{u.isPrivate?'Privada':'Pública'}</td><td className="p-3">{u.postCount}</td><td className="p-3">{u.followerCount}</td><td className="p-3 text-zinc-500">{new Date(u.createdAt).toLocaleDateString()}</td><td className="p-3"><button onClick={e=>{e.stopPropagation();void toggleBlock(u);}} disabled={u.userId===user.userId||busyId===u.userId} className="rounded-lg border border-zinc-700 px-3 py-1.5 disabled:opacity-30">{busyId===u.userId?'Guardando...':u.isActive?'Bloquear':'Desbloquear'}</button></td></tr>)}</tbody></table>{pageData&&!pageData.users.length&&<p className="p-10 text-center text-sm text-zinc-500">No hay usuarios para estos criterios.</p>}</div>
+          {pageData&&<footer className="flex items-center justify-between border-t border-zinc-800 p-4 text-xs text-zinc-400"><span>{pageData.totalItems} usuarios</span><div className="flex items-center gap-2"><button disabled={page===0} onClick={()=>setPage(v=>v-1)} className="rounded-lg border border-zinc-700 p-2 disabled:opacity-30"><ChevronLeft className="h-4 w-4"/></button><span>{pageData.totalPages?`${page+1} / ${pageData.totalPages}`:'0 / 0'}</span><button disabled={page+1>=pageData.totalPages} onClick={()=>setPage(v=>v+1)} className="rounded-lg border border-zinc-700 p-2 disabled:opacity-30"><ChevronRight className="h-4 w-4"/></button></div></footer>}
+        </section></>}
+    </div>
+    {selected&&<div className="fixed inset-0 z-50 flex justify-end bg-black/70" onClick={()=>setSelected(null)}><aside className="h-full w-full max-w-lg overflow-y-auto border-l border-zinc-800 bg-zinc-950 p-6" onClick={e=>e.stopPropagation()}><div className="mb-6 flex items-start justify-between"><div className="flex gap-3"><UserAvatar avatarUrl={selected.avatarUrl} name={selected.displayName} className="h-14 w-14 rounded-full"/><div><h2 className="font-extrabold">{selected.displayName}</h2><p className="text-sm text-zinc-500">@{selected.username}</p></div></div><button onClick={()=>setSelected(null)} className="text-2xl text-zinc-500">×</button></div>
+      {editing?<div className="space-y-3">{(['username','email','displayName','bio'] as const).map(key=><label key={key} className="block text-xs text-zinc-400">{key}<input value={form[key]} onChange={e=>setForm({...form,[key]:e.target.value})} className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 p-2.5 text-white"/></label>)}<label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isPrivate} onChange={e=>setForm({...form,isPrivate:e.target.checked})}/>Cuenta privada</label><div className="flex gap-2"><button onClick={()=>void save()} disabled={saving} className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold disabled:opacity-50">{saving?'Guardando...':'Guardar'}</button><button onClick={()=>setEditing(false)} className="rounded-xl border border-zinc-700 px-4 py-2 text-xs">Cancelar</button></div></div>:<div className="space-y-4 text-sm"><dl className="grid grid-cols-2 gap-3 rounded-2xl bg-zinc-900 p-4">{[['Email',selected.email],['Rol',selected.role],['Estado',selected.isActive?'Activa':'Bloqueada'],['Verificación',selected.isVerified?'Verificada':'No verificada'],['Privacidad',selected.isPrivate?'Privada':'Pública'],['Registro',new Date(selected.createdAt).toLocaleString()],['Momentos',selected.postCount],['Historias activas',selected.activeStoryCount],['Seguidores',selected.followerCount],['Siguiendo',selected.followingCount]].map(([k,v])=><div key={String(k)}><dt className="text-[10px] uppercase text-zinc-500">{k}</dt><dd>{v}</dd></div>)}</dl><p className="text-zinc-400">{selected.bio||'Sin biografía.'}</p><div className="flex flex-wrap gap-2"><Link href={`/profile/${selected.username}`} className="rounded-xl border border-zinc-700 px-4 py-2 text-xs">Ver perfil</Link><button onClick={()=>setEditing(true)} className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold">Editar</button><button onClick={()=>void toggleBlock(selected)} disabled={selected.userId===user.userId||busyId===selected.userId} className="rounded-xl border border-rose-800 px-4 py-2 text-xs text-rose-400 disabled:opacity-30">{selected.isActive?'Bloquear':'Desbloquear'}</button><button disabled title="Requiere proveedor de correo" className="rounded-xl border border-zinc-800 px-4 py-2 text-xs text-zinc-600">Recuperación no configurada</button><button disabled title="Pendiente de borrado relacional y R2 seguro" className="rounded-xl border border-zinc-800 px-4 py-2 text-xs text-zinc-600">Eliminar cuenta no disponible</button></div></div>}
+    </aside></div>}
+  </main>;
 }
