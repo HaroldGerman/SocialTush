@@ -14,7 +14,7 @@ import UserAvatar from '@/components/UserAvatar';
 import { 
   Search, Plus, Send, Smile, Paperclip, Phone, Video, Info, User, ChevronLeft, LogOut, CheckCheck, 
   Users, MessageSquare, X, Filter, Home, Layers, Compass, Bell, Bookmark, Settings, Image as ImageIcon,
-  Mic, Sparkles, Share2, MoreVertical, Network, ShieldCheck, Heart, ArrowUpRight, Sun, Moon
+  Mic, Camera, Sparkles, Share2, MoreVertical, Network, ShieldCheck, Heart, ArrowUpRight, Sun, Moon
 } from 'lucide-react';
 
 interface Conversation {
@@ -108,6 +108,7 @@ function ChatContent() {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
@@ -381,6 +382,7 @@ function ChatContent() {
       return null;
     });
     if (attachmentInputRef.current) attachmentInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   }, []);
 
   useEffect(() => {
@@ -1029,6 +1031,7 @@ function ChatContent() {
                   <Plus className="h-4 w-4" />
                 </button>
                 <input ref={attachmentInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" className="hidden" onChange={event => selectAttachment(event.target.files?.[0])} />
+                <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={event => selectAttachment(event.target.files?.[0])} />
 
                 <form onSubmit={handleSendMessage} className="flex-1 flex items-center gap-2">
                   <div className="flex-grow relative flex items-center">
@@ -1050,6 +1053,7 @@ function ChatContent() {
                         )}
                       </div>
                       <button type="button" onClick={() => attachmentInputRef.current?.click()} className="hover:text-teal-700 transition-colors" aria-label="Elegir foto o video"><ImageIcon className="h-4 w-4" /></button>
+                      <button type="button" onClick={() => cameraInputRef.current?.click()} className="hover:text-teal-700 transition-colors" aria-label="Tomar una foto"><Camera className="h-4 w-4" /></button>
                       <button type="button" disabled={isRecording} onClick={startRecording} className="hover:text-teal-700 transition-colors disabled:opacity-40" aria-label="Grabar nota de voz"><Mic className="h-4 w-4" /></button>
                     </div>
                   </div>
