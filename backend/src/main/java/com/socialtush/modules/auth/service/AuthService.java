@@ -93,7 +93,7 @@ public class AuthService {
         if (!user.isActive()) throw new DisabledException("Tu cuenta se encuentra suspendida o inactiva");
         if (!user.isVerified()) throw new DisabledException("Verifica tu correo antes de iniciar sesión.");
 
-        return loginUser(user, httpRequest, httpResponse);
+        return loginUser(user, httpRequest, httpResponse, null);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -107,13 +107,14 @@ public class AuthService {
         }
 
         refreshToken.setRevoked(true);
+        refreshToken.setLastUsedAt(Instant.now());
         refreshTokenRepository.save(refreshToken);
 
         User user = refreshToken.getUser();
         if (!user.isActive()) throw new DisabledException("Tu cuenta se encuentra suspendida o inactiva");
         if (!user.isVerified()) throw new DisabledException("Verifica tu correo antes de continuar.");
 
-        return loginUser(user, httpRequest, httpResponse);
+        return loginUser(user, httpRequest, httpResponse, refreshToken);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -122,19 +123,25 @@ public class AuthService {
         if (tokenStr != null) {
             refreshTokenRepository.findByToken(tokenStr).ifPresent(refreshToken -> {
                 refreshToken.setRevoked(true);
+                refreshToken.setLastUsedAt(Instant.now());
                 refreshTokenRepository.save(refreshToken);
             });
         }
         clearRefreshTokenCookie(httpRequest, httpResponse);
     }
 
-    @Transactional(readOnly = true)
-    public Map<String, Object> securityStatus(User user) {
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> securityStatus(User user, HttpServletRequest request) {
         User current = requireAuthenticatedUser(user);
+        String currentRefreshToken = refreshTokenFrom(null, request);
+        accountSessionService.adoptCurrentSession(current, request, currentRefreshToken);
+        List<AccountSessionService.SessionInfo> sessions = accountSessionService.sessions(current, currentRefreshToken);
+
         Map<String, Object> status = new HashMap<>();
         status.put("email", current.getEmail());
         status.put("verified", current.isVerified());
-        status.put("activeSessions", accountSessionService.activeSessionCount(current));
+        status.put("activeSessions", sessions.size());
+        status.put("sessions", sessions);
         status.put("createdAt", current.getCreatedAt());
         return status;
     }
@@ -178,7 +185,6 @@ public class AuthService {
 
         List<String> mediaKeys = accountMediaCleanupService.collectOwnedObjectKeys(current.getId());
 
-        // Remove session/account artifacts explicitly; production FKs cascade the rest.
         accountSessionService.deleteSessionArtifacts(current);
         accountActionTokenRepository.deleteByUser(current);
         profileRepository.deleteById(current.getId());
@@ -208,10 +214,20 @@ public class AuthService {
 
     @Transactional(rollbackFor = Exception.class)
     public AuthResponse loginUser(User user, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
+        return loginUser(user, httpRequest, httpResponse, null);
+    }
+
+    private AuthResponse loginUser(User user, HttpServletRequest httpRequest,
+                                   HttpServletResponse httpResponse, RefreshToken previousSession) {
+        AccountSessionService.DeviceMetadata device = accountSessionService.resolveDevice(httpRequest, previousSession);
+        UUID sessionKey = accountSessionService.resolveSessionKey(previousSession);
+        accountSessionService.revokeActiveDeviceTokens(user, device.deviceId());
+
         Map<String, Object> claims = new HashMap<>();
         claims.put("role", user.getRole());
         claims.put("email", user.getEmail());
         claims.put("authVersion", user.getAuthVersion());
+        claims.put("sessionKey", sessionKey.toString());
         String accessToken = jwtService.generateToken(user.getUsername(), claims);
 
         String tokenStr = UUID.randomUUID() + "-" + UUID.randomUUID();
@@ -220,6 +236,12 @@ public class AuthService {
                 .token(tokenStr)
                 .expiresAt(Instant.now().plusMillis(refreshExpirationMs))
                 .isRevoked(false)
+                .sessionKey(sessionKey)
+                .deviceId(device.deviceId())
+                .deviceLabel(device.label())
+                .deviceType(device.type())
+                .userAgent(device.userAgent())
+                .lastUsedAt(Instant.now())
                 .build();
         refreshTokenRepository.save(refreshToken);
         setRefreshTokenCookie(httpRequest, httpResponse, tokenStr);

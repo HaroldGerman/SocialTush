@@ -84,8 +84,10 @@ public class AuthController {
     }
 
     @GetMapping("/security")
-    public ResponseEntity<Map<String, Object>> security(@AuthenticationPrincipal User currentUser) {
-        return ResponseEntity.ok(authService.securityStatus(currentUser));
+    public ResponseEntity<Map<String, Object>> security(
+            @AuthenticationPrincipal User currentUser,
+            HttpServletRequest request) {
+        return ResponseEntity.ok(authService.securityStatus(currentUser, request));
     }
 
     @PostMapping("/change-password")

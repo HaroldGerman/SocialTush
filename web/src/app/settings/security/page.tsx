@@ -3,14 +3,25 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, CheckCircle2, Eye, EyeOff, KeyRound, LockKeyhole, LogOut, MailCheck, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Eye, EyeOff, KeyRound, LockKeyhole, LogOut, MailCheck, Monitor, RefreshCw, ShieldCheck, Smartphone, Tablet, Trash2 } from 'lucide-react';
 import { api, useAuth } from '@/context/AuthContext';
 import MobileBottomBar from '@/components/MobileBottomBar';
+
+interface DeviceSession {
+  sessionKey?: string | null;
+  label: string;
+  deviceType: 'MOBILE' | 'TABLET' | 'DESKTOP' | 'UNKNOWN' | string;
+  createdAt?: string;
+  lastActiveAt?: string;
+  expiresAt?: string;
+  current: boolean;
+}
 
 interface SecurityStatus {
   email: string;
   verified: boolean;
   activeSessions: number;
+  sessions: DeviceSession[];
   createdAt?: string;
 }
 
@@ -105,6 +116,8 @@ export default function SecuritySettingsPage() {
   }
   if (!user) return null;
 
+  const sessions = status?.sessions || [];
+
   return (
     <div className="min-h-[100dvh] bg-[#f4f6f9] pb-20 text-slate-800 dark:bg-[#090d16] dark:text-slate-100 md:pb-8">
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-[#0f172a]/95">
@@ -133,9 +146,25 @@ export default function SecuritySettingsPage() {
         </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
-          <div className="mb-4 flex items-center gap-3"><LogOut className="h-5 w-5 text-teal-700"/><div><h2 className="text-sm font-black">Sesiones y dispositivos</h2><p className="text-xs text-slate-500 dark:text-slate-400">Sesiones activas aproximadas: <strong>{status?.activeSessions ?? 0}</strong></p></div></div>
+          <div className="mb-4 flex items-center gap-3"><LogOut className="h-5 w-5 text-teal-700"/><div><h2 className="text-sm font-black">Sesiones y dispositivos</h2><p className="text-xs text-slate-500 dark:text-slate-400"><strong>{status?.activeSessions ?? 0}</strong> {(status?.activeSessions ?? 0) === 1 ? 'sesión activa' : 'sesiones activas'}</p></div></div>
+
+          <div className="mb-5 space-y-2.5">
+            {sessions.map((session, index) => (
+              <div key={session.sessionKey || `${session.label}-${index}`} className={`flex items-center gap-3 rounded-2xl border p-3.5 ${session.current ? 'border-teal-300 bg-teal-50/70 dark:border-teal-800 dark:bg-teal-950/20' : 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60'}`}>
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${session.current ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/60 dark:text-teal-300' : 'bg-white text-slate-500 dark:bg-slate-800 dark:text-slate-300'}`}>
+                  <SessionIcon type={session.deviceType} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2"><p className="truncate text-xs font-black text-slate-800 dark:text-slate-100">{session.label}</p>{session.current && <span className="rounded-full bg-teal-700 px-2 py-0.5 text-[9px] font-black text-white">Este dispositivo</span>}</div>
+                  <p className="mt-0.5 text-[10px] text-slate-400">Última actividad: {formatSessionTime(session.lastActiveAt || session.createdAt)}</p>
+                </div>
+              </div>
+            ))}
+            {!sessions.length && <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900">No encontramos sesiones vigentes.</p>}
+          </div>
+
           <div className="flex flex-col gap-3 sm:flex-row"><input type="password" value={logoutPassword} onChange={event => setLogoutPassword(event.target.value)} placeholder="Confirma tu contraseña" className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs outline-none focus:border-teal-600 dark:border-slate-700 dark:bg-slate-900"/><button onClick={() => void logoutAll()} disabled={loggingOutAll} className="rounded-xl border border-teal-700 px-4 py-3 text-xs font-bold text-teal-800 disabled:opacity-60 dark:text-teal-300">{loggingOutAll ? 'Cerrando…' : 'Cerrar sesión en todos los dispositivos'}</button></div>
-          <p className="mt-3 text-[10px] leading-4 text-slate-400">Esto invalida inmediatamente los accesos existentes y elimina las suscripciones Web Push asociadas. Al volver a entrar puedes activar las notificaciones otra vez.</p>
+          <p className="mt-3 text-[10px] leading-4 text-slate-400">Solo se cuentan sesiones no revocadas y que todavía no han caducado. Lifonk identifica este navegador con un ID local aleatorio; no usa ubicación para este listado.</p>
         </section>
 
         <section className="rounded-3xl border border-rose-200 bg-white p-5 shadow-sm dark:border-rose-900/70 dark:bg-[#0f172a]">
@@ -148,6 +177,19 @@ export default function SecuritySettingsPage() {
       <MobileBottomBar />
     </div>
   );
+}
+
+function SessionIcon({ type }: { type: string }) {
+  if (type === 'MOBILE') return <Smartphone className="h-5 w-5" />;
+  if (type === 'TABLET') return <Tablet className="h-5 w-5" />;
+  return <Monitor className="h-5 w-5" />;
+}
+
+function formatSessionTime(value?: string) {
+  if (!value) return 'sin datos';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'sin datos';
+  return date.toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 function PasswordInput({ label, value, onChange, show }: { label: string; value: string; onChange: (value: string) => void; show: boolean }) {
