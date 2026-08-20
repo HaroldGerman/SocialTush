@@ -39,6 +39,13 @@ public class MessageAttachment {
     @Column(name = "duration_seconds")
     private Integer durationSeconds;
 
+    @Builder.Default
+    @Column(name = "view_once", nullable = false)
+    private boolean viewOnce = false;
+
+    @Column(name = "viewed_at")
+    private Instant viewedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
