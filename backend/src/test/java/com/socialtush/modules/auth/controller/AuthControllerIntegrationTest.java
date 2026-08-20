@@ -23,20 +23,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 public class AuthControllerIntegrationTest {
 
-    @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
-    private ProfileRepository profileRepository;
-
-    @Autowired
-    private ObjectMapper objectMapper;
+    @Autowired private MockMvc mockMvc;
+    @Autowired private UserRepository userRepository;
+    @Autowired private ProfileRepository profileRepository;
+    @Autowired private ObjectMapper objectMapper;
 
     @Test
-    void register_createsUserSuccessfully() throws Exception {
+    void register_createsUnverifiedUserAndRequestsEmailVerification() throws Exception {
         Map<String, String> request = Map.of(
                 "email", "nuevo_int@socialtush.com",
                 "username", "nuevo_int_user",
@@ -47,25 +40,17 @@ public class AuthControllerIntegrationTest {
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().is2xxSuccessful())
-                .andExpect(jsonPath("$.username").value("nuevo_int_user"))
-                .andExpect(jsonPath("$.avatarUrl").isEmpty())
-                .andExpect(jsonPath("$.accessToken").exists());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("nuevo_int@socialtush.com"))
+                .andExpect(jsonPath("$.message").exists());
+
+        var user = userRepository.findByUsernameIgnoreCase("nuevo_int_user").orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(user.isVerified()).isFalse();
     }
 
     @Test
     void duplicateEmail_returnsBadRequest() throws Exception {
-        Map<String, String> request = Map.of(
-                "email", "dupi@socialtush.com",
-                "username", "dupi_user1",
-                "displayName", "Usuario 1",
-                "password", "password123"
-        );
-
-        mockMvc.perform(post("/api/v1/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().is2xxSuccessful());
+        register("dupi@socialtush.com", "dupi_user1", "password123");
 
         Map<String, String> duplicateRequest = Map.of(
                 "email", "dupi@socialtush.com",
@@ -82,17 +67,7 @@ public class AuthControllerIntegrationTest {
 
     @Test
     void duplicateUsername_returnsBadRequest() throws Exception {
-        Map<String, String> request = Map.of(
-                "email", "unique1@socialtush.com",
-                "username", "unique_name",
-                "displayName", "Usuario 1",
-                "password", "password123"
-        );
-
-        mockMvc.perform(post("/api/v1/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().is2xxSuccessful());
+        register("unique1@socialtush.com", "unique_name", "password123");
 
         Map<String, String> duplicateRequest = Map.of(
                 "email", "unique2@socialtush.com",
@@ -108,95 +83,100 @@ public class AuthControllerIntegrationTest {
     }
 
     @Test
-    void login_returnsJwtToken() throws Exception {
-        Map<String, String> regRequest = Map.of(
-                "email", "login_test@socialtush.com",
-                "username", "login_test_user",
-                "displayName", "Login User",
-                "password", "password123"
-        );
+    void unverifiedUserCannotLogin() throws Exception {
+        register("verify_me@socialtush.com", "verify_me", "password123");
 
-        var registration = mockMvc.perform(post("/api/v1/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(regRequest)))
-                .andReturn();
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "usernameOrEmail", "verify_me",
+                                "password", "password123"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Verifica tu correo antes de iniciar sesión."));
+    }
 
+    @Test
+    void verifiedUserCanLoginAndRefresh() throws Exception {
+        register("login_test@socialtush.com", "login_test_user", "password123");
         var user = userRepository.findByUsernameIgnoreCase("login_test_user").orElseThrow();
+        user.setVerified(true);
+        userRepository.saveAndFlush(user);
         var profile = profileRepository.findById(user.getId()).orElseThrow();
         profile.setAvatarUrl("https://cdn.example/avatar-login.webp");
         profileRepository.saveAndFlush(profile);
 
-        Map<String, String> loginRequest = Map.of(
-                "usernameOrEmail", "login_test_user",
-                "password", "password123"
-        );
-
-        mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(loginRequest)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").exists())
-                .andExpect(jsonPath("$.username").value("login_test_user"))
-                .andExpect(jsonPath("$.avatarUrl").value("https://cdn.example/avatar-login.webp"));
-
-        Map<String, Object> registrationBody = objectMapper.readValue(
-                registration.getResponse().getContentAsString(), Map.class);
-        mockMvc.perform(post("/api/v1/auth/refresh")
+        var loginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "refreshToken", registrationBody.get("refreshToken")))))
+                                "usernameOrEmail", "login_test_user",
+                                "password", "password123"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").exists())
+                .andExpect(jsonPath("$.avatarUrl").value("https://cdn.example/avatar-login.webp"))
+                .andReturn();
+
+        Map<String, Object> loginBody = objectMapper.readValue(loginResult.getResponse().getContentAsString(), Map.class);
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("refreshToken", loginBody.get("refreshToken")))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.avatarUrl").value("https://cdn.example/avatar-login.webp"));
     }
 
     @Test
+    void forgotPasswordDoesNotRevealWhetherEmailExists() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "nobody@socialtush.com"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").exists());
+    }
+
+    @Test
     void wrongPassword_returnsUnauthorized() throws Exception {
-        Map<String, String> regRequest = Map.of(
-                "email", "wrong_pass@socialtush.com",
-                "username", "wrong_pass_user",
-                "displayName", "Wrong User",
-                "password", "correct_pass"
-        );
-
-        mockMvc.perform(post("/api/v1/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(regRequest)));
-
-        Map<String, String> loginRequest = Map.of(
-                "usernameOrEmail", "wrong_pass_user",
-                "password", "incorrect_pass"
-        );
+        register("wrong_pass@socialtush.com", "wrong_pass_user", "correct_pass");
+        var user = userRepository.findByUsernameIgnoreCase("wrong_pass_user").orElseThrow();
+        user.setVerified(true);
+        userRepository.saveAndFlush(user);
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(loginRequest)))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "usernameOrEmail", "wrong_pass_user",
+                                "password", "incorrect_pass"))))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void logout_revokesRefreshTokenInBody() throws Exception {
-        Map<String, String> regRequest = Map.of(
-                "email", "logout_test@socialtush.com",
-                "username", "logout_user",
-                "displayName", "Logout User",
-                "password", "password123"
-        );
+        register("logout_test@socialtush.com", "logout_user", "password123");
+        var user = userRepository.findByUsernameIgnoreCase("logout_user").orElseThrow();
+        user.setVerified(true);
+        userRepository.saveAndFlush(user);
 
-        var regResponse = mockMvc.perform(post("/api/v1/auth/register")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(regRequest)))
+        var loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "usernameOrEmail", "logout_user",
+                                "password", "password123"))))
                 .andReturn();
-
-        String responseBody = regResponse.getResponse().getContentAsString();
-        Map<String, Object> map = objectMapper.readValue(responseBody, Map.class);
-        String refreshToken = (String) map.get("refreshToken");
-
-        Map<String, String> logoutRequest = Map.of("refreshToken", refreshToken);
+        Map<String, Object> loginBody = objectMapper.readValue(loginResult.getResponse().getContentAsString(), Map.class);
 
         mockMvc.perform(post("/api/v1/auth/logout")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(logoutRequest)))
+                        .content(objectMapper.writeValueAsString(Map.of("refreshToken", loginBody.get("refreshToken")))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Sesión cerrada correctamente"));
+    }
+
+    private void register(String email, String username, String password) throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "email", email,
+                                "username", username,
+                                "displayName", username,
+                                "password", password))))
+                .andExpect(status().isOk());
     }
 }
