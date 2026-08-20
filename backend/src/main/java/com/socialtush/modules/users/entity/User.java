@@ -35,7 +35,7 @@ public class User {
 
     @Column(nullable = false, length = 20)
     @Builder.Default
-    private String role = "USER"; // "USER", "ADMIN", "MODERATOR"
+    private String role = "USER";
 
     @Column(name = "is_verified", nullable = false)
     @Builder.Default
@@ -44,6 +44,10 @@ public class User {
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private boolean isActive = true;
+
+    @Column(name = "auth_version", nullable = false)
+    @Builder.Default
+    private int authVersion = 0;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

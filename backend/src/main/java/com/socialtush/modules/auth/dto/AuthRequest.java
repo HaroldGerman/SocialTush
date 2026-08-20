@@ -72,4 +72,29 @@ public class AuthRequest {
         @Email(message = "El formato de email no es válido")
         private String email;
     }
+
+    @Data
+    public static class ChangePassword {
+        @NotBlank(message = "La contraseña actual es obligatoria")
+        private String currentPassword;
+
+        @NotBlank(message = "La nueva contraseña es obligatoria")
+        @Size(min = 8, max = 128, message = "La nueva contraseña debe tener entre 8 y 128 caracteres")
+        private String newPassword;
+    }
+
+    @Data
+    public static class ConfirmPassword {
+        @NotBlank(message = "La contraseña actual es obligatoria")
+        private String currentPassword;
+    }
+
+    @Data
+    public static class DeleteAccount {
+        @NotBlank(message = "La contraseña actual es obligatoria")
+        private String currentPassword;
+
+        @NotBlank(message = "Escribe ELIMINAR para confirmar")
+        private String confirmation;
+    }
 }

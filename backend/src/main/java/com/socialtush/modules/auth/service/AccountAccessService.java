@@ -1,9 +1,7 @@
 package com.socialtush.modules.auth.service;
 
 import com.socialtush.modules.auth.entity.AccountActionToken;
-import com.socialtush.modules.auth.entity.RefreshToken;
 import com.socialtush.modules.auth.repository.AccountActionTokenRepository;
-import com.socialtush.modules.auth.repository.RefreshTokenRepository;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -31,9 +29,9 @@ public class AccountAccessService {
 
     private final UserRepository userRepository;
     private final AccountActionTokenRepository tokenRepository;
-    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final ResendEmailService emailService;
+    private final AccountSessionService accountSessionService;
 
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -56,11 +54,8 @@ public class AccountAccessService {
 
         String token = issueToken(user, PURPOSE_VERIFY_EMAIL, verificationExpirationMinutes);
         String link = normalizedWebUrl() + "/verify-email?token=" + token;
-        emailService.sendHtml(
-                user.getEmail(),
-                "Verifica tu correo en Lifonk",
-                verificationEmailHtml(user.getUsername(), link)
-        );
+        emailService.sendHtml(user.getEmail(), "Verifica tu correo en Lifonk",
+                verificationEmailHtml(user.getUsername(), link));
     }
 
     @Transactional
@@ -79,8 +74,6 @@ public class AccountAccessService {
                 .findByTokenHashAndPurpose(hash(rawToken.trim()), PURPOSE_VERIFY_EMAIL)
                 .orElseThrow(() -> new IllegalArgumentException(message));
 
-        // Make the verification link idempotent. A browser retry must not turn a successful
-        // verification into an error just because the token was consumed milliseconds earlier.
         if (token.isUsed() && token.getUser().isVerified()) return;
         if (token.isUsed() || token.isExpired() || !token.getUser().isActive()) {
             throw new IllegalArgumentException(message);
@@ -100,11 +93,8 @@ public class AccountAccessService {
 
         String token = issueToken(user, PURPOSE_RESET_PASSWORD, passwordResetExpirationMinutes);
         String link = normalizedWebUrl() + "/reset-password?token=" + token;
-        emailService.sendHtml(
-                user.getEmail(),
-                "Restablece tu contraseña de Lifonk",
-                passwordResetEmailHtml(user.getUsername(), link)
-        );
+        emailService.sendHtml(user.getEmail(), "Restablece tu contraseña de Lifonk",
+                passwordResetEmailHtml(user.getUsername(), link));
     }
 
     @Transactional
@@ -118,11 +108,11 @@ public class AccountAccessService {
         User user = token.getUser();
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setVerified(true);
+        accountSessionService.invalidateAll(user);
         userRepository.save(user);
 
         consumeToken(token);
         invalidateOutstanding(user, PURPOSE_RESET_PASSWORD, token.getId());
-        revokeAllRefreshTokens(user);
     }
 
     private User findActiveUserByEmail(String email) {
@@ -182,13 +172,6 @@ public class AccountAccessService {
             changed = true;
         }
         if (changed) tokenRepository.saveAll(active);
-    }
-
-    private void revokeAllRefreshTokens(User user) {
-        List<RefreshToken> activeTokens = refreshTokenRepository.findByUserAndIsRevokedFalse(user);
-        if (activeTokens.isEmpty()) return;
-        activeTokens.forEach(token -> token.setRevoked(true));
-        refreshTokenRepository.saveAll(activeTokens);
     }
 
     private String hash(String value) {

@@ -3,6 +3,7 @@ package com.socialtush.modules.auth.service;
 import com.socialtush.modules.auth.dto.AuthRequest;
 import com.socialtush.modules.auth.dto.AuthResponse;
 import com.socialtush.modules.auth.entity.RefreshToken;
+import com.socialtush.modules.auth.repository.AccountActionTokenRepository;
 import com.socialtush.modules.auth.repository.RefreshTokenRepository;
 import com.socialtush.modules.auth.security.JwtService;
 import com.socialtush.modules.profiles.entity.Profile;
@@ -24,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -34,9 +36,12 @@ public class AuthService {
     private final UserRepository userRepository;
     private final ProfileRepository profileRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final AccountActionTokenRepository accountActionTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AccountAccessService accountAccessService;
+    private final AccountSessionService accountSessionService;
+    private final AccountMediaCleanupService accountMediaCleanupService;
 
     @Value("${app.jwt.refresh-expiration-ms}")
     private long refreshExpirationMs;
@@ -60,6 +65,7 @@ public class AuthService {
                 .role("USER")
                 .isVerified(false)
                 .isActive(true)
+                .authVersion(0)
                 .build();
         user = userRepository.save(user);
 
@@ -84,37 +90,16 @@ public class AuthService {
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new BadCredentialsException("Credenciales incorrectas");
         }
-
-        if (!user.isActive()) {
-            throw new DisabledException("Tu cuenta se encuentra suspendida o inactiva");
-        }
-        if (!user.isVerified()) {
-            throw new DisabledException("Verifica tu correo antes de iniciar sesión.");
-        }
+        if (!user.isActive()) throw new DisabledException("Tu cuenta se encuentra suspendida o inactiva");
+        if (!user.isVerified()) throw new DisabledException("Verifica tu correo antes de iniciar sesión.");
 
         return loginUser(user, httpRequest, httpResponse);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public AuthResponse refresh(HttpServletRequest httpRequest, HttpServletResponse httpResponse, AuthRequest.Refresh body) {
-        String tokenStr = null;
-
-        if (body != null && body.getRefreshToken() != null && !body.getRefreshToken().isBlank()) {
-            tokenStr = body.getRefreshToken();
-        }
-
-        if (tokenStr == null && httpRequest.getCookies() != null) {
-            for (Cookie cookie : httpRequest.getCookies()) {
-                if ("refreshToken".equals(cookie.getName())) {
-                    tokenStr = cookie.getValue();
-                    break;
-                }
-            }
-        }
-
-        if (tokenStr == null) {
-            throw new BadCredentialsException("Refresh token no proporcionado");
-        }
+        String tokenStr = refreshTokenFrom(body, httpRequest);
+        if (tokenStr == null) throw new BadCredentialsException("Refresh token no proporcionado");
 
         RefreshToken refreshToken = refreshTokenRepository.findByToken(tokenStr).orElse(null);
         if (refreshToken == null || refreshToken.isRevoked() || refreshToken.isExpired()) {
@@ -125,41 +110,84 @@ public class AuthService {
         refreshTokenRepository.save(refreshToken);
 
         User user = refreshToken.getUser();
-        if (!user.isActive()) {
-            throw new DisabledException("Tu cuenta se encuentra suspendida o inactiva");
-        }
-        if (!user.isVerified()) {
-            throw new DisabledException("Verifica tu correo antes de continuar.");
-        }
+        if (!user.isActive()) throw new DisabledException("Tu cuenta se encuentra suspendida o inactiva");
+        if (!user.isVerified()) throw new DisabledException("Verifica tu correo antes de continuar.");
 
         return loginUser(user, httpRequest, httpResponse);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void logout(HttpServletRequest httpRequest, HttpServletResponse httpResponse, AuthRequest.Refresh body) {
-        String tokenStr = null;
-
-        if (body != null && body.getRefreshToken() != null && !body.getRefreshToken().isBlank()) {
-            tokenStr = body.getRefreshToken();
-        }
-
-        if (tokenStr == null && httpRequest.getCookies() != null) {
-            for (Cookie cookie : httpRequest.getCookies()) {
-                if ("refreshToken".equals(cookie.getName())) {
-                    tokenStr = cookie.getValue();
-                    break;
-                }
-            }
-        }
-
+        String tokenStr = refreshTokenFrom(body, httpRequest);
         if (tokenStr != null) {
             refreshTokenRepository.findByToken(tokenStr).ifPresent(refreshToken -> {
                 refreshToken.setRevoked(true);
                 refreshTokenRepository.save(refreshToken);
             });
         }
-
         clearRefreshTokenCookie(httpRequest, httpResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> securityStatus(User user) {
+        User current = requireAuthenticatedUser(user);
+        Map<String, Object> status = new HashMap<>();
+        status.put("email", current.getEmail());
+        status.put("verified", current.isVerified());
+        status.put("activeSessions", accountSessionService.activeSessionCount(current));
+        status.put("createdAt", current.getCreatedAt());
+        return status;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void changePassword(User user, String currentPassword, String newPassword,
+                               HttpServletRequest request, HttpServletResponse response) {
+        User current = requireAuthenticatedUser(user);
+        requireCurrentPassword(current, currentPassword);
+        if (newPassword == null || newPassword.length() < 8 || newPassword.length() > 128) {
+            throw new IllegalArgumentException("La nueva contraseña debe tener entre 8 y 128 caracteres.");
+        }
+        if (passwordEncoder.matches(newPassword, current.getPasswordHash())) {
+            throw new IllegalArgumentException("La nueva contraseña debe ser diferente a la actual.");
+        }
+
+        current.setPasswordHash(passwordEncoder.encode(newPassword));
+        accountSessionService.invalidateAll(current);
+        userRepository.save(current);
+        clearRefreshTokenCookie(request, response);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void logoutAll(User user, String currentPassword,
+                          HttpServletRequest request, HttpServletResponse response) {
+        User current = requireAuthenticatedUser(user);
+        requireCurrentPassword(current, currentPassword);
+        accountSessionService.invalidateAll(current);
+        userRepository.save(current);
+        clearRefreshTokenCookie(request, response);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteAccount(User user, String currentPassword, String confirmation,
+                              HttpServletRequest request, HttpServletResponse response) {
+        User current = requireAuthenticatedUser(user);
+        requireCurrentPassword(current, currentPassword);
+        if (!"ELIMINAR".equals(confirmation == null ? "" : confirmation.trim().toUpperCase())) {
+            throw new IllegalArgumentException("Escribe ELIMINAR para confirmar la eliminación de la cuenta.");
+        }
+
+        List<String> mediaKeys = accountMediaCleanupService.collectOwnedObjectKeys(current.getId());
+
+        // Remove session/account artifacts explicitly; production FKs cascade the rest.
+        accountSessionService.deleteSessionArtifacts(current);
+        accountActionTokenRepository.deleteByUser(current);
+        profileRepository.deleteById(current.getId());
+        profileRepository.flush();
+        userRepository.delete(current);
+        userRepository.flush();
+
+        clearRefreshTokenCookie(request, response);
+        accountMediaCleanupService.purgeAfterCommit(mediaKeys);
     }
 
     public void requestPasswordReset(String email) {
@@ -183,9 +211,10 @@ public class AuthService {
         Map<String, Object> claims = new HashMap<>();
         claims.put("role", user.getRole());
         claims.put("email", user.getEmail());
+        claims.put("authVersion", user.getAuthVersion());
         String accessToken = jwtService.generateToken(user.getUsername(), claims);
 
-        String tokenStr = UUID.randomUUID().toString() + "-" + UUID.randomUUID();
+        String tokenStr = UUID.randomUUID() + "-" + UUID.randomUUID();
         RefreshToken refreshToken = RefreshToken.builder()
                 .user(user)
                 .token(tokenStr)
@@ -193,7 +222,6 @@ public class AuthService {
                 .isRevoked(false)
                 .build();
         refreshTokenRepository.save(refreshToken);
-
         setRefreshTokenCookie(httpRequest, httpResponse, tokenStr);
 
         Profile profile = profileRepository.findById(user.getId()).orElse(null);
@@ -219,9 +247,33 @@ public class AuthService {
                 .build();
     }
 
+    private User requireAuthenticatedUser(User user) {
+        if (user == null) throw new BadCredentialsException("Sesión no válida");
+        return userRepository.findById(user.getId())
+                .filter(User::isActive)
+                .orElseThrow(() -> new BadCredentialsException("Sesión no válida"));
+    }
+
+    private void requireCurrentPassword(User user, String password) {
+        if (password == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new BadCredentialsException("La contraseña actual es incorrecta");
+        }
+    }
+
+    private String refreshTokenFrom(AuthRequest.Refresh body, HttpServletRequest request) {
+        if (body != null && body.getRefreshToken() != null && !body.getRefreshToken().isBlank()) {
+            return body.getRefreshToken();
+        }
+        if (request.getCookies() != null) {
+            for (Cookie cookie : request.getCookies()) {
+                if ("refreshToken".equals(cookie.getName())) return cookie.getValue();
+            }
+        }
+        return null;
+    }
+
     private void setRefreshTokenCookie(HttpServletRequest request, HttpServletResponse response, String refreshToken) {
         boolean isHttps = isHttpsRequest(request);
-
         ResponseCookie cookie = ResponseCookie.from("refreshToken", refreshToken)
                 .httpOnly(true)
                 .secure(isHttps)
@@ -229,13 +281,11 @@ public class AuthService {
                 .maxAge(refreshExpirationMs / 1000)
                 .sameSite(isHttps ? "None" : "Lax")
                 .build();
-
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 
     private void clearRefreshTokenCookie(HttpServletRequest request, HttpServletResponse response) {
         boolean isHttps = isHttpsRequest(request);
-
         ResponseCookie cookie = ResponseCookie.from("refreshToken", "")
                 .httpOnly(true)
                 .secure(isHttps)
@@ -243,7 +293,6 @@ public class AuthService {
                 .maxAge(0)
                 .sameSite(isHttps ? "None" : "Lax")
                 .build();
-
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 

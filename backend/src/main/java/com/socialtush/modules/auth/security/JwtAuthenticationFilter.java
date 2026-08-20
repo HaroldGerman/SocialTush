@@ -32,21 +32,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
         final String authHeader = request.getHeader("Authorization");
-        final String jwt;
-        final String username;
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        jwt = authHeader.substring(7);
+        final String jwt = authHeader.substring(7);
         try {
-            username = jwtService.extractUsername(jwt);
+            String username = jwtService.extractUsername(jwt);
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 User user = userRepository.findByUsernameIgnoreCase(username).orElse(null);
-                
-                if (user != null && user.isActive() && jwtService.isTokenValid(jwt, user.getUsername())) {
+                int tokenAuthVersion = jwtService.extractAuthVersion(jwt);
+
+                if (user != null
+                        && user.isActive()
+                        && tokenAuthVersion == user.getAuthVersion()
+                        && jwtService.isTokenValid(jwt, user.getUsername())) {
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             user,
                             null,
@@ -56,8 +58,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }
-        } catch (Exception e) {
-            // Token configuration error or expiration - context remains unauthenticated
+        } catch (Exception ignored) {
+            // Invalid/expired/revoked-version JWT leaves the request unauthenticated.
         }
 
         filterChain.doFilter(request, response);

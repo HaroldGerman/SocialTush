@@ -35,6 +35,11 @@ public class JwtService {
         return extractClaim(token, Claims::getSubject);
     }
 
+    public int extractAuthVersion(String token) {
+        Object value = extractClaim(token, claims -> claims.get("authVersion"));
+        return value instanceof Number number ? number.intValue() : 0;
+    }
+
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
         return claimsResolver.apply(claims);
@@ -56,7 +61,7 @@ public class JwtService {
 
     public boolean isTokenValid(String token, String username) {
         final String extractedUsername = extractUsername(token);
-        return (extractedUsername.equals(username)) && !isTokenExpired(token);
+        return extractedUsername.equals(username) && !isTokenExpired(token);
     }
 
     private boolean isTokenExpired(String token) {
