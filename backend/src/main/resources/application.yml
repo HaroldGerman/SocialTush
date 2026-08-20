@@ -36,13 +36,23 @@ spring:
       max-file-size: 50MB
       max-request-size: 50MB
 
-# Custom application properties
 app:
   jwt:
     secret: ${JWT_SECRET:super-secure-and-extremely-long-random-string-for-jwt-signing-key-32-bytes-minimum-required}
     access-expiration-ms: ${JWT_ACCESS_EXPIRATION_MS:900000}
     refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION_MS:604800000}
-  
+
+  web-url: "${APP_WEB_URL:https://social-tush.vercel.app}"
+
+  mail:
+    resend-api-key: "${RESEND_API_KEY:}"
+    from: "${MAIL_FROM:Lifonk <onboarding@resend.dev>}"
+
+  account:
+    email-verification-expiration-minutes: ${EMAIL_VERIFICATION_EXPIRATION_MINUTES:1440}
+    password-reset-expiration-minutes: ${PASSWORD_RESET_EXPIRATION_MINUTES:20}
+    action-cooldown-seconds: ${ACCOUNT_ACTION_COOLDOWN_SECONDS:60}
+
   storage:
     endpoint: ${APP_STORAGE_ENDPOINT:${MINIO_ENDPOINT:http://localhost:9000}}
     access-key: ${APP_STORAGE_ACCESS_KEY:${MINIO_ACCESS_KEY:socialtush_minio_admin}}

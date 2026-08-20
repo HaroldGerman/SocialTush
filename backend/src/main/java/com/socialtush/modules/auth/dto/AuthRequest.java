@@ -15,7 +15,7 @@ public class AuthRequest {
         private String email;
 
         @NotBlank(message = "La contraseña es obligatoria")
-        @Size(min = 6, message = "La contraseña debe tener al menos 6 caracteres")
+        @Size(min = 8, max = 128, message = "La contraseña debe tener entre 8 y 128 caracteres")
         private String password;
 
         @NotBlank(message = "El nombre de usuario es obligatorio")
@@ -41,5 +41,35 @@ public class AuthRequest {
     public static class Refresh {
         @NotBlank(message = "El refresh token es obligatorio")
         private String refreshToken;
+    }
+
+    @Data
+    public static class ForgotPassword {
+        @NotBlank(message = "El correo es obligatorio")
+        @Email(message = "El formato de email no es válido")
+        private String email;
+    }
+
+    @Data
+    public static class ResetPassword {
+        @NotBlank(message = "El token es obligatorio")
+        private String token;
+
+        @NotBlank(message = "La nueva contraseña es obligatoria")
+        @Size(min = 8, max = 128, message = "La nueva contraseña debe tener entre 8 y 128 caracteres")
+        private String newPassword;
+    }
+
+    @Data
+    public static class VerifyEmail {
+        @NotBlank(message = "El token es obligatorio")
+        private String token;
+    }
+
+    @Data
+    public static class ResendVerification {
+        @NotBlank(message = "El correo es obligatorio")
+        @Email(message = "El formato de email no es válido")
+        private String email;
     }
 }

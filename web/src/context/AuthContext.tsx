@@ -17,7 +17,7 @@ interface AuthContextType {
   user: UserSession | null;
   accessToken: string | null;
   isLoading: boolean;
-  login: (usernameOrEmail: string, password: String) => Promise<void>;
+  login: (usernameOrEmail: string, password: string) => Promise<void>;
   register: (email: string, username: string, displayName: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUserProfile: (profile: Pick<UserSession, 'displayName' | 'avatarUrl'>) => void;
@@ -28,7 +28,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true, // Enables sending cookies (RefreshToken)
+  withCredentials: true,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -46,30 +46,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: data.role,
   });
 
-  // Helper to keep ref and state in sync
   const setToken = (token: string | null) => {
     accessTokenRef.current = token;
     setAccessToken(token);
   };
 
-  // Configure Axios Request interceptor dynamically using the ref
   useEffect(() => {
     const requestInterceptor = api.interceptors.request.use(
       (config) => {
-        if (accessTokenRef.current) {
-          config.headers.Authorization = `Bearer ${accessTokenRef.current}`;
-        }
+        if (accessTokenRef.current) config.headers.Authorization = `Bearer ${accessTokenRef.current}`;
         return config;
       },
       (error) => Promise.reject(error)
     );
-
-    return () => {
-      api.interceptors.request.eject(requestInterceptor);
-    };
+    return () => api.interceptors.request.eject(requestInterceptor);
   }, []);
 
-  // Configure Axios Response interceptor to handle expired access tokens and rotate automatically
   useEffect(() => {
     const responseInterceptor = api.interceptors.response.use(
       (response) => response,
@@ -78,17 +70,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error.response?.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true;
           try {
-            // Attempt to refresh
             const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
             const newAccessToken = res.data.accessToken;
             setToken(newAccessToken);
-            
             setUser(sessionFromResponse(res.data));
-
             originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
             return api(originalRequest);
-          } catch (refreshError) {
-            // Refresh token expired or invalid -> logout user
+          } catch {
             setToken(null);
             setUser(null);
           }
@@ -96,30 +84,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return Promise.reject(error);
       }
     );
-
-    return () => {
-      api.interceptors.response.eject(responseInterceptor);
-    };
+    return () => api.interceptors.response.eject(responseInterceptor);
   }, []);
 
-  // Try refreshing session on mount (Persistent login)
   useEffect(() => {
     const initAuth = async () => {
       try {
         const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
         setToken(res.data.accessToken);
         setUser(sessionFromResponse(res.data));
-      } catch (err) {
-        // No valid session cookie found
+      } catch {
+        // No valid session cookie found.
       } finally {
         setIsLoading(false);
       }
     };
-
-    initAuth();
+    void initAuth();
   }, []);
 
-  const login = async (usernameOrEmail: string, password: String) => {
+  const login = async (usernameOrEmail: string, password: string) => {
     setIsLoading(true);
     try {
       const res = await api.post('/auth/login', { usernameOrEmail, password });
@@ -135,9 +118,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (email: string, username: string, displayName: string, password: string) => {
     setIsLoading(true);
     try {
-      const res = await api.post('/auth/register', { email, username, displayName, password });
-      setToken(res.data.accessToken);
-      setUser(sessionFromResponse(res.data));
+      await api.post('/auth/register', { email, username, displayName, password });
+      // Registration deliberately does not create a session. The user verifies the
+      // email first, then logs in normally.
+      setToken(null);
+      setUser(null);
     } catch (err: any) {
       throw new Error(err.response?.data?.message || 'Error al registrarse');
     } finally {
@@ -147,8 +132,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      // Remove only this browser endpoint from the authenticated user before
-      // invalidating the session. Keep the browser subscription reusable.
       if ('serviceWorker' in navigator && 'PushManager' in window) {
         const registration = await navigator.serviceWorker.getRegistration('/');
         const subscription = await registration?.pushManager.getSubscription();
@@ -158,8 +141,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch (pushError: any) {
             if (pushError?.response?.status !== 404) console.error('Web Push logout cleanup:', pushError);
           } finally {
-            // Invalidating the browser capability prevents pushes for the old
-            // account even if backend cleanup was temporarily unavailable.
             try { await subscription.unsubscribe(); } catch (unsubscribeError) {
               console.error('Web Push browser unsubscribe:', unsubscribeError);
             }
@@ -167,8 +148,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
       await api.post('/auth/logout');
-    } catch (err) {
-      // Ignore network errors on logout
+    } catch {
+      // Ignore network errors on logout.
     } finally {
       setToken(null);
       setUser(null);
@@ -189,8 +170,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth debe usarse dentro de un AuthProvider');
-  }
+  if (!context) throw new Error('useAuth debe usarse dentro de un AuthProvider');
   return context;
 }

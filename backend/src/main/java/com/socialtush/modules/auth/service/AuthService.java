@@ -36,12 +36,13 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final AccountAccessService accountAccessService;
 
     @Value("${app.jwt.refresh-expiration-ms}")
     private long refreshExpirationMs;
 
     @Transactional(rollbackFor = Exception.class)
-    public AuthResponse register(AuthRequest.Register request, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
+    public void register(AuthRequest.Register request) {
         String normalizedUsername = request.getUsername().toLowerCase().trim();
         String normalizedEmail = request.getEmail().toLowerCase().trim();
 
@@ -52,7 +53,6 @@ public class AuthService {
             throw new IllegalArgumentException("El correo electrónico ya está registrado");
         }
 
-        // 1. Create and Save User
         User user = User.builder()
                 .username(request.getUsername().trim())
                 .email(request.getEmail().trim())
@@ -63,7 +63,6 @@ public class AuthService {
                 .build();
         user = userRepository.save(user);
 
-        // 2. Create and Save Profile
         Profile profile = Profile.builder()
                 .user(user)
                 .displayName(request.getDisplayName().trim())
@@ -72,8 +71,7 @@ public class AuthService {
                 .build();
         profileRepository.save(profile);
 
-        // 3. Generate tokens and issue session within same transaction
-        return loginUser(user, httpRequest, httpResponse);
+        accountAccessService.sendVerificationForUser(user);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -90,6 +88,9 @@ public class AuthService {
         if (!user.isActive()) {
             throw new DisabledException("Tu cuenta se encuentra suspendida o inactiva");
         }
+        if (!user.isVerified()) {
+            throw new DisabledException("Verifica tu correo antes de iniciar sesión.");
+        }
 
         return loginUser(user, httpRequest, httpResponse);
     }
@@ -98,12 +99,10 @@ public class AuthService {
     public AuthResponse refresh(HttpServletRequest httpRequest, HttpServletResponse httpResponse, AuthRequest.Refresh body) {
         String tokenStr = null;
 
-        // Try getting token from Body first (useful for Mobile)
         if (body != null && body.getRefreshToken() != null && !body.getRefreshToken().isBlank()) {
             tokenStr = body.getRefreshToken();
         }
 
-        // Try getting token from Cookies if not found in body
         if (tokenStr == null && httpRequest.getCookies() != null) {
             for (Cookie cookie : httpRequest.getCookies()) {
                 if ("refreshToken".equals(cookie.getName())) {
@@ -122,18 +121,17 @@ public class AuthService {
             throw new BadCredentialsException("Refresh token inválido, expirado o revocado");
         }
 
-        // Rotate Refresh Token: Revoke current token
         refreshToken.setRevoked(true);
         refreshTokenRepository.save(refreshToken);
 
         User user = refreshToken.getUser();
         if (!user.isActive()) {
-            refreshToken.setRevoked(true);
-            refreshTokenRepository.save(refreshToken);
             throw new DisabledException("Tu cuenta se encuentra suspendida o inactiva");
         }
+        if (!user.isVerified()) {
+            throw new DisabledException("Verifica tu correo antes de continuar.");
+        }
 
-        // Issue new tokens & session
         return loginUser(user, httpRequest, httpResponse);
     }
 
@@ -164,16 +162,30 @@ public class AuthService {
         clearRefreshTokenCookie(httpRequest, httpResponse);
     }
 
+    public void requestPasswordReset(String email) {
+        accountAccessService.requestPasswordReset(email);
+    }
+
+    public void resetPassword(String token, String newPassword) {
+        accountAccessService.resetPassword(token, newPassword);
+    }
+
+    public void verifyEmail(String token) {
+        accountAccessService.verifyEmail(token);
+    }
+
+    public void requestVerification(String email) {
+        accountAccessService.requestVerification(email);
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public AuthResponse loginUser(User user, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
-        // 1. Generate JWT Access Token
         Map<String, Object> claims = new HashMap<>();
         claims.put("role", user.getRole());
         claims.put("email", user.getEmail());
         String accessToken = jwtService.generateToken(user.getUsername(), claims);
 
-        // 2. Generate and persist secure Refresh Token
-        String tokenStr = UUID.randomUUID().toString() + "-" + UUID.randomUUID().toString();
+        String tokenStr = UUID.randomUUID().toString() + "-" + UUID.randomUUID();
         RefreshToken refreshToken = RefreshToken.builder()
                 .user(user)
                 .token(tokenStr)
@@ -182,10 +194,8 @@ public class AuthService {
                 .build();
         refreshTokenRepository.save(refreshToken);
 
-        // 3. Set Refresh Token as HttpOnly Cookie with SameSite=None for HTTPS production (Vercel -> Railway)
         setRefreshTokenCookie(httpRequest, httpResponse, tokenStr);
 
-        // Self-healing: Create profile if missing
         Profile profile = profileRepository.findById(user.getId()).orElse(null);
         if (profile == null) {
             profile = Profile.builder()
@@ -196,7 +206,6 @@ public class AuthService {
                     .build();
             profile = profileRepository.save(profile);
         }
-        String displayName = profile.getDisplayName();
 
         return AuthResponse.builder()
                 .accessToken(accessToken)
@@ -204,7 +213,7 @@ public class AuthService {
                 .userId(user.getId())
                 .username(user.getUsername())
                 .email(user.getEmail())
-                .displayName(displayName)
+                .displayName(profile.getDisplayName())
                 .avatarUrl(profile.getAvatarUrl())
                 .role(user.getRole())
                 .build();
@@ -241,8 +250,8 @@ public class AuthService {
     private boolean isHttpsRequest(HttpServletRequest request) {
         String origin = request.getHeader("Origin");
         String forwardedProto = request.getHeader("X-Forwarded-Proto");
-        return request.isSecure() ||
-                "https".equalsIgnoreCase(forwardedProto) ||
-                (origin != null && origin.toLowerCase().startsWith("https://"));
+        return request.isSecure()
+                || "https".equalsIgnoreCase(forwardedProto)
+                || (origin != null && origin.toLowerCase().startsWith("https://"));
     }
 }
