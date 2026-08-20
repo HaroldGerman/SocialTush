@@ -203,11 +203,26 @@ public class StoryController {
         if (currentUser == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
-        var viewers = storyService.getStoryViewers(id).stream().map(v -> Map.of(
-                "username", v.getViewer().getUsername(),
-                "viewedAt", v.getViewedAt()
-        )).collect(Collectors.toList());
-        return ResponseEntity.ok(viewers);
+        try {
+            var storyViews = storyService.getStoryViewers(id, currentUser);
+            var profileByUserId = profileRepository.findAllById(storyViews.stream().map(v -> v.getViewer().getId()).toList())
+                    .stream().collect(Collectors.toMap(Profile::getUserId, profile -> profile));
+            var viewers = storyViews.stream().map(v -> {
+                Profile viewerProfile = profileByUserId.get(v.getViewer().getId());
+                Map<String, Object> dto = new LinkedHashMap<>();
+                dto.put("userId", v.getViewer().getId());
+                dto.put("username", v.getViewer().getUsername());
+                dto.put("displayName", viewerProfile != null ? viewerProfile.getDisplayName() : v.getViewer().getUsername());
+                dto.put("avatarUrl", viewerProfile != null ? viewerProfile.getAvatarUrl() : null);
+                dto.put("viewedAt", v.getViewedAt());
+                return dto;
+            }).collect(Collectors.toList());
+            return ResponseEntity.ok(viewers);
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
+        }
     }
 
     private StoryDto convertToDto(Story story) {

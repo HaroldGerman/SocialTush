@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Play, Pause, Send, MoreHorizontal } from 'lucide-react';
+import { X, Play, Pause, Send, MoreHorizontal, Eye } from 'lucide-react';
 
 import { api, useAuth } from '@/context/AuthContext';
 import UserAvatar from '@/components/UserAvatar';
@@ -32,6 +32,8 @@ interface StoryViewerProps {
   onStoriesChange?: (stories: GroupedStory[]) => void;
 }
 
+interface StoryViewerItem { userId: string; username: string; displayName: string; avatarUrl?: string; viewedAt: string }
+
 export default function StoryViewer({ groupedStories, initialUserIndex, onClose, onStoriesChange }: StoryViewerProps) {
   const { user } = useAuth();
   const [userIndex, setUserIndex] = useState(initialUserIndex);
@@ -44,6 +46,10 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [isViewersOpen, setIsViewersOpen] = useState(false);
+  const [viewers, setViewers] = useState<StoryViewerItem[]>([]);
+  const [viewersLoading, setViewersLoading] = useState(false);
+  const [viewersError, setViewersError] = useState('');
   const [videoDuration, setVideoDuration] = useState(5);
 
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
@@ -76,7 +82,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
 
   // Handle automatic progress timer (5 seconds per story)
   useEffect(() => {
-    if (isPaused || isMenuOpen || isDeleteOpen || !currentStory) return;
+    if (isPaused || isMenuOpen || isDeleteOpen || isViewersOpen || !currentStory) return;
 
     progressInterval.current = setInterval(() => {
       setProgress((prev) => {
@@ -92,14 +98,24 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     return () => {
       if (progressInterval.current) clearInterval(progressInterval.current);
     };
-  }, [userIndex, storyIndex, isPaused, isMenuOpen, isDeleteOpen, currentStory, videoDuration]);
+  }, [userIndex, storyIndex, isPaused, isMenuOpen, isDeleteOpen, isViewersOpen, currentStory, videoDuration]);
 
   useEffect(() => {
     const video = storyVideoRef.current;
     if (!video) return;
-    if (isPaused || isMenuOpen || isDeleteOpen) video.pause();
+    if (isPaused || isMenuOpen || isDeleteOpen || isViewersOpen) video.pause();
     else video.play().catch(error => console.error('No se pudo reproducir la historia de video:', error));
-  }, [isPaused, isMenuOpen, isDeleteOpen, currentStory]);
+  }, [isPaused, isMenuOpen, isDeleteOpen, isViewersOpen, currentStory]);
+
+  const openViewers = async () => {
+    if (!currentStory || !isOwnStory) return;
+    setIsViewersOpen(true);
+    setViewersLoading(true);
+    setViewersError('');
+    try { const response = await api.get(`/stories/${currentStory.storyId}/viewers`); setViewers(response.data || []); }
+    catch (error: any) { setViewersError(error.response?.data?.message || 'No se pudieron cargar las vistas.'); }
+    finally { setViewersLoading(false); }
+  };
 
   const handleNextStory = () => {
     if (storyIndex < currentUserStories.stories.length - 1) {
@@ -246,7 +262,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
           <div className="flex items-center gap-2">
             <div className="relative hidden md:block">
               {isOwnStory && <button type="button" aria-label="Opciones de momento" onClick={(event) => { event.stopPropagation(); setDeleteError(''); setIsMenuOpen(open => !open); }} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white transition-all hover:bg-black/60"><MoreHorizontal className="h-5 w-5" /></button>}
-              {isOwnStory && isMenuOpen && <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 p-1 shadow-2xl"><button type="button" onClick={(event) => { event.stopPropagation(); setIsMenuOpen(false); setIsDeleteOpen(true); }} className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar momento</button></div>}
+              {isOwnStory && isMenuOpen && <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 p-1 shadow-2xl"><button type="button" onClick={(event) => { event.stopPropagation(); setIsMenuOpen(false); void openViewers(); }} className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-white hover:bg-zinc-900">Ver quién lo vio</button><button type="button" onClick={(event) => { event.stopPropagation(); setIsMenuOpen(false); setIsDeleteOpen(true); }} className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar momento</button></div>}
             </div>
             {isOwnStory && <button type="button" aria-label="Opciones de momento" onClick={(event) => { event.stopPropagation(); setDeleteError(''); setIsMenuOpen(true); }} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white transition-all hover:bg-black/60 md:hidden"><MoreHorizontal className="h-5 w-5" /></button>}
             <button type="button" aria-label={isPaused ? 'Reanudar momento' : 'Pausar momento'} onClick={() => setIsPaused(!isPaused)} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
@@ -358,10 +374,12 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
         </form>
       </div>}
 
+      {isOwnStory && <button type="button" onClick={() => void openViewers()} className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/55 px-4 py-2 text-xs font-bold text-white backdrop-blur-md"><Eye className="h-4 w-4"/> Vistas</button>}
+
       {isOwnStory && isMenuOpen && <div className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setIsMenuOpen(false)}>
         <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-zinc-700 bg-zinc-950 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-2xl" onClick={event => event.stopPropagation()}>
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-700" />
-          <button type="button" onClick={() => { setIsMenuOpen(false); setIsDeleteOpen(true); }} className="min-h-12 w-full rounded-xl px-4 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar momento</button>
+          <button type="button" onClick={() => { setIsMenuOpen(false); void openViewers(); }} className="min-h-12 w-full rounded-xl px-4 text-left text-sm font-bold text-white hover:bg-zinc-900">Ver quién lo vio</button><button type="button" onClick={() => { setIsMenuOpen(false); setIsDeleteOpen(true); }} className="min-h-12 w-full rounded-xl px-4 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar momento</button>
         </div>
       </div>}
 
@@ -373,6 +391,8 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
           <div className="flex gap-3"><button disabled={isDeleting} onClick={() => setIsDeleteOpen(false)} className="flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-white">Cancelar</button><button disabled={isDeleting} onClick={handleDeleteStory} className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">{isDeleting ? 'Eliminando...' : 'Eliminar'}</button></div>
         </div>
       </div>}
+
+      {isViewersOpen && <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/65 md:items-center" onClick={() => setIsViewersOpen(false)}><div className="max-h-[70vh] w-full max-w-md overflow-hidden rounded-t-3xl border border-zinc-700 bg-zinc-950 md:rounded-3xl" onClick={event => event.stopPropagation()}><div className="flex items-center justify-between border-b border-zinc-800 p-4"><div><h3 className="font-bold text-white">Vistas del momento</h3><p className="text-xs text-zinc-400">{viewers.length} {viewers.length === 1 ? 'persona' : 'personas'}</p></div><button onClick={() => setIsViewersOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-white"><X className="h-4 w-4"/></button></div><div className="max-h-[55vh] overflow-y-auto p-3">{viewersLoading ? <p className="p-6 text-center text-sm text-zinc-400">Cargando vistas…</p> : viewersError ? <div className="p-6 text-center"><p className="text-sm text-rose-400">{viewersError}</p><button onClick={() => void openViewers()} className="mt-3 text-xs font-bold text-teal-400">Reintentar</button></div> : viewers.length ? viewers.map(viewer => <div key={viewer.userId} className="flex items-center gap-3 rounded-2xl p-3 hover:bg-zinc-900"><UserAvatar avatarUrl={viewer.avatarUrl} name={viewer.displayName || viewer.username} className="h-11 w-11 rounded-full text-xs"/><div className="min-w-0"><p className="truncate text-sm font-bold text-white">{viewer.displayName || viewer.username}</p><p className="text-xs text-zinc-400">@{viewer.username}{formatRelativeTime(viewer.viewedAt)}</p></div></div>) : <p className="p-8 text-center text-sm text-zinc-400">Aún nadie ha visto este momento.</p>}</div></div></div>}
     </div>
   );
 }

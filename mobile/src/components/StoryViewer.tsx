@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Alert,
   Image,
   Modal,
@@ -88,6 +89,9 @@ export default function StoryViewer({
   const [deleting, setDeleting] = useState(false);
   const [reply, setReply] = useState("");
   const [error, setError] = useState("");
+  const [viewersOpen, setViewersOpen] = useState(false);
+  const [viewers, setViewers] = useState<any[]>([]);
+  const [viewersLoading, setViewersLoading] = useState(false);
   useEffect(() => {
     setUserIndex(initialIndex);
     setStoryIndex(0);
@@ -124,7 +128,7 @@ export default function StoryViewer({
     } else onClose();
   };
   useEffect(() => {
-    if (!visible || !story || paused || menu) return;
+    if (!visible || !story || paused || menu || viewersOpen) return;
     const timer = setInterval(
       () =>
         setProgress((value) => {
@@ -137,7 +141,7 @@ export default function StoryViewer({
       100,
     );
     return () => clearInterval(timer);
-  }, [visible, story?.storyId, paused, menu, duration]);
+  }, [visible, story?.storyId, paused, menu, viewersOpen, duration]);
   useEffect(() => {
     if (story && !own)
       api
@@ -171,7 +175,7 @@ export default function StoryViewer({
     } catch (requestError: any) {
       setError(
         requestError.response?.data?.message ||
-          "No se pudo eliminar la historia.",
+          "No se pudo eliminar el momento.",
       );
     } finally {
       setDeleting(false);
@@ -179,7 +183,7 @@ export default function StoryViewer({
   };
   const confirmDelete = () =>
     Alert.alert(
-      "¿Eliminar esta historia?",
+      "¿Eliminar este momento?",
       "Esta acción no se puede deshacer.",
       [
         { text: "Cancelar", style: "cancel" },
@@ -190,6 +194,22 @@ export default function StoryViewer({
         },
       ],
     );
+  const openViewers = async () => {
+    if (!story || !own) return;
+    setMenu(false);
+    setViewersOpen(true);
+    setPaused(true);
+    setViewersLoading(true);
+    setError("");
+    try {
+      const response = await api.get(`/stories/${story.storyId}/viewers`);
+      setViewers(response.data || []);
+    } catch (requestError: any) {
+      setError(requestError.response?.data?.message || "No se pudieron cargar las vistas.");
+    } finally {
+      setViewersLoading(false);
+    }
+  };
   const sendReply = async () => {
     if (!reply.trim() || !story || own) return;
     const content = reply.trim();
@@ -296,7 +316,7 @@ export default function StoryViewer({
           </View>
           {own ? (
             <TouchableOpacity
-              accessibilityLabel="Opciones de historia"
+              accessibilityLabel="Opciones del momento"
               onPress={() => {
                 setMenu(true);
                 setPaused(true);
@@ -351,7 +371,11 @@ export default function StoryViewer({
         ) : null}
         {menu ? (
           <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>Opciones de historia</Text>
+            <Text style={styles.sheetTitle}>Opciones del momento</Text>
+            <TouchableOpacity onPress={() => void openViewers()} style={styles.viewersAction}>
+              <Ionicons name="eye-outline" size={20} color="#fff" />
+              <Text style={styles.viewersText}>Ver quién lo vio</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               disabled={deleting}
               onPress={confirmDelete}
@@ -359,7 +383,7 @@ export default function StoryViewer({
             >
               <Ionicons name="trash-outline" size={20} color="#ef4444" />
               <Text style={styles.deleteText}>
-                {deleting ? "Eliminando…" : "Eliminar historia"}
+                {deleting ? "Eliminando…" : "Eliminar momento"}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -373,7 +397,24 @@ export default function StoryViewer({
             </TouchableOpacity>
           </View>
         ) : null}
+        {own ? (
+          <TouchableOpacity onPress={() => void openViewers()} style={styles.viewsPill}>
+            <Ionicons name="eye-outline" size={17} color="#fff" />
+            <Text style={styles.viewsPillText}>Vistas</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
+      <Modal visible={viewersOpen} transparent animationType="slide" onRequestClose={() => { setViewersOpen(false); setPaused(false); }}>
+        <View style={styles.viewersBackdrop}>
+          <View style={styles.viewersSheet}>
+            <View style={styles.viewersHeader}>
+              <View><Text style={styles.sheetTitle}>Vistas del momento</Text><Text style={styles.viewerMeta}>{viewers.length} {viewers.length === 1 ? "persona" : "personas"}</Text></View>
+              <TouchableOpacity onPress={() => { setViewersOpen(false); setPaused(false); }} style={styles.icon}><Ionicons name="close" size={24} color="#fff" /></TouchableOpacity>
+            </View>
+            {viewersLoading ? <ActivityIndicator color="#14b8a6" style={{ margin: 30 }} /> : <FlatList data={viewers} keyExtractor={item => item.userId} ListEmptyComponent={<Text style={styles.emptyViews}>Aún nadie ha visto este momento.</Text>} renderItem={({ item }) => <View style={styles.viewerRow}><UserAvatar avatarUrl={item.avatarUrl} displayName={item.displayName} username={item.username} size={44} /><View><Text style={styles.viewerName}>{item.displayName || item.username}</Text><Text style={styles.viewerMeta}>@{item.username}</Text></View></View>} />}
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -511,6 +552,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   deleteText: { color: "#ef4444", fontWeight: "800" },
+  viewersAction: { height: 50, borderRadius: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#ffffff12" },
+  viewersText: { color: "#fff", fontWeight: "800" },
+  viewsPill: { position: "absolute", bottom: 22, alignSelf: "center", zIndex: 7, flexDirection: "row", gap: 7, alignItems: "center", backgroundColor: "#000a", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22 },
+  viewsPillText: { color: "#fff", fontWeight: "800", fontSize: 12 },
+  viewersBackdrop: { flex: 1, backgroundColor: "#0009", justifyContent: "flex-end" },
+  viewersSheet: { backgroundColor: "#09090b", borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: "70%", minHeight: 260, paddingBottom: 28 },
+  viewersHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 18, borderBottomColor: "#27272a", borderBottomWidth: 1 },
+  viewerRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 18, paddingVertical: 11 },
+  viewerName: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  viewerMeta: { color: "#a1a1aa", fontSize: 11, marginTop: 2 },
+  emptyViews: { color: "#a1a1aa", textAlign: "center", padding: 34 },
   cancel: { height: 46, alignItems: "center", justifyContent: "center" },
   cancelText: { color: "#cbd5e1", fontWeight: "700" },
 });

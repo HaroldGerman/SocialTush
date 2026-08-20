@@ -54,7 +54,13 @@ public class StoryService {
         return true;
     }
 
-    public List<StoryView> getStoryViewers(UUID storyId) {
+    @Transactional(readOnly = true)
+    public List<StoryView> getStoryViewers(UUID storyId, User owner) {
+        Story story = storyRepository.findById(storyId)
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Momento no encontrado"));
+        if (owner == null || !story.getUser().getId().equals(owner.getId())) {
+            throw new org.springframework.security.access.AccessDeniedException("Solo el propietario puede ver las vistas");
+        }
         return storyViewRepository.findByStoryIdOrderByViewedAtDesc(storyId);
     }
 }

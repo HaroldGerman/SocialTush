@@ -95,6 +95,28 @@ class StoryControllerTest {
         verify(storyRepository, never()).findByExpiresAtAfterOrderByCreatedAtAsc(any());
     }
 
+    @Test
+    void onlyOwnerCanRequestStoryViewers() {
+        UUID id = UUID.randomUUID();
+        when(storyService.getStoryViewers(id, owner))
+                .thenThrow(new org.springframework.security.access.AccessDeniedException("Solo el propietario puede ver las vistas"));
+
+        var response = controller.getStoryViewers(id, owner);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void missingStoryViewersReturnsNotFound() {
+        UUID id = UUID.randomUUID();
+        when(storyService.getStoryViewers(id, owner))
+                .thenThrow(new jakarta.persistence.EntityNotFoundException("Momento no encontrado"));
+
+        var response = controller.getStoryViewers(id, owner);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     private User user(String username) {
         User user = new User();
         user.setId(UUID.randomUUID());
