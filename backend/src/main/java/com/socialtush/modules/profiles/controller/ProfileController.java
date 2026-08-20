@@ -71,6 +71,7 @@ public class ProfileController {
                 .displayName(profile.getDisplayName())
                 .bio(profile.getBio())
                 .avatarUrl(profile.getAvatarUrl())
+                .interests(profile.getInterests())
                 .isPrivate(profile.isPrivate())
                 .isSelf(isSelf)
                 .isFollowing(isFollowing)

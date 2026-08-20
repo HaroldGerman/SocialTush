@@ -7,6 +7,7 @@ import {
   Modal,
   Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -33,6 +34,7 @@ interface ProfileData {
   postCount: number;
   followersCount: number;
   followingCount: number;
+  interests?: string;
 }
 function ProfileVideo({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri);
@@ -110,10 +112,10 @@ export default function ProfileScreen({
           console.error(requestError);
           setPostsError(
             requestError.response?.status === 403
-              ? "El acceso a estos Momentos cambió. Actualiza el perfil."
+              ? "El acceso a estas contribuciones cambió. Actualiza el espacio."
               : requestError.response?.status === 404
-                ? "No se encontró el contenido del perfil."
-                : "No se pudieron cargar los Momentos.",
+                ? "No se encontró el contenido del espacio."
+                : "No se pudieron cargar las contribuciones.",
           );
         }
         try {
@@ -135,7 +137,7 @@ export default function ProfileScreen({
       setProfileError(
         requestError.response?.status === 404
           ? "Usuario no encontrado"
-          : "No se pudo cargar el perfil",
+          : "No se pudo cargar el espacio",
       );
     } finally {
       setLoading(false);
@@ -228,7 +230,7 @@ export default function ProfileScreen({
       await load();
     } catch (requestError: any) {
       setActionError(
-        requestError.response?.data?.message || "No se pudo guardar el perfil.",
+        requestError.response?.data?.message || "No se pudo guardar el espacio.",
       );
     } finally {
       setSaving(false);
@@ -290,6 +292,9 @@ export default function ProfileScreen({
       </View>
     );
   const blocked = profile.isPrivate && !profile.canViewContent;
+  const interests = profile.interests?.split(",").map(value => value.trim()).filter(Boolean) || [];
+  const totalResonances = posts.reduce((total, post) => total + (post.likesCount || 0), 0);
+  const totalEchoes = posts.reduce((total, post) => total + (post.commentsCount || 0), 0);
   const header = (
     <>
       <View style={[styles.top, { borderColor: theme.border }]}>
@@ -340,9 +345,10 @@ export default function ProfileScreen({
         ) : null}
         <View style={[styles.stats, { borderColor: theme.border }]}>
           {[
-            ["Momentos", profile.postCount],
+            ["Contribuciones", profile.postCount],
             ["Conexiones", profile.followersCount],
-            [self ? "Tus conexiones" : "Conexiones", profile.followingCount],
+            ["Círculos", circles.length],
+            [self ? "Tus conexiones" : "Conectados", profile.followingCount],
           ].map(([label, value]) => (
             <View key={String(label)} style={styles.stat}>
               <Text style={[styles.statValue, { color: theme.textPrimary }]}>
@@ -361,7 +367,7 @@ export default function ProfileScreen({
               style={[styles.secondary, { borderColor: theme.border }]}
             >
               <Text style={{ color: theme.textPrimary, fontWeight: "800" }}>
-                Editar perfil
+                Editar espacio
               </Text>
             </TouchableOpacity>
           ) : (
@@ -396,7 +402,7 @@ export default function ProfileScreen({
                 style={[styles.secondary, { borderColor: theme.border }]}
               >
                 <Text style={{ color: theme.textPrimary, fontWeight: "800" }}>
-                  Mensaje
+                  Conversación
                 </Text>
               </TouchableOpacity>
             </>
@@ -408,6 +414,30 @@ export default function ProfileScreen({
           </TouchableOpacity>
         ) : null}
       </View>
+      {(self || interests.length > 0) ? (
+        <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Text style={[styles.eyebrow, { color: theme.accent }]}>{self ? "TU MOVIMIENTO" : "SU MOVIMIENTO"}</Text>
+          <Text style={[styles.sectionLead, { color: theme.textPrimary }]}>{interests.length ? interests.slice(0, 3).join(" · ") : "Personaliza tu espacio"}</Text>
+          <Text style={[styles.sectionCopy, { color: theme.textMuted }]}>{interests.length ? "Temas que forman parte de este espacio." : "Añade una presentación para que tus conexiones te conozcan mejor."}</Text>
+          {self ? <TouchableOpacity onPress={() => setEditing(true)}><Text style={[styles.inlineAction, { color: theme.accent }]}>Editar espacio</Text></TouchableOpacity> : null}
+        </View>
+      ) : null}
+      {!blocked ? (
+        <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={styles.sectionHeading}><Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{self ? "Tus Círculos" : "Círculos"}</Text><TouchableOpacity onPress={() => setTab("CIRCLES")}><Text style={[styles.inlineAction, { color: theme.accent }]}>Ver todos</Text></TouchableOpacity></View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.circleRail}>
+            {circles.slice(0, 6).map(circle => <TouchableOpacity key={circle.id} onPress={() => onOpenCircle?.(circle.slug)} style={styles.circleMini}><UserAvatar avatarUrl={circle.avatarUrl} displayName={circle.name} size={56}/><Text numberOfLines={1} style={[styles.circleMiniName, { color: theme.textPrimary }]}>{circle.name}</Text><Text style={[styles.circleMiniMeta, { color: theme.textMuted }]}>{circle.membersCount || 0} integrantes</Text></TouchableOpacity>)}
+            {!circles.length ? <Text style={[styles.sectionCopy, { color: theme.textMuted }]}>{self ? "Aún no formas parte de ningún círculo." : "No hay círculos visibles."}</Text> : null}
+          </ScrollView>
+        </View>
+      ) : null}
+      {!blocked && !postsError ? (
+        <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Resonancia de {self ? "tu" : "este"} espacio</Text>
+          <View style={styles.resonanceRow}>{[["Resonancias", totalResonances], ["Ecos", totalEchoes], ["Conexiones", profile.followersCount]].map(([label, value]) => <View key={String(label)} style={[styles.resonanceMetric, { backgroundColor: theme.background }]}><Text style={[styles.resonanceValue, { color: theme.textPrimary }]}>{value}</Text><Text style={[styles.circleMiniMeta, { color: theme.textMuted }]}>{label}</Text></View>)}</View>
+          <Text style={[styles.realDataNote, { color: theme.textMuted }]}>Acumulados reales de las contribuciones disponibles.</Text>
+        </View>
+      ) : null}
       {blocked ? (
         <View
           style={[
@@ -421,12 +451,12 @@ export default function ProfileScreen({
             color={theme.textMuted}
           />
           <Text style={[styles.privateTitle, { color: theme.textPrimary }]}>
-            Esta cuenta es privada
+            Este espacio es privado
           </Text>
           <Text
             style={[styles.privateDescription, { color: theme.textSecondary }]}
           >
-            Sigue a @{profile.username} para ver sus Momentos y contenido.
+            Conecta con @{profile.username} para ver sus contribuciones, momentos y círculos.
           </Text>
           {profile.relationshipStatus !== "FOLLOWING" ? (
             <TouchableOpacity
@@ -465,7 +495,7 @@ export default function ProfileScreen({
                 fontWeight: "800",
               }}
             >
-              Momentos
+              Contribuciones
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -593,7 +623,7 @@ export default function ProfileScreen({
               {postsError && tab === "POSTS" ? (
                 <>
                   <Text style={{ color: theme.textPrimary, fontWeight: "800" }}>
-                    No se pudieron cargar los Momentos.
+                    No se pudieron cargar las contribuciones.
                   </Text>
                   <TouchableOpacity onPress={() => void load()}>
                     <Text style={{ color: theme.accent, marginTop: 8 }}>
@@ -616,7 +646,7 @@ export default function ProfileScreen({
                     }}
                   >
                     {tab === "POSTS"
-                      ? "No hay momentos publicados aún"
+                      ? self ? "Comparte tu primera contribución." : "Este espacio todavía no tiene contribuciones."
                       : "No hay Círculos visibles"}
                   </Text>
                 </>
@@ -643,7 +673,7 @@ export default function ProfileScreen({
                 fontSize: 17,
               }}
             >
-              Editar perfil
+              Editar espacio
             </Text>
             <TouchableOpacity disabled={saving} onPress={() => void save()}>
               <Text style={{ color: theme.accent, fontWeight: "900" }}>
@@ -681,7 +711,7 @@ export default function ProfileScreen({
             ]}
           />
           <Text style={[styles.label, { color: theme.textSecondary }]}>
-            Bio
+            Presentación
           </Text>
           <TextInput
             multiline
@@ -744,9 +774,11 @@ const styles = StyleSheet.create({
   icon: { width: 40, alignItems: "center" },
   topTitle: { fontSize: 15, fontWeight: "900" },
   cover: {
-    height: 144,
+    height: 164,
     backgroundColor: "#0f766e",
     justifyContent: "flex-end",
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
   },
   identity: {
     flexDirection: "row",
@@ -758,9 +790,9 @@ const styles = StyleSheet.create({
   greenName: { height: 47, justifyContent: "flex-end" },
   displayName: { color: "#fff", fontSize: 22, fontWeight: "900" },
   handle: { fontSize: 13, marginTop: 5 },
-  profileBody: { paddingTop: 54, paddingHorizontal: 18, paddingBottom: 16 },
+  profileBody: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 16 },
   bio: { fontSize: 13, lineHeight: 19, marginBottom: 14 },
-  stats: { flexDirection: "row", borderWidth: 1, borderRadius: 16 },
+  stats: { flexDirection: "row", borderWidth: 1, borderRadius: 20, overflow: "hidden" },
   stat: { flex: 1, alignItems: "center", paddingVertical: 11 },
   statValue: { fontSize: 17, fontWeight: "900" },
   statLabel: { fontSize: 10, fontWeight: "700" },
@@ -794,6 +826,21 @@ const styles = StyleSheet.create({
   },
   privateTitle: { fontSize: 17, fontWeight: "900" },
   privateDescription: { fontSize: 13, textAlign: "center", lineHeight: 19 },
+  sectionCard: { marginHorizontal: 14, marginBottom: 12, borderWidth: 1, borderRadius: 22, padding: 16 },
+  eyebrow: { fontSize: 10, fontWeight: "900", letterSpacing: 1.5 },
+  sectionLead: { fontSize: 16, fontWeight: "900", marginTop: 5 },
+  sectionCopy: { fontSize: 12, lineHeight: 18, marginTop: 4 },
+  inlineAction: { fontSize: 12, fontWeight: "900", marginTop: 8 },
+  sectionHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sectionTitle: { fontSize: 14, fontWeight: "900" },
+  circleRail: { gap: 14, paddingTop: 14, paddingRight: 10 },
+  circleMini: { width: 72, alignItems: "center" },
+  circleMiniName: { marginTop: 7, fontSize: 11, fontWeight: "800", width: 72, textAlign: "center" },
+  circleMiniMeta: { fontSize: 9, textAlign: "center", marginTop: 2 },
+  resonanceRow: { flexDirection: "row", gap: 8, marginTop: 13 },
+  resonanceMetric: { flex: 1, borderRadius: 16, paddingVertical: 12, alignItems: "center" },
+  resonanceValue: { fontSize: 18, fontWeight: "900" },
+  realDataNote: { fontSize: 9, marginTop: 9 },
   tabs: { flexDirection: "row", borderBottomWidth: 1 },
   tab: {
     flex: 1,

@@ -7,6 +7,7 @@ import { Home, Compass, Plus, MessageSquare, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useCreateHub } from '@/context/CreateHubContext';
 import { useRealtimeActivity } from '@/context/RealtimeActivityContext';
+import UserAvatar from '@/components/UserAvatar';
 
 interface MobileBottomBarProps {
   onOpenCreate?: () => void;
@@ -74,7 +75,7 @@ export default function MobileBottomBar({ onOpenCreate }: MobileBottomBarProps) 
         href={user ? `/profile/${user.username}` : '/login'}
         className={`flex flex-col items-center gap-0.5 ${pathname.startsWith('/profile') ? 'text-teal-700 dark:text-teal-400 font-bold' : 'text-slate-500 dark:text-slate-400'}`}
       >
-        <User className="w-5 h-5" />
+        {user ? <UserAvatar avatarUrl={user.avatarUrl} name={user.displayName || user.username} className={`h-6 w-6 rounded-full border ${pathname.startsWith('/profile') ? 'border-teal-600' : 'border-slate-300 dark:border-slate-700'} text-[9px]`} /> : <User className="w-5 h-5" />}
         <span className="text-[10px]">Espacio</span>
       </Link>
     </div>

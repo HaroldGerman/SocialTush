@@ -30,6 +30,7 @@ interface ProfileData {
   whoCanMessage: string;
   whoCanComment: string;
   readReceiptsEnabled: boolean;
+  interests?: string;
 }
 
 interface PostData {
@@ -92,6 +93,9 @@ export default function ProfilePage() {
   const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null);
 
   const isSelf = profile ? (profile.isSelf || (currentUser && currentUser.username.toLowerCase() === username.toLowerCase())) : false;
+  const interests = profile?.interests?.split(',').map(value => value.trim()).filter(Boolean) || [];
+  const totalResonances = userPosts.reduce((total, post) => total + (post.likesCount || 0), 0);
+  const totalEchoes = userPosts.reduce((total, post) => total + (post.commentsCount || 0), 0);
 
   const fetchPosts = useCallback(async (knownProfile: ProfileData) => {
     setPostsLoadError(false);
@@ -250,7 +254,7 @@ export default function ProfilePage() {
       setUserPosts(prev => prev.filter(p => p.postId !== postId));
       setDeleteConfirmPostId(null);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'No se pudo eliminar la publicación.');
+      alert(err.response?.data?.message || 'No se pudo eliminar la contribución.');
     } finally {
       setIsDeletingPost(false);
     }
@@ -315,7 +319,7 @@ export default function ProfilePage() {
       setEditIsPrivate(res.data.isPrivate);
       setIsEditing(false);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Error al actualizar el perfil.');
+      alert(err.response?.data?.message || 'No se pudo actualizar el espacio.');
     } finally {
       setUpdating(false);
     }
@@ -335,7 +339,7 @@ export default function ProfilePage() {
       <div className="min-h-screen bg-[#f4f6f9] dark:bg-[#090d16] flex items-center justify-center">
         <div className="animate-pulse flex flex-col items-center gap-3">
           <div className="h-10 w-10 bg-teal-800 rounded-2xl" />
-          <span className="text-slate-500 text-xs font-semibold">Cargando perfil...</span>
+          <span className="text-slate-500 text-xs font-semibold">Preparando el espacio...</span>
         </div>
       </div>
     );
@@ -408,12 +412,14 @@ export default function ProfilePage() {
       </header>
 
       {/* Main Container */}
-      <main className="max-w-[1200px] mx-auto w-full px-4 md:px-6 py-6 md:py-8 flex-1 space-y-6">
+      <main className="max-w-[880px] mx-auto w-full px-3 sm:px-4 md:px-6 py-4 md:py-8 flex-1 space-y-5">
         
         {/* Profile Card Header */}
-        <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+        <div className="bg-white dark:bg-[#0f1c1d] border border-slate-200/80 dark:border-slate-800 rounded-[28px] overflow-hidden shadow-[0_18px_50px_-32px_rgba(15,118,110,.55)]">
           {/* Top Banner Gradient */}
-          <div className="h-28 md:h-44 bg-gradient-to-r from-teal-900 via-teal-800 to-emerald-800 relative flex items-end">
+          <div className="h-36 md:h-48 bg-[radial-gradient(circle_at_20%_20%,rgba(94,234,212,.5),transparent_28%),radial-gradient(circle_at_85%_75%,rgba(52,211,153,.35),transparent_30%),linear-gradient(135deg,#134e4a,#0f766e_55%,#115e59)] relative flex items-end overflow-hidden">
+            <div className="absolute -left-8 top-16 h-28 w-44 rounded-[50%] border border-white/15 bg-white/5 rotate-12" />
+            <div className="absolute -right-12 -top-8 h-40 w-40 rounded-full border-[28px] border-white/10" />
             <div className="absolute top-3 right-3 md:top-4 md:right-4 flex items-center gap-2">
               {isSelf ? (
                 <>
@@ -464,14 +470,14 @@ export default function ProfilePage() {
                     className="px-3 py-1.5 md:px-4 md:py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold backdrop-blur-md flex items-center gap-1.5 transition-all"
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
-                    <span className="hidden md:inline">Mensaje</span>
+                    <span className="hidden md:inline">Conversación</span>
                   </Link>
                 </>
               )}
             </div>
 
             {/* DisplayName inside the banner at the bottom left */}
-            <div className="pl-24 md:pl-36 pb-2 text-left">
+            <div className="pl-28 md:pl-40 pb-3 text-left">
               <h1 className="text-lg md:text-2xl font-black text-white tracking-tight flex items-center gap-1.5 drop-shadow-md">
                 {profile.displayName}
                 {profile.isPrivate && <Lock className="w-4 h-4 text-white/85" />}
@@ -485,7 +491,7 @@ export default function ProfilePage() {
               
               {/* Avatar & @username */}
               <div className="flex items-start gap-3 md:gap-5">
-                <div className="w-20 h-20 md:w-28 md:h-28 rounded-full bg-gradient-to-tr from-teal-800 to-emerald-600 p-[3px] shadow-xl relative z-10 -mt-10 md:-mt-16">
+                <div className="w-24 h-24 md:w-28 md:h-28 rounded-full bg-gradient-to-tr from-teal-700 to-emerald-400 p-[3px] shadow-xl relative z-10 -mt-12 md:-mt-16">
                   <UserAvatar avatarUrl={profile.avatarUrl} name={profile.displayName} className="w-full h-full rounded-full text-3xl border-2 border-white" />
                 </div>
                 <div className="pt-1 md:pt-1.5 relative z-10">
@@ -494,27 +500,29 @@ export default function ProfilePage() {
               </div>
 
               {/* Stats Bar */}
-              <div className="flex items-center justify-around md:justify-end gap-2 md:gap-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-2.5 md:px-6 md:py-3 rounded-2xl w-full md:w-auto">
+              <div className="grid grid-cols-4 gap-1 bg-[#f4f7f6] dark:bg-[#0b1516] border border-slate-200/80 dark:border-slate-800 px-2 py-3 rounded-[20px] w-full md:w-auto md:min-w-[470px] shadow-sm">
                 <div className="text-center flex-1 md:flex-none">
                   <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profile.postCount}</span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Momentos</span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Contribuciones</span>
                 </div>
-                <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
                 <div className="text-center flex-1 md:flex-none">
                   <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profile.followersCount}</span>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Conexiones</span>
                 </div>
-                <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
                 <div className="text-center flex-1 md:flex-none">
                   <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profile.followingCount}</span>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{currentUser?.username?.toLowerCase() === profile.username.toLowerCase() ? 'Tus conexiones' : 'Conexiones'}</span>
+                </div>
+                <div className="text-center flex-1 md:flex-none">
+                  <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profileCircles.length}</span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Círculos</span>
                 </div>
               </div>
             </div>
 
             {/* Biography */}
             <p className="text-xs md:text-sm text-slate-600 dark:text-slate-300 font-medium max-w-2xl leading-relaxed whitespace-pre-wrap">
-              {profile.bio || ''}
+              {profile.bio || (isSelf ? <button onClick={() => setIsEditing(true)} className="font-bold text-teal-700 dark:text-teal-400">Cuenta algo sobre ti</button> : '')}
             </p>
 
             {/* Mobile Edit Profile Button Call-to-action */}
@@ -525,18 +533,61 @@ export default function ProfilePage() {
                   className="w-full py-2.5 bg-teal-800 hover:bg-teal-900 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
-                  Editar perfil
+                  Editar espacio
                 </button>
               </div>
             )}
           </div>
         </div>
 
+        {(isSelf || interests.length > 0) && (
+          <section className="rounded-[24px] border border-teal-100 bg-gradient-to-br from-white to-teal-50 p-5 shadow-sm dark:border-teal-900/50 dark:from-[#0f1c1d] dark:to-[#102827]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[.18em] text-teal-700 dark:text-teal-400">{isSelf ? 'Tu movimiento' : 'Su movimiento'}</p>
+                <h2 className="mt-1 text-base font-extrabold text-slate-900 dark:text-white">{interests.length ? interests.slice(0, 3).join(' · ') : 'Personaliza tu espacio'}</h2>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{interests.length ? 'Temas que forman parte de este espacio.' : 'Añade una presentación para que tus conexiones te conozcan mejor.'}</p>
+              </div>
+              {isSelf && <button onClick={() => setIsEditing(true)} className="shrink-0 rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs font-bold text-teal-800 dark:border-teal-800 dark:bg-[#0b1516] dark:text-teal-300">Editar espacio</button>}
+            </div>
+          </section>
+        )}
+
+        {!profile.isPrivate || profile.canViewContent ? (
+          <section className="rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0f1c1d]">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-black text-slate-900 dark:text-white">{isSelf ? 'Tus Círculos' : 'Círculos'}</h2>
+              <button onClick={() => setActiveTab('CIRCULOS')} className="text-xs font-bold text-teal-700 dark:text-teal-400">Ver todos</button>
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-1 [scrollbar-width:none]">
+              {profileCircles.slice(0, 6).map(circle => (
+                <Link key={circle.id} href={`/circles/${circle.slug}`} className="w-20 shrink-0 text-center">
+                  <UserAvatar avatarUrl={circle.avatarUrl} name={circle.name} className="mx-auto h-14 w-14 rounded-2xl border border-teal-100 text-xs shadow-sm dark:border-teal-900" />
+                  <span className="mt-2 block truncate text-[11px] font-bold text-slate-700 dark:text-slate-200">{circle.name}</span>
+                  <span className="block text-[9px] text-slate-400">{circle.membersCount} {circle.membersCount === 1 ? 'integrante' : 'integrantes'}</span>
+                </Link>
+              ))}
+              {isSelf && <Link href="/circles?create=1" className="w-20 shrink-0 text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-dashed border-teal-400 text-teal-700 dark:text-teal-300"><Plus className="h-5 w-5" /></span><span className="mt-2 block text-[11px] font-bold text-slate-600 dark:text-slate-300">Crear círculo</span></Link>}
+              {!isSelf && profileCircles.length === 0 && <p className="text-xs text-slate-500">No hay círculos visibles.</p>}
+            </div>
+          </section>
+        ) : null}
+
+        {profile.canViewContent && !postsLoadError && (
+          <section className="rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0f1c1d]">
+            <div className="flex items-center gap-2"><Activity className="h-4 w-4 text-teal-600"/><h2 className="text-sm font-black text-slate-900 dark:text-white">Resonancia de {isSelf ? 'tu' : 'este'} espacio</h2></div>
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              {[['Resonancias', totalResonances], ['Ecos', totalEchoes], ['Conexiones', profile.followersCount]].map(([label, value]) => <div key={String(label)} className="rounded-2xl bg-[#f4f7f6] p-3 text-center dark:bg-[#0b1516]"><strong className="block text-lg text-slate-900 dark:text-white">{value}</strong><span className="text-[10px] font-bold text-slate-500">{label}</span></div>)}
+            </div>
+            <p className="mt-3 text-[10px] text-slate-400">Acumulados reales de las contribuciones disponibles.</p>
+          </section>
+        )}
+
         {/* Tab Navigation */}
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
           <div className="flex items-center gap-2 w-full md:w-auto">
             {[
-              { id: 'MOMENTOS', label: 'Momentos', icon: Grid },
+              { id: 'MOMENTOS', label: 'Contribuciones', icon: Grid },
               { id: 'CIRCULOS', label: 'Círculos', icon: Compass },
             ].map(tab => (
               <button
@@ -583,8 +634,8 @@ export default function ProfilePage() {
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
               <Lock className="h-6 w-6" />
             </div>
-            <h3 className="mt-4 text-sm font-extrabold text-slate-800 dark:text-white">Esta cuenta es privada</h3>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Sigue a @{profile.username} para ver sus Momentos y contenido.</p>
+            <h3 className="mt-4 text-sm font-extrabold text-slate-800 dark:text-white">Este espacio es privado</h3>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Conecta con @{profile.username} para ver sus contribuciones, momentos y círculos.</p>
             {!isSelf && (
               <button
                 onClick={handleFollowToggle}
@@ -602,7 +653,7 @@ export default function ProfilePage() {
         ) : postsLoadError ? (
           <div className="rounded-3xl border border-rose-200 bg-white p-10 text-center dark:border-rose-900 dark:bg-[#0f172a]">
             <ShieldAlert className="mx-auto h-8 w-8 text-rose-400" />
-            <p className="mt-3 text-xs font-bold text-slate-700 dark:text-slate-200">No se pudieron cargar los Momentos.</p>
+            <p className="mt-3 text-xs font-bold text-slate-700 dark:text-slate-200">No se pudieron cargar las contribuciones.</p>
             <button onClick={() => fetchPosts(profile)} className="mt-4 rounded-xl bg-teal-700 px-4 py-2 text-xs font-bold text-white hover:bg-teal-800">Reintentar</button>
           </div>
         ) : (
@@ -679,7 +730,7 @@ export default function ProfilePage() {
                     <form onSubmit={(e) => handleAddComment(post.postId, e)} className="flex items-center gap-2">
                       <input
                         type="text"
-                        placeholder="Escribe un comentario..."
+                        placeholder="Escribe un eco…"
                         value={commentInputMap[post.postId] || ''}
                         onChange={(e) => setCommentInputMap(prev => ({ ...prev, [post.postId]: e.target.value }))}
                         className="flex-1 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:border-teal-700 text-slate-800 dark:text-slate-100"
@@ -690,7 +741,7 @@ export default function ProfilePage() {
                     </form>
 
                     {loadingCommentsMap[post.postId] ? (
-                      <p className="text-[11px] text-slate-400 italic">Cargando comentarios...</p>
+                      <p className="text-[11px] text-slate-400 italic">Cargando ecos...</p>
                     ) : (
                       <div className="space-y-2 max-h-48 overflow-y-auto">
                         {(postCommentsMap[post.postId] || []).map((c: any, i: number) => (
@@ -700,7 +751,7 @@ export default function ProfilePage() {
                           </div>
                         ))}
                         {(!postCommentsMap[post.postId] || postCommentsMap[post.postId].length === 0) && (
-                          <p className="text-[11px] text-slate-400">Sé el primero en comentar.</p>
+                          <p className="text-[11px] text-slate-400">Sé el primero en dejar un eco.</p>
                         )}
                       </div>
                     )}
@@ -712,8 +763,8 @@ export default function ProfilePage() {
             {userPosts.length === 0 && (
               <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center text-slate-400 space-y-2">
                 <Grid className="w-8 h-8 mx-auto text-slate-300" />
-                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No hay momentos publicados aún</p>
-                <p className="text-[11px] text-slate-400">Este usuario no ha compartido ninguna publicación.</p>
+                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Aún no hay contribuciones.</p>
+                <p className="text-[11px] text-slate-400">{isSelf ? 'Comparte tu primera contribución.' : 'Este espacio todavía no tiene contribuciones.'}</p>
               </div>
             )}
           </div>
@@ -768,7 +819,7 @@ export default function ProfilePage() {
                     onClick={() => fileInputRef.current?.click()}
                     className="text-xs font-bold text-teal-800 dark:text-teal-400 hover:underline"
                   >
-                    Cambiar foto
+                    Cambiar imagen de espacio
                   </button>
                   <input
                     type="file"
@@ -781,7 +832,7 @@ export default function ProfilePage() {
 
                 {/* Name field */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nombre Visible</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nombre</label>
                   <input 
                     type="text" 
                     value={editDisplayName}
@@ -793,13 +844,13 @@ export default function ProfilePage() {
 
                 {/* Bio field */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Biografía</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Presentación</label>
                   <textarea 
                     rows={3}
                     value={editBio}
                     onChange={(e) => setEditBio(e.target.value)}
                     className="w-full min-h-[80px] px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-medium focus:outline-none focus:border-teal-700 resize-none text-slate-800 dark:text-slate-100 placeholder-slate-400"
-                    placeholder="Cuéntanos sobre ti..."
+                    placeholder="Cuenta algo sobre ti…"
                   />
                 </div>
 
@@ -846,8 +897,8 @@ export default function ProfilePage() {
             className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-sm p-6 space-y-4"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="font-bold text-slate-800 dark:text-white text-base">Eliminar publicación</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">¿Seguro que quieres eliminar esta publicación? Esta acción no se puede deshacer.</p>
+            <h3 className="font-bold text-slate-800 dark:text-white text-base">Eliminar contribución</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">¿Seguro que quieres eliminar esta contribución? Esta acción no se puede deshacer.</p>
             <div className="flex gap-3 pt-1">
               <button
                 onClick={() => setDeleteConfirmPostId(null)}
