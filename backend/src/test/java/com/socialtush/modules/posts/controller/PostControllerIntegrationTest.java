@@ -8,6 +8,7 @@ import com.socialtush.modules.social.entity.Follow;
 import com.socialtush.modules.social.repository.FollowRepository;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
+import com.socialtush.modules.media.service.StorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +18,8 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +27,8 @@ import java.util.Collections;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -45,6 +50,9 @@ public class PostControllerIntegrationTest {
 
     @Autowired
     private FollowRepository followRepository;
+
+    @MockBean
+    private StorageService storageService;
 
     private User testUser;
     private User otherUser;
@@ -204,4 +212,24 @@ public class PostControllerIntegrationTest {
                 obj2.getString("conversationId")
         );
     }
+
+    @Test
+    void draftMediaCreatesConversationAndHistoryReturnsAttachment() throws Exception {
+        when(storageService.uploadFile(anyString(), any(byte[].class), eq("image/jpeg")))
+                .thenReturn("https://cdn.example/chat/photo.jpg");
+        MockMultipartFile file = new MockMultipartFile("file", "photo.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        String response = mockMvc.perform(multipart("/api/v1/chat/direct/other_user/messages/media")
+                        .file(file).param("content", "Foto real"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message.attachments[0].fileType").value("IMAGE"))
+                .andExpect(jsonPath("$.message.attachments[0].fileUrl").value("https://cdn.example/chat/photo.jpg"))
+                .andReturn().getResponse().getContentAsString();
+
+        String conversationId = new org.json.JSONObject(response).getString("conversationId");
+        mockMvc.perform(get("/api/v1/chat/conversations/" + conversationId + "/messages"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].attachments[0].fileName").value("photo.jpg"));
+    }
+
 }

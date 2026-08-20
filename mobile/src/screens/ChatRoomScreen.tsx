@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { getWebSocketUrl } from '../config/api';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../theme';
-import CallScreen from './CallScreen';
 
 interface Message {
   messageId: string;
@@ -41,7 +40,6 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
-  const [activeCall, setActiveCall] = useState(false);
   const [sendError, setSendError] = useState('');
 
   const ws = useRef<WebSocket | null>(null);
@@ -162,15 +160,6 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
     );
   };
 
-  if (activeCall) {
-    return (
-      <CallScreen 
-        recipientUsername={conversation.otherUsername || ''}
-        onHangUp={() => setActiveCall(false)}
-      />
-    );
-  }
-
   if (loading) {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
@@ -192,12 +181,10 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
         
         <View style={styles.headerInfo}>
           <Text style={[styles.title, { color: theme.textPrimary }]}>{conversation.name}</Text>
-          <Text style={[styles.status, { color: theme.emerald }]}>En línea</Text>
+          <Text style={[styles.status, { color: theme.textSecondary }]}>Conversación directa</Text>
         </View>
 
-        <TouchableOpacity disabled={!conversation.conversationId} onPress={() => setActiveCall(true)} style={[styles.callBtn, { backgroundColor: theme.surfaceSecondary, opacity: conversation.conversationId ? 1 : 0.45 }]}>
-          <Ionicons name="call-outline" size={20} color={theme.accent} />
-        </TouchableOpacity>
+        <Text style={[styles.webCallNotice, { color: theme.textMuted }]}>Llamadas disponibles en web</Text>
       </View>
 
       {/* Messages */}
@@ -265,9 +252,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 1,
   },
-  callBtn: {
-    padding: 6,
-    borderRadius: 10,
+  webCallNotice: {
+    maxWidth: 90,
+    fontSize: 9,
+    textAlign: 'right',
   },
   messageRow: {
     marginVertical: 4,

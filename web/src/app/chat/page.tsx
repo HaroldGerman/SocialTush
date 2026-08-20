@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { Client } from '@stomp/stompjs';
 import NotificationBell from '@/components/NotificationBell';
 import MobileBottomBar from '@/components/MobileBottomBar';
-import CallModal from '@/components/CallModal';
+import CallModal, { CallMode } from '@/components/CallModal';
 import UserAvatar from '@/components/UserAvatar';
 import { 
   Search, Plus, Send, Smile, Paperclip, Phone, Video, Info, User, ChevronLeft, LogOut, CheckCheck, 
@@ -40,10 +40,22 @@ interface Message {
   content: string;
   messageType: string;
   createdAt: string;
+  attachments?: MessageAttachment[];
 }
 
+interface MessageAttachment {
+  id: string;
+  fileUrl: string;
+  fileType: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'STICKER' | 'GIF';
+  fileName: string;
+  fileSize: number;
+  durationSeconds?: number;
+}
+
+const CHAT_EMOJIS = ['😊', '😂', '❤️', '😭', '🔥', '👍', '👎', '🎉', '😮', '🙏', '💀'];
+
 function ChatContent() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, accessToken } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -62,10 +74,21 @@ function ChatContent() {
   const [conversationMenuId, setConversationMenuId] = useState<string | null>(null);
   const [deleteConversationId, setDeleteConversationId] = useState<string | null>(null);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null);
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
+  const [fullscreenImageUrl, setFullscreenImageUrl] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [audioDurationSeconds, setAudioDurationSeconds] = useState<number | null>(null);
+  const [mediaError, setMediaError] = useState('');
+  const [failedAttachmentUrls, setFailedAttachmentUrls] = useState<Record<string, boolean>>({});
 
   // Call states
   const [activeCallUsername, setActiveCallUsername] = useState<string | null>(null);
   const [isIncomingCall, setIsIncomingCall] = useState(false);
+  const [activeCallMode, setActiveCallMode] = useState<CallMode>('AUDIO');
+  const [incomingOfferSdp, setIncomingOfferSdp] = useState<string | null>(null);
   const [stompConnected, setStompConnected] = useState(false);
 
   // Modals state
@@ -80,6 +103,14 @@ function ChatContent() {
   const stompClient = useRef<Client | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const messageInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const microphoneStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingSecondsRef = useRef(0);
 
   // Redirect if not logged in
   useEffect(() => {
@@ -159,6 +190,7 @@ function ChatContent() {
 
     const client = new Client({
       brokerURL: WS_BASE_URL,
+      connectHeaders: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       reconnectDelay: 5000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
@@ -177,6 +209,8 @@ function ChatContent() {
         if (signal.type === 'OFFER') {
           setActiveCallUsername(signal.senderUsername);
           setIsIncomingCall(true);
+          setActiveCallMode(signal.callMode === 'VIDEO' ? 'VIDEO' : 'AUDIO');
+          setIncomingOfferSdp(signal.sdp || null);
         }
       });
     };
@@ -191,7 +225,7 @@ function ChatContent() {
     return () => {
       client.deactivate();
     };
-  }, [user]);
+  }, [user, accessToken]);
 
   // Load messages when active conversation changes
   useEffect(() => {
@@ -280,9 +314,155 @@ function ChatContent() {
     }
   };
 
+  const stopMicrophone = useCallback(() => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    microphoneStreamRef.current?.getTracks().forEach(track => track.stop());
+    microphoneStreamRef.current = null;
+    mediaRecorderRef.current = null;
+    setIsRecording(false);
+  }, []);
+
+  const clearSelectedAttachment = useCallback(() => {
+    setSelectedAttachment(null);
+    setAudioDurationSeconds(null);
+    setAttachmentPreviewUrl(previous => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
+    });
+    if (attachmentInputRef.current) attachmentInputRef.current.value = '';
+  }, []);
+
+  useEffect(() => {
+    setShowEmojiPicker(false);
+    setMediaError('');
+    clearSelectedAttachment();
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+    stopMicrophone();
+  }, [activeConversation?.conversationId, activeConversation?.otherUsername, clearSelectedAttachment, stopMicrophone]);
+
+  useEffect(() => () => {
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+    stopMicrophone();
+    if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
+  }, [attachmentPreviewUrl, stopMicrophone]);
+
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!emojiPickerRef.current?.contains(event.target as Node)) setShowEmojiPicker(false);
+    };
+    document.addEventListener('mousedown', closeOnOutside);
+    return () => document.removeEventListener('mousedown', closeOnOutside);
+  }, [showEmojiPicker]);
+
+  const insertEmoji = (emoji: string) => {
+    const input = messageInputRef.current;
+    const start = input?.selectionStart ?? inputText.length;
+    const end = input?.selectionEnd ?? start;
+    setInputText(`${inputText.slice(0, start)}${emoji}${inputText.slice(end)}`);
+    setShowEmojiPicker(false);
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(start + emoji.length, start + emoji.length);
+    });
+  };
+
+  const selectAttachment = (file?: File) => {
+    if (!file) return;
+    setMediaError('');
+    const imageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const videoTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
+    if (!imageTypes.includes(file.type) && !videoTypes.includes(file.type)) {
+      setMediaError('Selecciona una imagen o un video compatible.');
+      return;
+    }
+    const maxBytes = imageTypes.includes(file.type) ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setMediaError(`El archivo supera el límite de ${maxBytes / 1024 / 1024} MB.`);
+      return;
+    }
+    clearSelectedAttachment();
+    setSelectedAttachment(file);
+    setAttachmentPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const supportedRecorderMime = () => {
+    if (typeof MediaRecorder === 'undefined') return null;
+    return ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/webm']
+      .find(type => MediaRecorder.isTypeSupported(type)) || '';
+  };
+
+  const startRecording = async () => {
+    setMediaError('');
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setMediaError('La grabación de audio no está disponible en este navegador.');
+      return;
+    }
+    const mimeType = supportedRecorderMime();
+    if (mimeType === null) {
+      setMediaError('La grabación de audio no está disponible en este navegador.');
+      return;
+    }
+    try {
+      clearSelectedAttachment();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      microphoneStreamRef.current = stream;
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      recordingChunksRef.current = [];
+      setRecordingSeconds(0);
+      recordingSecondsRef.current = 0;
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const actualMime = recorder.mimeType || mimeType || 'audio/webm';
+        const blob = new Blob(recordingChunksRef.current, { type: actualMime });
+        if (blob.size > 0) {
+          const extension = actualMime.includes('ogg') ? 'ogg' : actualMime.includes('mp4') ? 'm4a' : 'webm';
+          const file = new File([blob], `nota-de-voz.${extension}`, { type: actualMime.split(';')[0] });
+          setSelectedAttachment(file);
+          setAttachmentPreviewUrl(URL.createObjectURL(file));
+          setAudioDurationSeconds(Math.max(1, recordingSecondsRef.current));
+        }
+        stopMicrophone();
+      };
+      recorder.onerror = () => {
+        setMediaError('No se pudo completar la grabación de audio.');
+        stopMicrophone();
+      };
+      recorder.start(250);
+      setIsRecording(true);
+      recordingTimerRef.current = setInterval(() => {
+        recordingSecondsRef.current += 1;
+        setRecordingSeconds(recordingSecondsRef.current);
+      }, 1000);
+    } catch (error) {
+      console.error('No se pudo acceder al micrófono:', error);
+      setMediaError('No se pudo acceder al micrófono. Revisa los permisos del navegador.');
+      stopMicrophone();
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+  };
+
+  const cancelRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder) recorder.onstop = null;
+    if (recorder?.state === 'recording') recorder.stop();
+    recordingChunksRef.current = [];
+    setRecordingSeconds(0);
+    stopMicrophone();
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !activeConversation) return;
+    if ((!inputText.trim() && !selectedAttachment) || !activeConversation || isRecording) return;
 
     const content = inputText.trim();
     setIsTyping(false);
@@ -290,7 +470,26 @@ function ChatContent() {
     setChatError('');
 
     try {
-      if (activeConversation.isDraft || !activeConversation.conversationId) {
+      if (selectedAttachment) {
+        const formData = new FormData();
+        if (content) formData.append('content', content);
+        formData.append('file', selectedAttachment);
+        if (audioDurationSeconds != null) formData.append('durationSeconds', String(audioDurationSeconds));
+        const endpoint = activeConversation.isDraft || !activeConversation.conversationId
+          ? `/chat/direct/${encodeURIComponent(activeConversation.otherUsername || '')}/messages/media`
+          : `/chat/conversations/${activeConversation.conversationId}/messages/media`;
+        const res = await api.post(endpoint, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        const message = res.data.message || res.data;
+        const conversationId = res.data.conversationId || activeConversation.conversationId;
+        setMessages(prev => prev.some(item => item.messageId === message.messageId) ? prev : [...prev, message]);
+        setInputText('');
+        clearSelectedAttachment();
+        if (activeConversation.isDraft && conversationId) {
+          const refreshed = await fetchConversations();
+          const real = refreshed.find(c => c.conversationId === conversationId);
+          if (real) setActiveConversation(real);
+        }
+      } else if (activeConversation.isDraft || !activeConversation.conversationId) {
         const res = await api.post(`/chat/direct/${encodeURIComponent(activeConversation.otherUsername || '')}/messages`, { content, messageType: 'TEXT' });
         const conversationId = res.data.conversationId as string;
         setMessages([res.data.message]);
@@ -357,10 +556,12 @@ function ChatContent() {
     }
   };
 
-  const triggerCall = () => {
-    if (!activeConversation || activeConversation.isDraft || !activeConversation.conversationId) return;
+  const triggerCall = (mode: CallMode) => {
+    if (!activeConversation || activeConversation.isGroup || !activeConversation.otherUsername) return;
     setActiveCallUsername(activeConversation.otherUsername || null);
     setIsIncomingCall(false);
+    setActiveCallMode(mode);
+    setIncomingOfferSdp(null);
   };
 
   const handleDeleteConversation = async () => {
@@ -559,7 +760,6 @@ function ChatContent() {
                       {c.isGroup
                         ? <div className="h-10 w-10 rounded-full bg-teal-700 text-white flex items-center justify-center shadow-sm"><Users className="h-5 w-5 text-teal-100" /></div>
                         : <UserAvatar avatarUrl={c.avatarUrl} name={c.name} className="h-10 w-10 rounded-full text-xs shadow-sm" />}
-                      <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -617,19 +817,17 @@ function ChatContent() {
                     {activeConversation.isGroup
                       ? <div className="h-10 w-10 rounded-full bg-teal-700 flex items-center justify-center text-white"><Users className="h-5 w-5 text-teal-100" /></div>
                       : <UserAvatar avatarUrl={activeConversation.avatarUrl} name={activeConversation.name} className="h-10 w-10 rounded-full text-xs shadow-sm" />}
-                    <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
                   </div>
 
                   <div>
                     <h3 className="text-xs font-extrabold text-slate-900 dark:text-white block flex items-center gap-1.5">
                       {activeConversation.name}
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                     </h3>
                     <span className="text-[10px] text-teal-700 dark:text-teal-400 block font-semibold">
                       {otherUserTyping ? (
                         <span className="text-teal-700 font-bold animate-pulse">escribiendo...</span>
                       ) : (
-                        `${activeConversation.isGroup ? 'Círculo activo' : 'Conexión directa'} · En línea`
+                        activeConversation.isGroup ? 'Conversación grupal' : 'Conexión directa'
                       )}
                     </span>
                     {!activeConversation.isGroup && activeConversation.otherUsername && <span className="text-[9px] text-slate-400">@{activeConversation.otherUsername}</span>}
@@ -638,10 +836,10 @@ function ChatContent() {
 
                 {/* Right Action Icons */}
                 <div className="flex items-center gap-2">
-                  <button disabled={activeConversation.isDraft} onClick={triggerCall} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-colors" title="Llamada de voz">
+                  <button disabled={activeConversation.isGroup || !activeConversation.otherUsername} onClick={() => triggerCall('AUDIO')} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-colors" title="Llamada de voz">
                     <Phone className="h-4 w-4" />
                   </button>
-                  <button disabled={activeConversation.isDraft} onClick={triggerCall} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-colors" title="Videollamada">
+                  <button disabled={activeConversation.isGroup || !activeConversation.otherUsername} onClick={() => triggerCall('VIDEO')} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 disabled:opacity-40 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-colors" title="Videollamada">
                     <Video className="h-4 w-4" />
                   </button>
                   <button onClick={() => setShowRightPanel(!showRightPanel)} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-colors" title="Detalles">
@@ -675,7 +873,25 @@ function ChatContent() {
                         {!isOwn && activeConversation.isGroup && (
                           <strong className="text-[10px] text-teal-700 dark:text-teal-400 block mb-1">@{m.senderUsername}</strong>
                         )}
-                        <p className="whitespace-pre-wrap">{m.content}</p>
+                        {m.attachments?.map(attachment => (
+                          <div key={attachment.id} className={m.content ? 'mb-2' : ''}>
+                            {attachment.fileType === 'IMAGE' && (
+                              failedAttachmentUrls[attachment.fileUrl]
+                                ? <div className="rounded-xl bg-slate-200/60 p-6 text-center text-[10px] text-slate-500 dark:bg-slate-800">No se pudo cargar la imagen.</div>
+                                : <button type="button" onClick={() => setFullscreenImageUrl(attachment.fileUrl)} className="block overflow-hidden rounded-xl bg-black/10">
+                                    <img src={attachment.fileUrl} alt={attachment.fileName || 'Imagen adjunta'} className="max-h-72 w-full object-contain" onError={() => setFailedAttachmentUrls(previous => ({ ...previous, [attachment.fileUrl]: true }))} />
+                                  </button>
+                            )}
+                            {attachment.fileType === 'VIDEO' && <video src={attachment.fileUrl} controls playsInline preload="metadata" className="max-h-72 w-full rounded-xl bg-black" />}
+                            {attachment.fileType === 'AUDIO' && (
+                              <div className="min-w-52">
+                                <audio src={attachment.fileUrl} controls preload="metadata" className="w-full" />
+                                {attachment.durationSeconds != null && <span className="mt-1 block text-[9px] opacity-75">{attachment.durationSeconds} s</span>}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
                       </div>
 
                       <div className="flex items-center gap-1.5 mt-1 px-1">
@@ -699,17 +915,41 @@ function ChatContent() {
 
               {/* Chat Input Bar */}
               {chatError && <div role="alert" className="mx-4 mb-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">{chatError}</div>}
+              {mediaError && <div role="alert" className="mx-4 mb-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">{mediaError}</div>}
+              {isRecording && (
+                <div className="mx-4 mb-2 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs dark:border-rose-900 dark:bg-rose-950/40">
+                  <span className="font-bold text-rose-700 dark:text-rose-300">Grabando… {String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:{String(recordingSeconds % 60).padStart(2, '0')}</span>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={cancelRecording} className="rounded-lg px-3 py-1.5 font-bold text-slate-600 dark:text-slate-300">Cancelar</button>
+                    <button type="button" onClick={stopRecording} className="rounded-lg bg-rose-600 px-3 py-1.5 font-bold text-white">Detener</button>
+                  </div>
+                </div>
+              )}
+              {selectedAttachment && attachmentPreviewUrl && (
+                <div className="mx-4 mb-2 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+                  {selectedAttachment.type.startsWith('image/') && <img src={attachmentPreviewUrl} alt="Vista previa" className="h-16 w-16 rounded-lg object-cover" />}
+                  {selectedAttachment.type.startsWith('video/') && <video src={attachmentPreviewUrl} className="h-16 w-24 rounded-lg object-cover" muted playsInline />}
+                  {selectedAttachment.type.startsWith('audio/') && <audio src={attachmentPreviewUrl} controls className="h-10 flex-1" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{selectedAttachment.name}</p>
+                    <p className="text-[10px] text-slate-500">{(selectedAttachment.size / 1024 / 1024).toFixed(2)} MB</p>
+                  </div>
+                  <button type="button" onClick={clearSelectedAttachment} className="rounded-lg p-2 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800" aria-label="Quitar archivo"><X className="h-4 w-4" /></button>
+                </div>
+              )}
               <div 
                 className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-sm flex items-center gap-3"
                 style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
               >
-                <button className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-all">
+                <button type="button" onClick={() => attachmentInputRef.current?.click()} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-all" aria-label="Adjuntar foto o video">
                   <Plus className="h-4 w-4" />
                 </button>
+                <input ref={attachmentInputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" className="hidden" onChange={event => selectAttachment(event.target.files?.[0])} />
 
                 <form onSubmit={handleSendMessage} className="flex-1 flex items-center gap-2">
                   <div className="flex-grow relative flex items-center">
-                    <input 
+                    <input
+                      ref={messageInputRef}
                       type="text" 
                       value={inputText}
                       onChange={handleInputChange}
@@ -717,15 +957,23 @@ function ChatContent() {
                       className="w-full pl-4 pr-24 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-teal-700 transition-all"
                     />
                     <div className="absolute right-3 flex items-center gap-2 text-slate-400">
-                      <button type="button" className="hover:text-teal-700 transition-colors"><Smile className="h-4 w-4" /></button>
-                      <button type="button" className="hover:text-teal-700 transition-colors"><ImageIcon className="h-4 w-4" /></button>
-                      <button type="button" className="hover:text-teal-700 transition-colors"><Mic className="h-4 w-4" /></button>
+                      <div className="relative" ref={emojiPickerRef}>
+                        <button type="button" onClick={() => setShowEmojiPicker(value => !value)} className="hover:text-teal-700 transition-colors" aria-label="Elegir emoji"><Smile className="h-4 w-4" /></button>
+                        {showEmojiPicker && (
+                          <div className="absolute bottom-9 right-0 z-50 grid w-52 grid-cols-6 gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                            {CHAT_EMOJIS.map(emoji => <button key={emoji} type="button" onClick={() => insertEmoji(emoji)} className="rounded-lg p-1.5 text-lg hover:bg-slate-100 dark:hover:bg-slate-800">{emoji}</button>)}
+                          </div>
+                        )}
+                      </div>
+                      <button type="button" onClick={() => attachmentInputRef.current?.click()} className="hover:text-teal-700 transition-colors" aria-label="Elegir foto o video"><ImageIcon className="h-4 w-4" /></button>
+                      <button type="button" disabled={isRecording} onClick={startRecording} className="hover:text-teal-700 transition-colors disabled:opacity-40" aria-label="Grabar nota de voz"><Mic className="h-4 w-4" /></button>
                     </div>
                   </div>
 
                   <button 
                     type="submit"
-                    className="p-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md flex items-center justify-center"
+                    disabled={isRecording || (!inputText.trim() && !selectedAttachment)}
+                    className="p-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md flex items-center justify-center disabled:opacity-40"
                   >
                     <Send className="h-4 w-4" />
                   </button>
@@ -754,63 +1002,10 @@ function ChatContent() {
             <div className="text-center p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-3">
               <div className="relative mx-auto w-16 h-16">
                 <UserAvatar avatarUrl={activeConversation.avatarUrl} name={activeConversation.name} className="w-full h-full rounded-full text-lg shadow-md" />
-                <span className="absolute bottom-1 right-1 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
               </div>
               <div>
                 <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">{activeConversation.name}</h4>
-                <span className="text-[10px] text-teal-700 dark:text-teal-400 font-semibold">@{activeConversation.name.toLowerCase()} · En línea</span>
-              </div>
-              <span className="inline-block px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-900 text-teal-800 dark:text-teal-300 font-bold text-[9px]">
-                Conexión directa · Desde 12 may 2024
-              </span>
-            </div>
-
-            {/* Shared Nodes */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
-              <div className="flex items-center justify-between text-xs font-extrabold text-slate-900 dark:text-white">
-                <span>Nodos en común</span>
-                <span className="text-teal-700 dark:text-teal-400 text-[10px]">3</span>
-              </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 shadow-sm">
-                  <Network className="h-3.5 w-3.5 text-teal-600" />
-                  <span className="text-[11px] font-bold">Diseño 3D</span>
-                </div>
-                <div className="flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 shadow-sm">
-                  <Network className="h-3.5 w-3.5 text-teal-600" />
-                  <span className="text-[11px] font-bold">Ilustración Digital</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Shared Circles */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
-              <div className="flex items-center justify-between text-xs font-extrabold text-slate-900 dark:text-white">
-                <span>Círculos en común</span>
-                <span className="text-teal-700 dark:text-teal-400 text-[10px]">2</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <span className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-300 font-bold text-[10px]">
-                  Círculo Creativo
-                </span>
-                <span className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-300 font-bold text-[10px]">
-                  Fotógrafos Urbanos
-                </span>
-              </div>
-            </div>
-
-            {/* Recent Activity */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
-              <span className="text-xs font-extrabold text-slate-900 dark:text-white block">Actividad reciente</span>
-              <div className="space-y-2 text-[10px]">
-                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                  <Heart className="h-3 w-3 text-rose-500" />
-                  <span>Respondió a tu historia · hace 2 min</span>
-                </div>
-                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                  <MessageSquare className="h-3 w-3 text-teal-700" />
-                  <span>Comentó en tu post · Ayer</span>
-                </div>
+                <span className="text-[10px] text-teal-700 dark:text-teal-400 font-semibold">@{activeConversation.otherUsername || activeConversation.name}</span>
               </div>
             </div>
           </aside>
@@ -819,6 +1014,12 @@ function ChatContent() {
       </div>
 
       {/* ================= MODALS ================= */}
+      {fullscreenImageUrl && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4" onClick={() => setFullscreenImageUrl(null)}>
+          <button type="button" onClick={() => setFullscreenImageUrl(null)} className="absolute right-4 top-4 rounded-full bg-black/50 p-2 text-white" aria-label="Cerrar imagen"><X className="h-5 w-5" /></button>
+          <img src={fullscreenImageUrl} alt="Imagen adjunta ampliada" className="max-h-[90dvh] max-w-full object-contain" onClick={event => event.stopPropagation()} />
+        </div>
+      )}
       {/* New Chat Modal */}
       {isNewChatModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -915,10 +1116,13 @@ function ChatContent() {
         <CallModal 
           recipientUsername={activeCallUsername}
           isIncoming={isIncomingCall}
+          callMode={activeCallMode}
+          initialOfferSdp={incomingOfferSdp}
           stompClientRef={stompClient}
           onClose={() => {
             setActiveCallUsername(null);
             setIsIncomingCall(false);
+            setIncomingOfferSdp(null);
           }}
         />
       )}

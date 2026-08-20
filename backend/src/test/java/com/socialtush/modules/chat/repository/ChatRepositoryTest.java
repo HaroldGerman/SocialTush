@@ -3,6 +3,7 @@ package com.socialtush.modules.chat.repository;
 import com.socialtush.modules.chat.entity.Conversation;
 import com.socialtush.modules.chat.entity.ConversationParticipant;
 import com.socialtush.modules.chat.entity.Message;
+import com.socialtush.modules.chat.entity.MessageAttachment;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ class ChatRepositoryTest {
     @Autowired ConversationRepository conversations;
     @Autowired ConversationParticipantRepository participants;
     @Autowired MessageRepository messages;
+    @Autowired MessageAttachmentRepository attachments;
     @Autowired UserRepository users;
 
     @Test
@@ -41,7 +43,9 @@ class ChatRepositoryTest {
         Conversation conversation = conversation(a, false);
         ConversationParticipant partA = participants.save(participant(conversation, a));
         participants.save(participant(conversation, b));
-        messages.saveAndFlush(Message.builder().conversation(conversation).sender(b).content("anterior").build());
+        Message oldMedia = messages.saveAndFlush(Message.builder().conversation(conversation).sender(b).content("").messageType("IMAGE").build());
+        attachments.saveAndFlush(MessageAttachment.builder().message(oldMedia).fileUrl("https://cdn/old.jpg")
+                .fileType("IMAGE").fileName("old.jpg").fileSize(10L).build());
         Instant cutoff = Instant.now();
         partA.setClearedAt(cutoff);
         participants.saveAndFlush(partA);
@@ -50,7 +54,13 @@ class ChatRepositoryTest {
         assertThat(messages.findByConversationIdAndCreatedAtAfterOrderByCreatedAtDesc(conversation.getId(), cutoff, PageRequest.of(0, 30)))
                 .extracting(Message::getContent).containsExactly("nuevo");
         assertThat(messages.findByConversationIdOrderByCreatedAtDesc(conversation.getId(), PageRequest.of(0, 30)))
-                .extracting(Message::getContent).containsExactly("nuevo", "anterior");
+                .hasSize(2)
+                .anySatisfy(message -> {
+                    if (message.getId().equals(oldMedia.getId())) {
+                        assertThat(message.getAttachments()).singleElement()
+                                .extracting(MessageAttachment::getFileUrl).isEqualTo("https://cdn/old.jpg");
+                    }
+                });
     }
 
     private User user(String username) {

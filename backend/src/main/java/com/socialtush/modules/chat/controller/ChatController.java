@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import com.socialtush.modules.chat.entity.Conversation;
 import com.socialtush.modules.chat.entity.ConversationParticipant;
 import com.socialtush.modules.chat.entity.Message;
+import com.socialtush.modules.chat.entity.MessageAttachment;
 import com.socialtush.modules.chat.repository.ConversationParticipantRepository;
 import com.socialtush.modules.chat.repository.ConversationRepository;
 import com.socialtush.modules.chat.repository.MessageRepository;
@@ -27,8 +28,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import com.socialtush.modules.notifications.repository.NotificationRepository;
 
@@ -44,6 +48,7 @@ public class ChatController {
     private final ProfileRepository profileRepository;
     private final NotificationRepository notificationRepository;
     private final ChatService chatService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @GetMapping("/conversations")
     public ResponseEntity<?> getConversations(@AuthenticationPrincipal User currentUser) {
@@ -97,7 +102,7 @@ public class ChatController {
             }
 
             Optional<Message> latestMessage = messageRepository.findFirstByConversationIdOrderByCreatedAtDesc(c.getId());
-            String latestText = latestMessage.map(Message::getContent).orElse("No hay mensajes");
+            String latestText = latestMessage.map(this::messagePreview).orElse("No hay mensajes");
             String latestTime = latestMessage.map(m -> m.getCreatedAt().toString()).orElse(c.getUpdatedAt().toString());
             String latestSender = latestMessage.map(m -> m.getSender() != null ? m.getSender().getUsername() : "").orElse("");
             long unreadCount = notificationRepository.countByReceiverAndNotificationTypeAndTargetIdAndIsReadFalse(currentUser, "MESSAGE", c.getId());
@@ -224,19 +229,9 @@ public class ChatController {
                 ? messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
                 : messageRepository.findByConversationIdAndCreatedAtAfterOrderByCreatedAtDesc(conversationId, participant.get().getClearedAt(), pageable);
 
-        List<MessageResponseDto> dtos = messagePage.getContent().stream().map(m -> {
-            Profile profile = profileRepository.findById(m.getSender().getId()).orElse(null);
-            return MessageResponseDto.builder()
-                    .messageId(m.getId())
-                    .senderId(m.getSender().getId())
-                    .senderUsername(m.getSender().getUsername())
-                    .senderDisplayName(profile != null ? profile.getDisplayName() : m.getSender().getUsername())
-                    .senderAvatarUrl(profile != null ? profile.getAvatarUrl() : "")
-                    .content(m.getContent())
-                    .messageType(m.getMessageType())
-                    .createdAt(m.getCreatedAt().toString())
-                    .build();
-        }).collect(Collectors.toList());
+        List<MessageResponseDto> dtos = messagePage.getContent().stream()
+                .map(this::toMessageDto)
+                .collect(Collectors.toList());
 
         // Reverse to return messages in chronological order
         Collections.reverse(dtos);
@@ -255,8 +250,11 @@ public class ChatController {
         }
 
         if (request == null) return ResponseEntity.badRequest().body(Map.of("message", "El mensaje no puede estar vacío"));
-        return ResponseEntity.ok(toMessageDto(chatService.sendMessage(currentUser, conversationId,
-                request.getContent(), request.getMessageType(), request.getStoryPreviewId())));
+        Message message = chatService.sendMessage(currentUser, conversationId,
+                request.getContent(), request.getMessageType(), request.getStoryPreviewId());
+        MessageResponseDto dto = toMessageDto(message);
+        broadcastMessage(conversationId, dto);
+        return ResponseEntity.ok(dto);
     }
 
     @RequestMapping(value = "/conversations/{conversationId}/read", method = {RequestMethod.POST, RequestMethod.PATCH, RequestMethod.PUT})
@@ -288,10 +286,65 @@ public class ChatController {
         ChatService.SendResult result = chatService.sendDirectMessage(currentUser, username, request.getContent(),
                 request.getMessageType(), request.getStoryPreviewId());
 
+        MessageResponseDto dto = toMessageDto(result.message());
+        broadcastMessage(result.conversation().getId(), dto);
         return ResponseEntity.ok(Map.of(
             "conversationId", result.conversation().getId(),
-            "message", toMessageDto(result.message())
+            "message", dto
         ));
+    }
+
+    @PostMapping(value = "/conversations/{conversationId}/messages/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> sendMediaMessage(
+            @PathVariable UUID conversationId,
+            @RequestParam(value = "content", required = false) String content,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "durationSeconds", required = false) Integer durationSeconds,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+        MessageResponseDto dto = toMessageDto(
+                chatService.sendMediaMessage(currentUser, conversationId, content, file, durationSeconds));
+        broadcastMessage(conversationId, dto);
+        return ResponseEntity.ok(dto);
+    }
+
+    @PostMapping(value = "/direct/{username}/messages/media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> sendDirectMediaMessage(
+            @PathVariable String username,
+            @RequestParam(value = "content", required = false) String content,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "durationSeconds", required = false) Integer durationSeconds,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+        ChatService.SendResult result = chatService.sendDirectMediaMessage(
+                currentUser, username, content, file, durationSeconds);
+        MessageResponseDto dto = toMessageDto(result.message());
+        broadcastMessage(result.conversation().getId(), dto);
+        return ResponseEntity.ok(Map.of(
+                "conversationId", result.conversation().getId(),
+                "message", dto
+        ));
+    }
+
+    private void broadcastMessage(UUID conversationId, MessageResponseDto dto) {
+        messagingTemplate.convertAndSend("/topic/conversation." + conversationId, dto);
+    }
+
+    private String messagePreview(Message message) {
+        if (message.getContent() != null && !message.getContent().isBlank()) return message.getContent();
+        if (message.getAttachments().isEmpty()) return "Mensaje";
+        return switch (message.getAttachments().get(0).getFileType()) {
+            case "IMAGE" -> "📷 Foto";
+            case "VIDEO" -> "🎥 Video";
+            case "AUDIO" -> "🎤 Nota de voz";
+            default -> "📎 Archivo";
+        };
     }
 
     @DeleteMapping("/conversations/{conversationId}")
@@ -316,7 +369,19 @@ public class ChatController {
                 .senderAvatarUrl(senderProfile != null && senderProfile.getAvatarUrl() != null ? senderProfile.getAvatarUrl() : "")
                 .content(message.getContent()).messageType(message.getMessageType())
                 .storyPreviewId(message.getStoryPreviewId())
+                .attachments(message.getAttachments().stream().map(this::toAttachmentDto).toList())
                 .createdAt((message.getCreatedAt() != null ? message.getCreatedAt() : java.time.Instant.now()).toString()).build();
+    }
+
+    private AttachmentDto toAttachmentDto(MessageAttachment attachment) {
+        return AttachmentDto.builder()
+                .id(attachment.getId())
+                .fileUrl(attachment.getFileUrl())
+                .fileType(attachment.getFileType())
+                .fileName(attachment.getFileName())
+                .fileSize(attachment.getFileSize())
+                .durationSeconds(attachment.getDurationSeconds())
+                .build();
     }
 
     @Data
@@ -360,6 +425,18 @@ public class ChatController {
         private String content;
         private String messageType;
         private UUID storyPreviewId;
+        private List<AttachmentDto> attachments;
         private String createdAt;
+    }
+
+    @Data
+    @Builder
+    public static class AttachmentDto {
+        private UUID id;
+        private String fileUrl;
+        private String fileType;
+        private String fileName;
+        private Long fileSize;
+        private Integer durationSeconds;
     }
 }
