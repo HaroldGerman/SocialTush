@@ -28,7 +28,9 @@ public class WebPushDiagnosticsController {
         if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(Map.of(
                 "configured", webPushService.isConfigured(),
-                "activeSubscriptions", repository.countByUserAndActiveTrue(currentUser)
+                "activeSubscriptions", repository.countByUserAndActiveTrue(currentUser),
+                // VAPID public keys are designed to be shared with browsers; no private material is returned.
+                "vapidPublicKey", webPushService.publicKey()
         ));
     }
 

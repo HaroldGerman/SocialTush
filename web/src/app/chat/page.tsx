@@ -850,7 +850,7 @@ function ChatContent() {
           {/* Header & Tabs */}
           <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3 bg-white dark:bg-[#0f172a]">
             <div className="flex items-center justify-between">
-              <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-teal-600">Lifonk</p><h2 className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">Conversaciones</h2></div>
+              <div><p className="text-sm font-black uppercase tracking-[.24em] text-teal-600">Lifonk</p><h2 className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">Conversaciones</h2></div>
               <div className="flex items-center gap-1.5">
                 {/* Mobile Theme switch */}
                 <button
@@ -907,7 +907,7 @@ function ChatContent() {
           </div>
 
           {/* Conversations List */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-1 bg-[#f4f7f7] dark:bg-[radial-gradient(circle_at_50%_0%,rgba(15,118,110,.12),transparent_38%),#07151d]">
+          <div className="flex-1 overflow-y-auto p-3 space-y-1 bg-[#f4f7f7] dark:bg-[#07151d]">
             {filteredConversations.map(c => {
                 const hasUnread = (c.unreadCount || 0) > 0;
                 const isSelected = activeConversation?.conversationId === c.conversationId;

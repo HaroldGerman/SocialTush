@@ -75,4 +75,8 @@ public class WebPushService {
     public boolean isConfigured() {
         return sender.isConfigured();
     }
+
+    public String publicKey() {
+        return sender instanceof VapidWebPushSender vapid ? vapid.publicKey() : "";
+    }
 }

@@ -1,6 +1,7 @@
 import { api } from '@/context/AuthContext';
 
 const PUBLIC_KEY = process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY || '';
+let resolvedPublicKey = '';
 
 export type WebPushState = 'unsupported' | 'blocked' | 'disabled' | 'enabling' | 'enabled';
 
@@ -13,12 +14,23 @@ function urlBase64ToArrayBuffer(value: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+async function getConfiguredPublicKey(): Promise<string> {
+  if (resolvedPublicKey) return resolvedPublicKey;
+  try {
+    const response = await api.get('/push/web/status');
+    const backendKey = String(response.data?.vapidPublicKey || '').trim();
+    resolvedPublicKey = backendKey || PUBLIC_KEY;
+  } catch {
+    resolvedPublicKey = PUBLIC_KEY;
+  }
+  return resolvedPublicKey;
+}
+
 export function webPushSupported(): boolean {
   return typeof window !== 'undefined'
     && 'serviceWorker' in navigator
     && 'PushManager' in window
-    && 'Notification' in window
-    && Boolean(PUBLIC_KEY);
+    && 'Notification' in window;
 }
 
 export async function registerLifonkServiceWorker(): Promise<ServiceWorkerRegistration | null> {
@@ -38,10 +50,10 @@ async function syncSubscription(subscription: PushSubscription): Promise<void> {
   });
 }
 
-function applicationServerKeyMatches(subscription: PushSubscription): boolean {
+function applicationServerKeyMatches(subscription: PushSubscription, publicKey: string): boolean {
   const existing = subscription.options.applicationServerKey;
   if (!existing) return false;
-  const expected = new Uint8Array(urlBase64ToArrayBuffer(PUBLIC_KEY));
+  const expected = new Uint8Array(urlBase64ToArrayBuffer(publicKey));
   const actual = new Uint8Array(existing);
   if (actual.length !== expected.length) return false;
   for (let index = 0; index < actual.length; index += 1) {
@@ -59,10 +71,10 @@ async function removeStaleSubscription(subscription: PushSubscription): Promise<
   await subscription.unsubscribe();
 }
 
-async function currentMatchingSubscription(registration: ServiceWorkerRegistration): Promise<PushSubscription | null> {
+async function currentMatchingSubscription(registration: ServiceWorkerRegistration, publicKey: string): Promise<PushSubscription | null> {
   const subscription = await registration.pushManager.getSubscription();
   if (!subscription) return null;
-  if (applicationServerKeyMatches(subscription)) return subscription;
+  if (applicationServerKeyMatches(subscription, publicKey)) return subscription;
   await removeStaleSubscription(subscription);
   return null;
 }
@@ -73,13 +85,15 @@ export async function currentWebPushState(): Promise<WebPushState> {
   if (Notification.permission !== 'granted') return 'disabled';
   const registration = await registerLifonkServiceWorker();
   if (!registration) return 'unsupported';
-  return (await currentMatchingSubscription(registration)) ? 'enabled' : 'disabled';
+  const publicKey = await getConfiguredPublicKey();
+  return (publicKey && await currentMatchingSubscription(registration, publicKey)) ? 'enabled' : 'disabled';
 }
 
 export async function syncExistingWebPush(): Promise<boolean> {
   if (!webPushSupported() || Notification.permission !== 'granted') return false;
   const registration = await registerLifonkServiceWorker();
-  const subscription = registration ? await currentMatchingSubscription(registration) : null;
+  const publicKey = await getConfiguredPublicKey();
+  const subscription = registration && publicKey ? await currentMatchingSubscription(registration, publicKey) : null;
   if (!subscription) return false;
   await syncSubscription(subscription);
   return true;
@@ -91,11 +105,13 @@ export async function enableWebPush(): Promise<void> {
   if (permission !== 'granted') throw new Error('El permiso de señales no fue concedido.');
   const registration = await registerLifonkServiceWorker();
   if (!registration) throw new Error('No se pudo activar el Service Worker.');
-  let subscription = await currentMatchingSubscription(registration);
+  const publicKey = await getConfiguredPublicKey();
+  if (!publicKey) throw new Error('El backend no tiene una clave pública VAPID configurada.');
+  let subscription = await currentMatchingSubscription(registration, publicKey);
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToArrayBuffer(PUBLIC_KEY),
+      applicationServerKey: urlBase64ToArrayBuffer(publicKey),
     });
   }
   await syncSubscription(subscription);

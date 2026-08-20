@@ -20,10 +20,19 @@ public class VapidWebPushSender implements WebPushSender {
             @Value("${WEB_PUSH_VAPID_PUBLIC_KEY:}") String publicKey,
             @Value("${WEB_PUSH_VAPID_PRIVATE_KEY:}") String privateKey,
             @Value("${WEB_PUSH_VAPID_SUBJECT:}") String subject) {
-        this.publicKey = publicKey;
-        this.privateKey = privateKey;
-        this.subject = subject;
+        this.publicKey = normalize(publicKey);
+        this.privateKey = normalize(privateKey);
+        this.subject = normalize(subject);
         ensureBouncyCastleProvider();
+    }
+
+    private static String normalize(String value) {
+        if (value == null) return "";
+        String normalized = value.trim();
+        if (normalized.length() >= 2 && normalized.startsWith("\"") && normalized.endsWith("\"")) {
+            normalized = normalized.substring(1, normalized.length() - 1).trim();
+        }
+        return normalized;
     }
 
     private static void ensureBouncyCastleProvider() {
@@ -35,6 +44,11 @@ public class VapidWebPushSender implements WebPushSender {
     @Override
     public boolean isConfigured() {
         return !publicKey.isBlank() && !privateKey.isBlank() && !subject.isBlank();
+    }
+
+    /** The VAPID public key is intentionally safe to expose to the browser. */
+    public String publicKey() {
+        return publicKey;
     }
 
     @Override

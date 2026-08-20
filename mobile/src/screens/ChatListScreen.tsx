@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  brand: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
+  brand: { fontSize: 14, fontWeight: '900', letterSpacing: 2.6, fontFamily: 'sans-serif-medium' },
   headerTitle: {
     fontSize: 22,
     fontWeight: 'bold',
