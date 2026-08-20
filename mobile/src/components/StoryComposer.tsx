@@ -191,7 +191,7 @@ export default function StoryComposer({
               {publishing ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.publishText}>Publicar</Text>
+                <Text style={styles.publishText}>Publicar momento</Text>
               )}
             </TouchableOpacity>
           ) : (

@@ -66,7 +66,7 @@ function ReelVideo({
   if (!source)
     return (
       <View style={styles.placeholder}>
-        <Text style={styles.mutedText}>Reel sin video válido</Text>
+        <Text style={styles.mutedText}>Destello sin video válido</Text>
       </View>
     );
   return (
@@ -130,7 +130,7 @@ export default function ReelsScreen({
         setError("");
       } catch (requestError) {
         console.error(requestError);
-        setError("No se pudieron cargar los Reels.");
+        setError("No se pudieron cargar los Destellos.");
       } finally {
         loadingRef.current = false;
         setLoading(false);
@@ -162,7 +162,7 @@ export default function ReelsScreen({
       setError("");
     } catch (requestError) {
       console.error(requestError);
-      setError("No se pudo actualizar el Me gusta.");
+      setError("No se pudo actualizar la resonancia.");
     }
   };
   const save = async (id: string) => {
@@ -176,7 +176,7 @@ export default function ReelsScreen({
       setError("");
     } catch (requestError) {
       console.error(requestError);
-      setError("No se pudo actualizar Guardados.");
+      setError("No se pudo actualizar la colección.");
     }
   };
   const openComments = async (reel: Reel) => {
@@ -188,7 +188,7 @@ export default function ReelsScreen({
       setError("");
     } catch (requestError) {
       console.error(requestError);
-      setError("No se pudieron cargar los comentarios.");
+      setError("No se pudieron cargar los ecos.");
     }
   };
   const sendComment = async () => {
@@ -220,7 +220,7 @@ export default function ReelsScreen({
   const deleteReel = (reel: Reel) => {
     if (reel.userId !== user?.userId) return;
     Alert.alert(
-      "¿Eliminar este Reel?",
+      "¿Eliminar este Destello?",
       "Esta acción no se puede deshacer.",
       [
         { text: "Cancelar", style: "cancel" },
@@ -234,7 +234,7 @@ export default function ReelsScreen({
               setError("");
             } catch (requestError) {
               console.error(requestError);
-              setError("No se pudo eliminar el Reel.");
+              setError("No se pudo eliminar el Destello.");
             }
           },
         },
@@ -297,7 +297,7 @@ export default function ReelsScreen({
               </TouchableOpacity>
               {item.userId === user?.userId ? (
                 <TouchableOpacity
-                  accessibilityLabel="Eliminar Reel"
+                  accessibilityLabel="Eliminar Destello"
                   onPress={() => deleteReel(item)}
                   style={styles.action}
                 >
@@ -349,7 +349,7 @@ export default function ReelsScreen({
         }
         ListEmptyComponent={
           <View style={styles.center}>
-            <Text style={styles.mutedText}>No hay Reels disponibles.</Text>
+            <Text style={styles.mutedText}>No hay Destellos disponibles.</Text>
             <TouchableOpacity onPress={() => void fetchPage(0, true)}>
               <Text style={styles.retry}>Reintentar</Text>
             </TouchableOpacity>
@@ -365,7 +365,7 @@ export default function ReelsScreen({
         <View style={styles.modalBackdrop}>
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Comentarios</Text>
+              <Text style={styles.sheetTitle}>Ecos</Text>
               <TouchableOpacity onPress={() => setCommentsFor(null)}>
                 <Ionicons name="close" size={24} />
               </TouchableOpacity>
@@ -399,7 +399,7 @@ export default function ReelsScreen({
               <TextInput
                 value={commentText}
                 onChangeText={setCommentText}
-                placeholder="Escribe un comentario…"
+                placeholder="Escribe un eco…"
                 style={styles.input}
               />
               <TouchableOpacity

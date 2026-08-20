@@ -107,7 +107,7 @@ export default function Home() {
             className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-teal-300 font-medium transition-colors py-1 group"
           >
             <Compass className="h-3.5 w-3.5 text-slate-500 group-hover:text-teal-400 transition-colors" />
-            <span>Explorar como invitado</span>
+            <span>Descubrir como invitado</span>
           </Link>
         </div>
       </section>

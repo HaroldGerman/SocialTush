@@ -50,7 +50,7 @@ export default function PostComposer({ isOpen, onClose }: PostComposerProps) {
       onClose();
       window.dispatchEvent(new CustomEvent('socialtush:post-published'));
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Error al publicar momento');
+      alert(err.response?.data?.message || 'Error al contribuir');
     } finally {
       setIsPublishing(false);
     }
@@ -75,7 +75,7 @@ export default function PostComposer({ isOpen, onClose }: PostComposerProps) {
         
         {/* Header */}
         <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
-          <h3 className="text-base font-extrabold">Nuevo Momento</h3>
+          <h3 className="text-base font-extrabold">Nueva contribución</h3>
           <button onClick={handleCancel} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1">
             <X className="w-5 h-5" />
           </button>
@@ -88,7 +88,7 @@ export default function PostComposer({ isOpen, onClose }: PostComposerProps) {
               rows={4}
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
-              placeholder="¿Qué quieres compartir hoy con la comunidad?..."
+              placeholder="¿Qué quieres compartir hoy?..."
               className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-sm focus:outline-none focus:border-teal-600 resize-none text-slate-800 dark:text-slate-100 placeholder-slate-400"
               required={!selectedFile}
             />
@@ -126,7 +126,7 @@ export default function PostComposer({ isOpen, onClose }: PostComposerProps) {
               disabled={isPublishing || (!caption.trim() && !selectedFile)}
               className="px-6 py-2.5 bg-teal-700 hover:bg-teal-600 text-white font-bold text-xs rounded-xl shadow-md shadow-teal-900/30 disabled:opacity-50 transition-all"
             >
-              {isPublishing ? 'Publicando...' : 'Publicar'}
+              {isPublishing ? 'Contribuyendo...' : 'Contribuir'}
             </button>
           </div>
         </form>

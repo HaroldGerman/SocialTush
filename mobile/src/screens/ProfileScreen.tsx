@@ -341,8 +341,8 @@ export default function ProfileScreen({
         <View style={[styles.stats, { borderColor: theme.border }]}>
           {[
             ["Momentos", profile.postCount],
-            ["Seguidores", profile.followersCount],
-            ["Siguiendo", profile.followingCount],
+            ["Conexiones", profile.followersCount],
+            [self ? "Tus conexiones" : "Conexiones", profile.followingCount],
           ].map(([label, value]) => (
             <View key={String(label)} style={styles.stat}>
               <Text style={[styles.statValue, { color: theme.textPrimary }]}>
@@ -383,8 +383,8 @@ export default function ProfileScreen({
                   {profile.relationshipStatus === "PENDING"
                     ? "Solicitud enviada"
                     : profile.relationshipStatus === "FOLLOWING"
-                      ? "Siguiendo"
-                      : "Seguir"}
+                      ? "Conectado"
+                      : "Conectar"}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -445,7 +445,7 @@ export default function ProfileScreen({
               <Text style={styles.primaryText}>
                 {profile.relationshipStatus === "PENDING"
                   ? "Solicitud enviada"
-                  : "Seguir"}
+                  : "Conectar"}
               </Text>
             </TouchableOpacity>
           ) : null}
@@ -705,7 +705,7 @@ export default function ProfileScreen({
           >
             <View style={{ flex: 1 }}>
               <Text style={{ color: theme.textPrimary, fontWeight: "800" }}>
-                Perfil privado
+                Espacio privado
               </Text>
               <Text
                 style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}

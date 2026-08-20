@@ -113,7 +113,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
       }));
     } catch (err) {
       console.error(err);
-      setActionError('No se pudo actualizar el Me gusta.');
+      setActionError('No se pudo actualizar la resonancia.');
     }
   };
 
@@ -128,7 +128,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
       }));
     } catch (err) {
       console.error(err);
-      setActionError('No se pudo actualizar Guardados.');
+      setActionError('No se pudo actualizar la colección.');
     }
   };
 
@@ -157,14 +157,14 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
   const openComments = async (post: Post) => {
     setCommentsPost(post); setComments([]); setCommentsLoading(true); setActionError('');
     try { const res = await api.get(`/comments/${post.postId}`); setComments(res.data || []); }
-    catch (err) { console.error(err); setActionError('No se pudieron cargar los comentarios.'); }
+    catch (err) { console.error(err); setActionError('No se pudieron cargar los ecos.'); }
     finally { setCommentsLoading(false); }
   };
 
   const sendComment = async () => {
     if (!commentsPost || !commentText.trim()) return;
     try { const res = await api.post(`/comments/${commentsPost.postId}`, { content: commentText.trim() }); setComments(old => [...old, res.data]); setCommentText(''); setPosts(old => old.map(post => post.postId === commentsPost.postId ? { ...post, commentsCount: post.commentsCount + 1 } : post)); }
-    catch (err) { console.error(err); setActionError('No se pudo publicar el comentario. Conservamos tu texto.'); }
+    catch (err) { console.error(err); setActionError('No se pudo publicar el eco. Conservamos tu texto.'); }
   };
 
   const renderPostItem = ({ item }: { item: Post }) => {
@@ -332,7 +332,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
                 {ownStoryIndex >= 0 ? <UserAvatar avatarUrl={stories[ownStoryIndex].avatarUrl || user?.avatarUrl} displayName={user?.displayName} username={user?.username} size={48} ring/> : <Ionicons name="add" size={20} color={theme.accent}/>}
                 {ownStoryIndex >= 0 ? <TouchableOpacity onPress={(event)=>{event.stopPropagation();setStoryComposerOpen(true);}} style={[styles.storyAdd,{backgroundColor:theme.primary}]}><Ionicons name="add" size={13} color="#fff"/></TouchableOpacity>:null}
               </View>
-              <Text style={[styles.storyName, { color: theme.textSecondary }]}>Tu Historia</Text>
+              <Text style={[styles.storyName, { color: theme.textSecondary }]}>Tu momento</Text>
             </TouchableOpacity>
           }
           renderItem={({ item: entry }) => { const item=entry.group; return (
@@ -363,7 +363,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
       </Modal>
       <StoryComposer visible={storyComposerOpen} onClose={()=>setStoryComposerOpen(false)} onPublished={()=>void fetchStories()}/>
       <StoryViewer visible={storyViewerIndex !== null} groups={stories as MobileStoryGroup[]} initialIndex={storyViewerIndex || 0} onClose={()=>setStoryViewerIndex(null)} onStoriesChange={setStories}/>
-      <Modal visible={Boolean(commentsPost)} transparent animationType="slide" onRequestClose={()=>setCommentsPost(null)}><View style={styles.modalBackdrop}><View style={[styles.commentSheet,{backgroundColor:theme.surface}]}><View style={styles.commentHeader}><Text style={[styles.commentTitle,{color:theme.textPrimary}]}>Comentarios</Text><TouchableOpacity onPress={()=>setCommentsPost(null)}><Ionicons name="close" size={25} color={theme.textPrimary}/></TouchableOpacity></View>{commentsLoading?<ActivityIndicator color={theme.accent}/>:<FlatList data={comments} keyExtractor={item=>item.commentId} renderItem={({item})=><View style={styles.commentRow}><UserAvatar avatarUrl={item.avatarUrl} displayName={item.displayName} username={item.username} size={32}/><View style={{flex:1}}><Text style={{color:theme.textPrimary,fontWeight:'800',fontSize:12}}>@{item.username}</Text><Text style={{color:theme.textSecondary,fontSize:13}}>{item.content}</Text></View></View>} ListEmptyComponent={<Text style={{color:theme.textMuted,textAlign:'center',padding:24}}>Sé el primero en comentar.</Text>}/>}<View style={[styles.commentComposer,{borderColor:theme.border}]}><TextInput value={commentText} onChangeText={setCommentText} placeholder="Escribe un comentario…" placeholderTextColor={theme.textMuted} style={[styles.commentInput,{color:theme.textPrimary,backgroundColor:theme.background}]}/><TouchableOpacity disabled={!commentText.trim()} onPress={()=>void sendComment()} style={[styles.commentSend,{backgroundColor:theme.primary}]}><Ionicons name="send" color="#fff" size={18}/></TouchableOpacity></View></View></View></Modal>
+      <Modal visible={Boolean(commentsPost)} transparent animationType="slide" onRequestClose={()=>setCommentsPost(null)}><View style={styles.modalBackdrop}><View style={[styles.commentSheet,{backgroundColor:theme.surface}]}><View style={styles.commentHeader}><Text style={[styles.commentTitle,{color:theme.textPrimary}]}>Ecos</Text><TouchableOpacity onPress={()=>setCommentsPost(null)}><Ionicons name="close" size={25} color={theme.textPrimary}/></TouchableOpacity></View>{commentsLoading?<ActivityIndicator color={theme.accent}/>:<FlatList data={comments} keyExtractor={item=>item.commentId} renderItem={({item})=><View style={styles.commentRow}><UserAvatar avatarUrl={item.avatarUrl} displayName={item.displayName} username={item.username} size={32}/><View style={{flex:1}}><Text style={{color:theme.textPrimary,fontWeight:'800',fontSize:12}}>@{item.username}</Text><Text style={{color:theme.textSecondary,fontSize:13}}>{item.content}</Text></View></View>} ListEmptyComponent={<Text style={{color:theme.textMuted,textAlign:'center',padding:24}}>Sé el primero en dejar un eco.</Text>}/>}<View style={[styles.commentComposer,{borderColor:theme.border}]}><TextInput value={commentText} onChangeText={setCommentText} placeholder="Escribe un eco…" placeholderTextColor={theme.textMuted} style={[styles.commentInput,{color:theme.textPrimary,backgroundColor:theme.background}]}/><TouchableOpacity disabled={!commentText.trim()} onPress={()=>void sendComment()} style={[styles.commentSend,{backgroundColor:theme.primary}]}><Ionicons name="send" color="#fff" size={18}/></TouchableOpacity></View></View></View></Modal>
 
       {/* Feed List */}
       <FlatList
@@ -383,7 +383,7 @@ export default function FeedScreen({ onOpenNotifications, onOpenProfile, onOpenU
             <View style={[styles.emptyIconBox, { backgroundColor: theme.surfaceSecondary }]}>
               <Ionicons name="newspaper-outline" size={36} color={theme.textMuted} />
             </View>
-            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Tu Feed está listo</Text>
+            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Tu Ritmo está listo</Text>
             <Text style={[styles.emptySub, { color: theme.textMuted }]}>Conecta con personas o publica un momento para comenzar.</Text>
           </View>
         }

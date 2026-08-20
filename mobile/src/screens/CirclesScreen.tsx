@@ -62,7 +62,7 @@ export default function CirclesScreen({ onOpenCircle }: { onOpenCircle?: (slug: 
         </Text>
         <View style={styles.statsRow}>
           <Ionicons name="people-outline" size={12} color={theme.accent} />
-          <Text style={[styles.statsText, { color: theme.accent }]}>{item.membersCount} miembros</Text>
+          <Text style={[styles.statsText, { color: theme.accent }]}>{item.membersCount} {item.membersCount === 1 ? 'integrante' : 'integrantes'}</Text>
         </View>
       </View>
     </TouchableOpacity>

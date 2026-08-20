@@ -202,7 +202,7 @@ export default function ProfilePage() {
         likesCount: res.data.count
       } : p));
     } catch (err: any) {
-      alert(err.response?.data?.message || 'No se pudo actualizar el Me gusta.');
+      alert(err.response?.data?.message || 'No se pudo actualizar la resonancia.');
     }
   };
 
@@ -371,7 +371,7 @@ export default function ProfilePage() {
           <nav className="hidden md:flex items-center gap-1">
             <Link href="/feed" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
               <Home className="w-4 h-4" />
-              <span>Inicio</span>
+              <span>Ritmo</span>
             </Link>
             <Link href="/circles" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
               <Compass className="w-4 h-4" />
@@ -379,11 +379,11 @@ export default function ProfilePage() {
             </Link>
             <Link href="/chat" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
               <MessageSquare className="w-4 h-4" />
-              <span>Mensajes</span>
+              <span>Conversaciones</span>
             </Link>
             <button className="flex items-center gap-2 px-5 py-2 rounded-xl bg-teal-50 dark:bg-teal-800/30 text-teal-800 dark:text-teal-400 font-bold text-sm">
               <User className="w-4 h-4 text-teal-800 dark:text-teal-400" />
-              <span>Perfil</span>
+              <span>Espacio</span>
             </button>
           </nav>
 
@@ -401,7 +401,7 @@ export default function ProfilePage() {
             <NotificationBell />
             <button onClick={() => router.push('/feed')} className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-teal-800 dark:text-teal-400 hover:underline">
               <ChevronLeft className="w-4 h-4" />
-              Volver al Feed
+              Volver al Ritmo
             </button>
           </div>
         </div>
@@ -422,7 +422,7 @@ export default function ProfilePage() {
                     className="px-3 py-1.5 md:px-4 md:py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold backdrop-blur-md flex items-center gap-1.5 transition-all"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
-                    <span className="hidden md:inline">Editar Perfil</span>
+                    <span className="hidden md:inline">Editar espacio</span>
                   </button>
                   <button 
                     onClick={logout}
@@ -448,14 +448,14 @@ export default function ProfilePage() {
                     {profile.relationshipStatus === 'FOLLOWING' ? (
                       <>
                         <Check className="w-3.5 h-3.5 text-teal-700" />
-                        Siguiendo
+                        Conectado
                       </>
                     ) : profile.relationshipStatus === 'PENDING' ? (
                       <>Solicitud enviada</>
                     ) : (
                       <>
                         <Plus className="w-3.5 h-3.5" />
-                        Seguir
+                        Conectar
                       </>
                     )}
                   </button>
@@ -502,12 +502,12 @@ export default function ProfilePage() {
                 <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
                 <div className="text-center flex-1 md:flex-none">
                   <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profile.followersCount}</span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Seguidores</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Conexiones</span>
                 </div>
                 <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
                 <div className="text-center flex-1 md:flex-none">
                   <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profile.followingCount}</span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Siguiendo</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{currentUser?.username?.toLowerCase() === profile.username.toLowerCase() ? 'Tus conexiones' : 'Conexiones'}</span>
                 </div>
               </div>
             </div>
@@ -568,7 +568,7 @@ export default function ProfilePage() {
                   <UserAvatar avatarUrl={circle.avatarUrl} name={circle.name} className="w-10 h-10 rounded-2xl text-xs shadow-sm" />
                   <div>
                     <h4 className="font-bold text-sm text-slate-800 dark:text-white">{circle.name}</h4>
-                    <span className="text-[10px] text-slate-400 font-semibold">{circle.membersCount} miembros</span>
+                    <span className="text-[10px] text-slate-400 font-semibold">{circle.membersCount} {circle.membersCount === 1 ? 'integrante' : 'integrantes'}</span>
                   </div>
                 </div>
                 <p className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-relaxed">{circle.description || 'Sin descripción.'}</p>
@@ -594,8 +594,8 @@ export default function ProfilePage() {
                 {profile.relationshipStatus === 'PENDING'
                   ? 'Solicitud enviada'
                   : profile.relationshipStatus === 'FOLLOWING'
-                    ? 'Siguiendo'
-                    : 'Seguir'}
+                    ? 'Conectado'
+                    : 'Conectar'}
               </button>
             )}
           </div>
@@ -636,7 +636,7 @@ export default function ProfilePage() {
                                 onClick={() => { setDeleteConfirmPostId(post.postId); setPostMenuOpenId(null); }}
                                 className="w-full flex items-center gap-2 px-4 py-2.5 text-rose-600 hover:bg-rose-50/10 text-sm font-semibold transition-colors"
                               >
-                                Eliminar publicación
+                                Eliminar contribución
                               </button>
                             </div>
                           </>
@@ -662,14 +662,14 @@ export default function ProfilePage() {
                     className={`flex items-center gap-1.5 hover:text-rose-600 transition-colors ${post.hasLiked ? 'text-rose-600 font-extrabold' : ''}`}
                   >
                     <Heart className={`w-4 h-4 ${post.hasLiked ? 'fill-current text-rose-600' : ''}`} />
-                    <span>{post.likesCount} me gusta</span>
+                    <span>{post.likesCount} {post.likesCount === 1 ? 'resonancia' : 'resonancias'}</span>
                   </button>
                   <button 
                     onClick={() => toggleComments(post.postId)}
                     className="flex items-center gap-1.5 text-teal-800 dark:text-teal-400 hover:text-teal-900 transition-colors cursor-pointer"
                   >
                     <MessageSquare className="w-4 h-4" />
-                    <span>{post.commentsCount} comentarios</span>
+                    <span>{post.commentsCount} {post.commentsCount === 1 ? 'eco' : 'ecos'}</span>
                   </button>
                 </div>
 
@@ -685,7 +685,7 @@ export default function ProfilePage() {
                         className="flex-1 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:border-teal-700 text-slate-800 dark:text-slate-100"
                       />
                       <button type="submit" className="px-3 py-1.5 bg-teal-800 text-white rounded-xl text-xs font-bold hover:bg-teal-900 transition-all">
-                        Publicar
+                        Responder
                       </button>
                     </form>
 
@@ -732,7 +732,7 @@ export default function ProfilePage() {
             <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-base font-extrabold text-slate-800 dark:text-white flex items-center gap-2">
                 <Edit2 className="w-4 h-4 text-teal-800" />
-                Editar Perfil
+                Editar espacio
               </h3>
               <button onClick={handleCancelEdit} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs font-bold p-1">
                 Cancelar
@@ -806,7 +806,7 @@ export default function ProfilePage() {
                 {/* Privacy settings */}
                 <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
                   <div>
-                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Perfil Privado</span>
+                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Espacio privado</span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-400">Requiere aprobación para seguirte</span>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">

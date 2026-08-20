@@ -317,7 +317,7 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
       onPublished?.(response.data);
     } catch (err: any) {
       console.error('Error al publicar historia:', err);
-      setCameraError(err.response?.data?.message || 'Error al publicar historia');
+      setCameraError(err.response?.data?.message || 'Error al publicar momento');
     } finally {
       setIsPublishing(false);
     }
@@ -346,7 +346,7 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
         {composerMode === 'SELECT' && (
           <div className="flex-1 flex flex-col justify-center p-6 space-y-6 text-center">
             <div className="flex justify-between items-center absolute top-4 left-4 right-4 z-10">
-              <span className="text-sm font-extrabold text-teal-400">Crear Historia</span>
+              <span className="text-sm font-extrabold text-teal-400">Crear momento</span>
               <button onClick={onCloseClean} className="p-2 rounded-full bg-slate-800 text-slate-300 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
@@ -354,7 +354,7 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
             
             <div className="space-y-2">
               <Sparkles className="w-12 h-12 text-teal-500 mx-auto animate-pulse" />
-              <h2 className="text-lg font-black text-white">¿Cómo quieres contar tu historia?</h2>
+              <h2 className="text-lg font-black text-white">¿Cómo quieres contar tu momento?</h2>
               <p className="text-xs text-slate-400">Captura un momento, sube de tu galería o comparte tus pensamientos en texto.</p>
             </div>
 
@@ -410,7 +410,7 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
                   <Type className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-white">Historia de Texto</h4>
+                  <h4 className="font-bold text-sm text-white">Momento de texto</h4>
                   <p className="text-[11px] text-slate-500">Escribe sobre un fondo de color personalizado</p>
                 </div>
               </button>
@@ -491,7 +491,7 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
 
             {/* Color selector footer */}
             <div className="space-y-4">
-              <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider block text-center">Fondo de historia</span>
+              <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider block text-center">Fondo de momento</span>
               <div className="flex items-center justify-center gap-3">
                 {PRESET_BACKGROUNDS.map((bg, idx) => (
                   <button
@@ -654,7 +654,7 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
                   onChange={(e) => setIsBestFriends(e.target.checked)}
                   className="rounded text-teal-600 focus:ring-0"
                 />
-                <span>Mejores amigos</span>
+                <span>Mejores conexiones</span>
               </label>
 
               <button
@@ -662,7 +662,7 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
                 disabled={isPublishing}
                 className="px-6 py-2.5 bg-teal-700 hover:bg-teal-600 text-white font-bold text-xs rounded-xl shadow-md transition-all"
               >
-                {isPublishing ? 'Publicando...' : 'Publicar historia'}
+                {isPublishing ? 'Publicando...' : 'Publicar momento'}
               </button>
             </div>
           </div>

@@ -65,7 +65,7 @@ export default function RegisterPage() {
         className="absolute top-6 left-6 inline-flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-cyan-300 transition-colors bg-slate-900/80 px-3.5 py-2 rounded-xl border border-slate-800 backdrop-blur-md z-20"
       >
         <ArrowLeft className="h-4 w-4" />
-        <span>Volver al inicio</span>
+        <span>Volver al Ritmo</span>
       </Link>
 
       <div className="w-full max-w-md glass-card-glow rounded-3xl p-6 sm:p-8 relative z-10 my-auto shadow-2xl">

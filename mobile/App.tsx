@@ -290,7 +290,7 @@ function MainApp() {
                   },
                 ]}
               >
-                Inicio
+                Ritmo
               </Text>
             </TouchableOpacity>
 
@@ -366,7 +366,7 @@ function MainApp() {
                   },
                 ]}
               >
-                Mensajes
+                Conversaciones
               </Text>
             </TouchableOpacity>
 
@@ -395,7 +395,7 @@ function MainApp() {
                   },
                 ]}
               >
-                Perfil
+                Espacio
               </Text>
             </TouchableOpacity>
           </View>

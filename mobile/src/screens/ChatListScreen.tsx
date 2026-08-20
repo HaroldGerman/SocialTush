@@ -137,7 +137,7 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
         />
         <TouchableOpacity style={[styles.searchBtn, { backgroundColor: theme.primary }]} onPress={handleStartConversation}>
           <Ionicons name="paper-plane-outline" size={16} color="#ffffff" />
-          <Text style={styles.searchBtnText}>Chat</Text>
+          <Text style={styles.searchBtnText}>Nueva conversación</Text>
         </TouchableOpacity>
       </View>
 

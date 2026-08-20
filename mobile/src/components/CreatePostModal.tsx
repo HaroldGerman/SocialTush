@@ -120,7 +120,7 @@ export default function CreatePostModal({ visible, onClose, onPostCreated }: Cre
             <TouchableOpacity onPress={handleModalClose} disabled={isSubmitting}>
               <Ionicons name="close" size={24} color={theme.textPrimary} />
             </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Crear Publicación</Text>
+            <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Nueva contribución</Text>
             <TouchableOpacity 
               onPress={handlePublish} 
               disabled={isSubmitting || (!caption.trim() && !selectedAsset)}
@@ -133,7 +133,7 @@ export default function CreatePostModal({ visible, onClose, onPostCreated }: Cre
               {isSubmitting ? (
                 <ActivityIndicator size="small" color="#ffffff" />
               ) : (
-                <Text style={styles.publishBtnText}>Publicar</Text>
+                <Text style={styles.publishBtnText}>Contribuir</Text>
               )}
             </TouchableOpacity>
           </View>

@@ -145,7 +145,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
       setProgress(0);
     } catch (error: any) {
       console.error('Error al eliminar historia:', error);
-      setDeleteError(error.response?.data?.message || 'No se pudo eliminar la historia.');
+      setDeleteError(error.response?.data?.message || 'No se pudo eliminar el momento.');
     } finally {
       setIsDeleting(false);
     }
@@ -175,7 +175,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     e.preventDefault();
     if (!replyText.trim() || !currentStory) return;
     if (isOwnStory) {
-      alert("Es tu propia historia.");
+      alert("Es tu propio momento.");
       return;
     }
     const textToSend = replyText.trim();
@@ -245,14 +245,14 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
           </div>
           <div className="flex items-center gap-2">
             <div className="relative hidden md:block">
-              {isOwnStory && <button type="button" aria-label="Opciones de historia" onClick={(event) => { event.stopPropagation(); setDeleteError(''); setIsMenuOpen(open => !open); }} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white transition-all hover:bg-black/60"><MoreHorizontal className="h-5 w-5" /></button>}
-              {isOwnStory && isMenuOpen && <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 p-1 shadow-2xl"><button type="button" onClick={(event) => { event.stopPropagation(); setIsMenuOpen(false); setIsDeleteOpen(true); }} className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar historia</button></div>}
+              {isOwnStory && <button type="button" aria-label="Opciones de momento" onClick={(event) => { event.stopPropagation(); setDeleteError(''); setIsMenuOpen(open => !open); }} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white transition-all hover:bg-black/60"><MoreHorizontal className="h-5 w-5" /></button>}
+              {isOwnStory && isMenuOpen && <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 p-1 shadow-2xl"><button type="button" onClick={(event) => { event.stopPropagation(); setIsMenuOpen(false); setIsDeleteOpen(true); }} className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar momento</button></div>}
             </div>
-            {isOwnStory && <button type="button" aria-label="Opciones de historia" onClick={(event) => { event.stopPropagation(); setDeleteError(''); setIsMenuOpen(true); }} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white transition-all hover:bg-black/60 md:hidden"><MoreHorizontal className="h-5 w-5" /></button>}
-            <button type="button" aria-label={isPaused ? 'Reanudar historia' : 'Pausar historia'} onClick={() => setIsPaused(!isPaused)} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
+            {isOwnStory && <button type="button" aria-label="Opciones de momento" onClick={(event) => { event.stopPropagation(); setDeleteError(''); setIsMenuOpen(true); }} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white transition-all hover:bg-black/60 md:hidden"><MoreHorizontal className="h-5 w-5" /></button>}
+            <button type="button" aria-label={isPaused ? 'Reanudar momento' : 'Pausar momento'} onClick={() => setIsPaused(!isPaused)} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
               {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
             </button>
-            <button type="button" aria-label="Cerrar historias" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
+            <button type="button" aria-label="Cerrar momentos" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 transition-all">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -361,13 +361,13 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
       {isOwnStory && isMenuOpen && <div className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setIsMenuOpen(false)}>
         <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-zinc-700 bg-zinc-950 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-2xl" onClick={event => event.stopPropagation()}>
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-700" />
-          <button type="button" onClick={() => { setIsMenuOpen(false); setIsDeleteOpen(true); }} className="min-h-12 w-full rounded-xl px-4 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar historia</button>
+          <button type="button" onClick={() => { setIsMenuOpen(false); setIsDeleteOpen(true); }} className="min-h-12 w-full rounded-xl px-4 text-left text-sm font-bold text-rose-400 hover:bg-zinc-900">Eliminar momento</button>
         </div>
       </div>}
 
       {isDeleteOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !isDeleting && setIsDeleteOpen(false)}>
         <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-950 p-5 space-y-4" onClick={event => event.stopPropagation()}>
-          <h3 className="font-bold text-white">¿Eliminar esta historia?</h3>
+          <h3 className="font-bold text-white">¿Eliminar este momento?</h3>
           <p className="text-sm text-zinc-400">Esta acción no se puede deshacer.</p>
           {deleteError && <p role="alert" className="text-xs text-rose-400">{deleteError}</p>}
           <div className="flex gap-3"><button disabled={isDeleting} onClick={() => setIsDeleteOpen(false)} className="flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm text-white">Cancelar</button><button disabled={isDeleting} onClick={handleDeleteStory} className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-bold text-white disabled:opacity-50">{isDeleting ? 'Eliminando...' : 'Eliminar'}</button></div>

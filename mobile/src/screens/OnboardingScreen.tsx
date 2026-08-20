@@ -72,7 +72,7 @@ const GOALS = [
   {
     id: "people",
     title: "👥 Conocer personas",
-    desc: "Conectar con miembros de tus intereses",
+    desc: "Conectar con integrantes de tus intereses",
   },
   {
     id: "share",
@@ -304,7 +304,7 @@ export default function OnboardingScreen() {
                         {circle.name}
                       </Text>
                       <Text style={[styles.members, { color: theme.accent }]}>
-                        {circle.membersCount} miembros
+                        {circle.membersCount} {circle.membersCount === 1 ? "integrante" : "integrantes"}
                       </Text>
                       <Text
                         numberOfLines={2}

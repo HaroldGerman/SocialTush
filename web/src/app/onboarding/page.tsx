@@ -23,20 +23,20 @@ const INTERESTS_LIST = [
 ];
 
 const CIRCLES_LIST = [
-  { name: 'Exploradores', members: '24 miembros', desc: 'Rutas de senderismo y actividades al aire libre.' },
-  { name: 'Sostenibles', members: '18 miembros', desc: 'Proyectos ecológicos, huertos urbanos y reciclaje.' },
-  { name: 'Vecinos Centro', members: '32 miembros', desc: 'Comunidad local, avisos y encuentros de barrio.' },
-  { name: 'Café & Ideas', members: '21 miembros', desc: 'Reuniones informales para compartir proyectos creativos.' },
-  { name: 'Lectores', members: '16 miembros', desc: 'Club de lectura, análisis de libros y recomendaciones.' },
-  { name: 'Viajeros', members: '14 miembros', desc: 'Experiencias de viaje, mochileros y cultura.' },
+  { name: 'Exploradores', members: '24 integrantes', desc: 'Rutas de senderismo y actividades al aire libre.' },
+  { name: 'Sostenibles', members: '18 integrantes', desc: 'Proyectos ecológicos, huertos urbanos y reciclaje.' },
+  { name: 'Vecinos Centro', members: '32 integrantes', desc: 'Círculo local, avisos y encuentros de barrio.' },
+  { name: 'Café & Ideas', members: '21 integrantes', desc: 'Reuniones informales para compartir proyectos creativos.' },
+  { name: 'Lectores', members: '16 integrantes', desc: 'Club de lectura, análisis de libros y recomendaciones.' },
+  { name: 'Viajeros', members: '14 integrantes', desc: 'Experiencias de viaje, mochileros y cultura.' },
 ];
 
 const GOALS_LIST = [
   { id: 'learn', title: '🧠 Aprender cosas nuevas', desc: 'Descubrir contenido educativo y tutoriales' },
-  { id: 'chat', title: '💬 Conversar y debatir', desc: 'Participar en hilos y salas de discusión en tiempo real' },
-  { id: 'people', title: '👥 Conocer personas', desc: 'Conectar con miembros de tu misma ciudad o intereses' },
-  { id: 'share', title: '✨ Compartir contenido', desc: 'Publicar tus proyectos, imágenes, notas de audio y estado' },
-  { id: 'collab', title: '🤝 Colaborar en proyectos', desc: 'Unirte a iniciativas comunitarias y grupales' },
+  { id: 'chat', title: '💬 Conversar y debatir', desc: 'Participar en hilos y salas en tiempo real' },
+  { id: 'people', title: '👥 Conocer personas', desc: 'Conectar con integrantes de tu misma ciudad o intereses' },
+  { id: 'share', title: '✨ Expandir', desc: 'Contribuir con tus proyectos, imágenes, notas de audio y estado' },
+  { id: 'collab', title: '🤝 Colaborar en proyectos', desc: 'Entrar a iniciativas de círculos' },
   { id: 'events', title: '📅 Encontrar eventos locales', desc: 'Asistir a meetups presenciales y eventos virtuales' },
 ];
 
@@ -145,7 +145,7 @@ export default function OnboardingPage() {
                 <span className="text-xs font-bold uppercase text-teal-800 tracking-wider">Paso 1 de 4</span>
                 <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1">¿Qué temas te interesan? 💡</h2>
                 <p className="text-xs text-slate-500 font-semibold mt-1">
-                  Selecciona al menos 3 temas para personalizar las recomendaciones en tu feed inicial.
+                  Selecciona al menos 3 temas para personalizar las recomendaciones en tu Ritmo inicial.
                 </p>
               </div>
 
@@ -183,7 +183,7 @@ export default function OnboardingPage() {
             <div className="space-y-6 animate-fade-in">
               <div>
                 <span className="text-xs font-bold uppercase text-teal-800 tracking-wider">Paso 2 de 4</span>
-                <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1">Únete a tus primeros Círculos ⭕</h2>
+                <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1">Entra a tus primeros Círculos ⭕</h2>
                 <p className="text-xs text-slate-500 font-semibold mt-1">
                   Los Círculos son espacios donde viven las conversaciones, personas y proyectos.
                 </p>
@@ -212,7 +212,7 @@ export default function OnboardingPage() {
                       <button className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${
                         isSelected ? 'bg-teal-800 text-white' : 'bg-slate-200 text-slate-700'
                       }`}>
-                        {isSelected ? 'Unido' : 'Unirme'}
+                        {isSelected ? 'Dentro del círculo' : 'Entrar al círculo'}
                       </button>
                     </div>
                   );
@@ -226,9 +226,9 @@ export default function OnboardingPage() {
             <div className="space-y-6 animate-fade-in">
               <div>
                 <span className="text-xs font-bold uppercase text-teal-800 tracking-wider">Paso 3 de 4</span>
-                <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1">Personas sugeridas en Lifonk 👥</h2>
+                <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-1">Nuevas conexiones en Lifonk 👥</h2>
                 <p className="text-xs text-slate-500 font-semibold mt-1">
-                  Miembros activos compartiendo código, proyectos e ideas en tu comunidad.
+                  Integrantes activos compartiendo código, proyectos e ideas en tu círculo.
                 </p>
               </div>
 
@@ -327,7 +327,7 @@ export default function OnboardingPage() {
 
       {/* Footer */}
       <footer className="max-w-4xl mx-auto w-full text-center py-4 text-xs text-slate-400 font-medium">
-        Lifonk &bull; Tu comunidad, tu gente, tus momentos.
+        Lifonk &bull; Tu círculo, tu gente, tus momentos.
       </footer>
     </div>
   );

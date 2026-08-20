@@ -45,8 +45,8 @@ export default function CreateHub({
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-bold text-sm text-slate-900 dark:text-white">✨ Momento</h4>
-              <p className="text-[11px] text-slate-500">Publica texto, foto o video en el Feed</p>
+              <h4 className="font-bold text-sm text-slate-900 dark:text-white">✨ Contribución</h4>
+              <p className="text-[11px] text-slate-500">Publica texto, foto o video en el Ritmo</p>
             </div>
           </button>
 
@@ -58,7 +58,7 @@ export default function CreateHub({
               <Film className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-bold text-sm text-slate-900 dark:text-white">◉ Historia</h4>
+              <h4 className="font-bold text-sm text-slate-900 dark:text-white">◉ Momento</h4>
               <p className="text-[11px] text-slate-500">Foto, cámara, stickers, texto o música</p>
             </div>
           </button>
@@ -72,7 +72,7 @@ export default function CreateHub({
             </div>
             <div>
               <h4 className="font-bold text-sm text-slate-900 dark:text-white">◎ Círculo</h4>
-              <p className="text-[11px] text-slate-500">Crea una nueva comunidad de interés</p>
+              <p className="text-[11px] text-slate-500">Crea un nuevo círculo de interés</p>
             </div>
           </button>
         </div>
