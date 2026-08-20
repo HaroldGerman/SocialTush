@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, AppState } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, AppState, Image } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioPlayer, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { useAuth } from '../context/AuthContext';
 import { getWebSocketUrl } from '../config/api';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +19,7 @@ interface Message {
   createdAt: string;
   readByRecipient?: boolean;
   readReceiptVisible?: boolean;
+  attachments?: Array<{id:string;fileUrl:string;fileType:'IMAGE'|'VIDEO'|'AUDIO';fileName?:string;fileSize?:number;durationSeconds?:number}>;
 }
 
 interface Conversation {
@@ -44,6 +48,12 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sendError, setSendError] = useState('');
+  const [selectedMedia,setSelectedMedia]=useState<ImagePicker.ImagePickerAsset|null>(null);
+  const [audioPreview,setAudioPreview]=useState<{uri:string;durationSeconds:number}|null>(null);
+  const [sendingMedia,setSendingMedia]=useState(false);
+  const [recordingCancelled,setRecordingCancelled]=useState(false);
+  const recorder=useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState=useAudioRecorderState(recorder,250);
 
   const ws = useRef<WebSocket | null>(null);
 
@@ -182,6 +192,11 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
     }
   };
 
+  const pickMedia=async(camera=false)=>{setSendError('');const permission=camera?await ImagePicker.requestCameraPermissionsAsync():await ImagePicker.requestMediaLibraryPermissionsAsync();if(!permission.granted)return setSendError(camera?'No pudimos acceder a la cámara.':'No pudimos acceder a tus fotos.');const result=camera?await ImagePicker.launchCameraAsync({mediaTypes:['images'],quality:.85}):await ImagePicker.launchImageLibraryAsync({mediaTypes:['images','videos'],quality:.85});if(!result.canceled)setSelectedMedia(result.assets[0]);};
+  const startRecording=async()=>{setSendError('');const permission=await AudioModule.requestRecordingPermissionsAsync();if(!permission.granted)return setSendError('No pudimos acceder al micrófono.');try{setRecordingCancelled(false);setAudioPreview(null);await setAudioModeAsync({allowsRecording:true,playsInSilentMode:true});await recorder.prepareToRecordAsync();recorder.record();}catch(error){console.error(error);setSendError('No se pudo iniciar la grabación.');}};
+  const stopRecording=async(cancel=false)=>{setRecordingCancelled(cancel);try{await recorder.stop();await setAudioModeAsync({allowsRecording:false,playsInSilentMode:true});if(!cancel&&recorder.uri)setAudioPreview({uri:recorder.uri,durationSeconds:Math.max(1,Math.round((recorderState.durationMillis||0)/1000))});}catch(error){console.error(error);if(!cancel)setSendError('No se pudo preparar la nota de voz.');}};
+  const sendMedia=async(kind:'asset'|'audio')=>{const source=kind==='audio'?audioPreview?{uri:audioPreview.uri,name:`voice_${Date.now()}.m4a`,type:'audio/mp4'}:null:selectedMedia?{uri:selectedMedia.uri,name:selectedMedia.fileName||`chat_${Date.now()}.${selectedMedia.type==='video'?'mp4':'jpg'}`,type:selectedMedia.mimeType||(selectedMedia.type==='video'?'video/mp4':'image/jpeg')}:null;if(!source)return;setSendingMedia(true);setSendError('');try{const data=new FormData();data.append('file',{...source,uri:Platform.OS==='ios'?source.uri.replace('file://',''):source.uri} as any);if(inputText.trim())data.append('content',inputText.trim());if(kind==='audio'&&audioPreview)data.append('durationSeconds',String(audioPreview.durationSeconds));const res=conversation.conversationId?await api.post(`/chat/conversations/${conversation.conversationId}/messages/media`,data,{headers:{'Content-Type':'multipart/form-data'}}):await api.post(`/chat/direct/${encodeURIComponent(conversation.otherUsername||'')}/messages/media`,data,{headers:{'Content-Type':'multipart/form-data'}});const message:Message=conversation.conversationId?res.data:res.data.message;if(!conversation.conversationId)onConversationPersisted({...conversation,conversationId:res.data.conversationId,isDraft:false,latestMessage:message.content|| (kind==='audio'?'Nota de voz':'Archivo'),updatedAt:message.createdAt});setMessages(old=>old.some(item=>item.messageId===message.messageId)?old:[...old,message]);setInputText('');if(kind==='audio')setAudioPreview(null);else setSelectedMedia(null);}catch(error:any){console.error(error);setSendError(kind==='audio'?'No se pudo enviar el audio. Reintentar.':'No se pudo enviar el archivo. Reintentar.');}finally{setSendingMedia(false);}};
+
   const renderMessageItem = ({ item }: { item: Message }) => {
     const isOwn = item.senderUsername === user?.username || item.senderId === user?.userId;
 
@@ -196,9 +211,10 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
             ? [styles.ownBubble, { backgroundColor: theme.primary }] 
             : [styles.otherBubble, { backgroundColor: theme.surface, borderColor: theme.border }]
         ]}>
-          <Text style={[styles.messageText, isOwn ? styles.ownText : [styles.otherText, { color: theme.textPrimary }]]}>
+          {item.attachments?.map(attachment=>attachment.fileType==='IMAGE'?<Image key={attachment.id} source={{uri:attachment.fileUrl}} style={styles.attachmentImage} resizeMode="cover"/>:attachment.fileType==='VIDEO'?<ChatVideo key={attachment.id} uri={attachment.fileUrl}/>:<ChatAudio key={attachment.id} uri={attachment.fileUrl} duration={attachment.durationSeconds}/>)}
+          {item.content ? <Text style={[styles.messageText, isOwn ? styles.ownText : [styles.otherText, { color: theme.textPrimary }]]}>
             {item.content}
-          </Text>
+          </Text> : null}
         </View>
         {isOwn && (
           <Text style={[styles.receipt, { color: item.readReceiptVisible && item.readByRecipient ? theme.accent : theme.textMuted }]}>
@@ -253,7 +269,13 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
 
       {/* Input */}
       {sendError ? <Text style={[styles.sendError, { color: theme.danger }]}>{sendError}</Text> : null}
+      {recorderState.isRecording?<View style={[styles.recording,{backgroundColor:theme.surface,borderColor:theme.border}]}><Text style={{color:theme.danger,fontWeight:'800'}}>● Grabando… {formatDuration(Math.floor((recorderState.durationMillis||0)/1000))}</Text><View style={styles.recordActions}><TouchableOpacity onPress={()=>void stopRecording(true)}><Text style={{color:theme.danger,fontWeight:'800'}}>Cancelar</Text></TouchableOpacity><TouchableOpacity onPress={()=>void stopRecording(false)} style={[styles.stop,{backgroundColor:theme.primary}]}><Text style={{color:'#fff',fontWeight:'800'}}>Detener</Text></TouchableOpacity></View></View>:null}
+      {audioPreview&&!recorderState.isRecording?<View style={[styles.preview,{backgroundColor:theme.surface,borderColor:theme.border}]}><ChatAudio uri={audioPreview.uri} duration={audioPreview.durationSeconds}/><TouchableOpacity disabled={sendingMedia} onPress={()=>setAudioPreview(null)}><Text style={{color:theme.danger,fontWeight:'800'}}>Quitar</Text></TouchableOpacity><TouchableOpacity disabled={sendingMedia} onPress={()=>void sendMedia('audio')} style={[styles.audioSend,{backgroundColor:theme.primary}]}>{sendingMedia?<ActivityIndicator color="#fff"/>:<Text style={{color:'#fff',fontWeight:'800'}}>Enviar audio ➤</Text>}</TouchableOpacity></View>:null}
+      {selectedMedia?<View style={[styles.preview,{backgroundColor:theme.surface,borderColor:theme.border}]}>{selectedMedia.type==='image'?<Image source={{uri:selectedMedia.uri}} style={styles.selectedThumb}/>:<Ionicons name="videocam" size={30} color={theme.accent}/>}<Text numberOfLines={1} style={{color:theme.textSecondary,flex:1}}>{selectedMedia.fileName||'Archivo seleccionado'}</Text><TouchableOpacity onPress={()=>setSelectedMedia(null)}><Ionicons name="close-circle" size={24} color={theme.danger}/></TouchableOpacity><TouchableOpacity disabled={sendingMedia} onPress={()=>void sendMedia('asset')} style={[styles.audioSend,{backgroundColor:theme.primary}]}><Ionicons name="send" size={17} color="#fff"/></TouchableOpacity></View>:null}
       <View style={[styles.inputRow, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
+        <TouchableOpacity disabled={recorderState.isRecording} onPress={()=>void pickMedia(false)}><Ionicons name="image-outline" size={22} color={theme.textMuted}/></TouchableOpacity>
+        <TouchableOpacity disabled={recorderState.isRecording} onPress={()=>void pickMedia(true)}><Ionicons name="camera-outline" size={22} color={theme.textMuted}/></TouchableOpacity>
+        <TouchableOpacity disabled={recorderState.isRecording||Boolean(audioPreview)} onPress={()=>void startRecording()}><Ionicons name="mic-outline" size={22} color={theme.textMuted}/></TouchableOpacity>
         <TextInput
           style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.textPrimary }]}
           placeholder="Escribe un mensaje..."
@@ -261,7 +283,7 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
           value={inputText}
           onChangeText={setInputText}
         />
-        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme.primary }]} onPress={handleSend}>
+        <TouchableOpacity disabled={Boolean(selectedMedia)||Boolean(audioPreview)} style={[styles.sendBtn, { backgroundColor: theme.primary },(selectedMedia||audioPreview)&&{opacity:.45}]} onPress={handleSend}>
           <Ionicons name="send" size={16} color="#ffffff" />
         </TouchableOpacity>
       </View>
@@ -351,7 +373,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 12,
     borderTopWidth: 1,
-    gap: 10,
+    gap: 10,alignItems:'center',
   },
   input: {
     flex: 1,
@@ -393,4 +415,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
   },
+  attachmentImage:{width:220,height:220,borderRadius:12,marginBottom:6},attachmentVideo:{width:240,height:220,borderRadius:12,backgroundColor:'#000'},audio:{minWidth:190,flexDirection:'row',alignItems:'center',gap:10,paddingVertical:4},recording:{borderTopWidth:1,padding:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},recordActions:{flexDirection:'row',alignItems:'center',gap:15},stop:{paddingHorizontal:15,paddingVertical:8,borderRadius:10},preview:{borderTopWidth:1,padding:10,flexDirection:'row',alignItems:'center',gap:10},selectedThumb:{width:44,height:44,borderRadius:9},audioSend:{minHeight:38,paddingHorizontal:13,borderRadius:11,alignItems:'center',justifyContent:'center'},
 });
+
+function formatDuration(seconds:number){return `${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`;}
+function ChatAudio({uri,duration}:{uri:string;duration?:number}){const player=useAudioPlayer(uri);return <TouchableOpacity onPress={()=>{player.seekTo(0);player.play();}} style={styles.audio}><Ionicons name="play-circle" size={30} color="#14b8a6"/><Text style={{color:'#94a3b8',fontSize:12}}>Audio {duration?formatDuration(duration):''}</Text></TouchableOpacity>;}
+function ChatVideo({uri}:{uri:string}){const player=useVideoPlayer(uri);return <VideoView player={player} nativeControls contentFit="contain" style={styles.attachmentVideo}/>;}

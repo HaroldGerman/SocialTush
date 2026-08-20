@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
+import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, TextInput, RefreshControl } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../theme';
+import UserAvatar from '../components/UserAvatar';
 
 interface Conversation {
   conversationId: string | null;
@@ -27,15 +28,19 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [error,setError]=useState('');
+  const [refreshing,setRefreshing]=useState(false);
 
   const fetchConversations = useCallback(async () => {
     try {
       const res = await api.get('/chat/conversations');
       setConversations(res.data || []);
+      setError('');
     } catch (err) {
-      setConversations([]);
+      console.error(err);setError('No se pudieron cargar tus conversaciones.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [api]);
 
@@ -67,8 +72,8 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
         updatedAt: new Date().toISOString()
       };
       onSelectConversation(newConv);
-    } catch (err) {
-      // The input remains available so the user can correct it or retry.
+    } catch (err:any) {
+      setError(err.response?.status===404?'Usuario no encontrado.':'No se pudo abrir el chat.');
     }
   };
 
@@ -80,7 +85,7 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
       onPress={() => onSelectConversation(item)}
       activeOpacity={0.8}
     >
-      <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
+      {item.isGroup?<View style={[styles.avatar,{backgroundColor:theme.primary}]}>
         {item.isGroup ? (
           <Ionicons name="people" size={18} color="#ffffff" />
         ) : (
@@ -88,7 +93,7 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
             {(item.name || 'U').charAt(0).toUpperCase()}
           </Text>
         )}
-      </View>
+      </View>:<UserAvatar avatarUrl={item.avatarUrl} displayName={item.name} username={item.otherUsername} size={46}/>}
       
       <View style={styles.cardContent}>
         <View style={styles.cardHeader}>
@@ -117,6 +122,7 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
         <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Mensajería</Text>
       </View>
+      {error?<TouchableOpacity onPress={()=>setError('')} style={{backgroundColor:'#7f1d1d',padding:9}}><Text style={{color:'#fee2e2',textAlign:'center'}}>{error}</Text></TouchableOpacity>:null}
 
       {/* Start Chat Form */}
       <View style={styles.searchSection}>
@@ -140,6 +146,7 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
         data={conversations}
         keyExtractor={(item) => item.conversationId || `draft-${item.otherUsername}`}
         renderItem={renderConversationItem}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>{setRefreshing(true);void fetchConversations();}} tintColor={theme.accent}/>}
         contentContainerStyle={conversations.length === 0 ? styles.emptyContainer : { paddingHorizontal: 16 }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
