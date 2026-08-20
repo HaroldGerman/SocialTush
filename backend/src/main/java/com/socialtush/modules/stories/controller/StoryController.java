@@ -41,6 +41,7 @@ public class StoryController {
             @RequestParam(value = "backgroundColor", required = false) String backgroundColor,
             @RequestParam(value = "musicTitle", required = false) String musicTitle,
             @RequestParam(value = "isBestFriends", defaultValue = "false") boolean isBestFriends,
+            @RequestParam(value = "overlayData", required = false) String overlayData,
             @RequestParam(value = "file", required = false) MultipartFile file,
             @AuthenticationPrincipal User currentUser
     ) {
@@ -75,6 +76,7 @@ public class StoryController {
                 .backgroundColor(backgroundColor)
                 .musicTitle(musicTitle)
                 .isBestFriends(isBestFriends)
+                .overlayData(overlayData)
                 .expiresAt(Instant.now().plus(24, ChronoUnit.HOURS))
                 .build();
 
@@ -186,6 +188,7 @@ public class StoryController {
                 .backgroundColor(story.getBackgroundColor())
                 .musicTitle(story.getMusicTitle())
                 .isBestFriends(story.isBestFriends())
+                .overlayData(story.getOverlayData())
                 .createdAt(story.getCreatedAt().toString())
                 .expiresAt(story.getExpiresAt().toString())
                 .build();
@@ -201,6 +204,7 @@ public class StoryController {
         private String backgroundColor;
         private String musicTitle;
         private boolean isBestFriends;
+        private String overlayData;
         private String createdAt;
         private String expiresAt;
     }

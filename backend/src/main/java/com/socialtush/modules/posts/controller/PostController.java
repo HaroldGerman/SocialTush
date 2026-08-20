@@ -86,21 +86,8 @@ public class PostController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
 
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-
-        List<User> followings = followRepository.findByFollower(currentUser).stream()
-                .map(Follow::getFollowing)
-                .collect(Collectors.toList());
-
-        Page<Post> postPage;
-        if (followings.isEmpty()) {
-            postPage = postRepository.findAll(pageable);
-        } else {
-            postPage = postRepository.findFeedPosts(followings, currentUser, pageable);
-            if (postPage.isEmpty()) {
-                postPage = postRepository.findAll(pageable);
-            }
-        }
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Post> postPage = postRepository.findFeedPostsNew(currentUser, pageable);
 
         List<PostDto> dtos = postPage.getContent().stream()
                 .map(p -> postService.convertToDto(p, currentUser))

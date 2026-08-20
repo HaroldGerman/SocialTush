@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Compass, Plus, MessageSquare, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useCreateHub } from '@/context/CreateHubContext';
 
 interface MobileBottomBarProps {
   onOpenCreate?: () => void;
@@ -13,19 +14,13 @@ interface MobileBottomBarProps {
 export default function MobileBottomBar({ onOpenCreate }: MobileBottomBarProps) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const { openCreateHub } = useCreateHub();
 
   const handleCreateClick = () => {
     if (onOpenCreate) {
       onOpenCreate();
     } else {
-      // Trigger click event on any active publish input or redirect to feed
-      const inputEl = document.querySelector('input[placeholder*="compartir"]') as HTMLInputElement;
-      if (inputEl) {
-        inputEl.focus();
-        inputEl.scrollIntoView({ behavior: 'smooth' });
-      } else {
-        window.location.href = '/feed';
-      }
+      openCreateHub();
     }
   };
 

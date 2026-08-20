@@ -18,6 +18,9 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     @Query("SELECT p FROM Post p WHERE p.user IN :users OR p.user = :currentUser ORDER BY p.createdAt DESC")
     Page<Post> findFeedPosts(List<User> users, User currentUser, Pageable pageable);
 
+    @Query("SELECT p FROM Post p WHERE p.user = :currentUser OR EXISTS (SELECT f FROM Follow f WHERE f.follower = :currentUser AND f.following = p.user) ORDER BY p.createdAt DESC")
+    Page<Post> findFeedPostsNew(User currentUser, Pageable pageable);
+
     @Query("SELECT p FROM Post p WHERE p.isShortVideo = :isShortVideo ORDER BY p.createdAt DESC")
     Page<Post> findExplorePosts(boolean isShortVideo, Pageable pageable);
 }

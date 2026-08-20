@@ -13,13 +13,11 @@
   --accent-light-teal: #ccfbf1;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-main: #090d16;
-    --card-bg: #0f172a;
-    --text-main: #f8fafc;
-    --text-muted: #94a3b8;
-  }
+.dark {
+  --bg-main: #090d16;
+  --card-bg: #0f172a;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
 }
 
 body {

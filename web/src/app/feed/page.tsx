@@ -9,9 +9,12 @@ import StoryViewer from '@/components/StoryViewer';
 import { 
   Home, Activity, Bookmark, Calendar, Compass, Plus, Search, Bell, 
   User, MessageSquare, Image as ImageIcon, Mic, HelpCircle, Smile, 
-  MapPin, Play, Pause, ChevronRight, Settings, Users, Sparkles, Check, Share2, Layers, Heart, X, Upload
+  MapPin, Play, Pause, ChevronRight, Settings, Users, Sparkles, Check, Share2, Layers, Heart, X, Upload, Sun, Moon
 } from 'lucide-react';
 import { formatLocalTimestamp } from '@/lib/dateUtils';
+import { useTheme } from '@/context/ThemeContext';
+import { useCreateHub } from '@/context/CreateHubContext';
+import MobileBottomBar from '@/components/MobileBottomBar';
 
 interface PostData {
   postId: string;
@@ -55,6 +58,8 @@ interface SearchResults {
 export default function FeedPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
+  const { openCreateHub } = useCreateHub();
 
   // State
   const [postsList, setPostsList] = useState<PostData[]>([]);
@@ -315,9 +320,9 @@ export default function FeedPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col font-sans pb-20 md:pb-6">
+    <div className="min-h-screen bg-[#f4f6f9] dark:bg-[#090d16] text-slate-800 dark:text-slate-100 flex flex-col font-sans pb-20 md:pb-6">
       {/* Top Header Navigation Bar */}
-      <header className="bg-[#0f172a] border-b border-slate-800 sticky top-0 z-40 shadow-md">
+      <header className="bg-white dark:bg-[#0f172a] border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40 shadow-md">
         <div className="max-w-[1600px] mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           
           {/* Logo */}
@@ -325,23 +330,23 @@ export default function FeedPage() {
             <div className="h-9 w-9 rounded-xl bg-teal-700 flex items-center justify-center text-white font-black shadow-md shadow-teal-900/30">
               S
             </div>
-            <span className="font-extrabold text-xl tracking-tight text-white">
+            <span className="font-extrabold text-xl tracking-tight text-slate-900 dark:text-white">
               SocialTush
             </span>
           </div>
 
           {/* Desktop Center Navigation */}
           <nav className="hidden md:flex items-center gap-1">
-            <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-800/30 text-teal-400 font-bold text-xs border border-teal-700/50">
-              <Home className="w-4 h-4 text-teal-400" />
+            <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-50 dark:bg-teal-800/30 text-teal-700 dark:text-teal-400 font-bold text-xs border border-teal-200 dark:border-teal-700/50">
+              <Home className="w-4 h-4" />
               <span>Inicio</span>
             </button>
-            <Link href="/circles" className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-400 hover:bg-slate-800/60 font-medium text-xs transition-all">
+            <Link href="/circles" className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium text-xs transition-all">
               <Compass className="w-4 h-4" />
               <span>Círculos</span>
             </Link>
             <button 
-              onClick={() => setShowMobilePublisherModal(true)}
+              onClick={openCreateHub}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 text-white font-bold text-xs shadow-md shadow-teal-900/30 transition-all mx-2"
             >
               <Plus className="w-4 h-4" />
@@ -353,7 +358,7 @@ export default function FeedPage() {
                 api.patch('/notifications/read-messages').catch(() => {});
                 setUnreadMessagesCount(0);
               }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-400 hover:bg-slate-800/60 font-medium text-xs transition-all relative"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium text-xs transition-all relative"
             >
               <MessageSquare className="w-4 h-4" />
               <span>Mensajes</span>
@@ -363,7 +368,7 @@ export default function FeedPage() {
                 </span>
               )}
             </Link>
-            <Link href={`/profile/${user?.username || 'usuario_A'}`} className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-400 hover:bg-slate-800/60 font-medium text-xs transition-all">
+            <Link href={`/profile/${user?.username || 'usuario_A'}`} className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium text-xs transition-all">
               <User className="w-4 h-4" />
               <span>Perfil</span>
             </Link>
@@ -448,6 +453,16 @@ export default function FeedPage() {
               className="md:hidden p-2 rounded-xl bg-slate-800/80 text-slate-300 hover:text-white"
             >
               <Search className="w-5 h-5" />
+            </button>
+
+            {/* Theme Toggle Button */}
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+              title={theme === 'light' ? 'Usar tema oscuro' : 'Usar tema claro'}
+              aria-label="Cambiar tema"
+            >
+              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
 
             {/* Notification Bell */}
@@ -830,46 +845,8 @@ export default function FeedPage() {
         </aside>
       </div>
 
-      {/* ================= FIXED BOTTOM NAVIGATION BAR FOR MOBILE WEB (<768px) ================= */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#0f172a] border-t border-slate-800 z-50 flex items-center justify-around px-2 shadow-lg">
-        {/* 1. Inicio */}
-        <Link href="/feed" className="flex flex-col items-center gap-0.5 text-teal-400">
-          <Home className="w-5 h-5" />
-          <span className="text-[10px] font-bold">Inicio</span>
-        </Link>
-
-        {/* 2. Círculos */}
-        <Link href="/circles" className="flex flex-col items-center gap-0.5 text-slate-400 hover:text-teal-400">
-          <Compass className="w-5 h-5" />
-          <span className="text-[10px] font-semibold">Círculos</span>
-        </Link>
-
-        {/* 3. Crear (Featured Middle Button) */}
-        <button 
-          onClick={() => setShowMobilePublisherModal(true)}
-          className="flex flex-col items-center"
-        >
-          <div className="w-10 h-10 rounded-full bg-teal-700 text-white flex items-center justify-center -mt-5 shadow-md border border-teal-500/50">
-            <Plus className="w-6 h-6 stroke-[3]" />
-          </div>
-          <span className="text-[10px] font-bold text-teal-400 mt-0.5">Crear</span>
-        </button>
-
-        {/* 4. Mensajes */}
-        <Link href="/chat" className="flex flex-col items-center gap-0.5 text-slate-400 hover:text-teal-400 relative">
-          <MessageSquare className="w-5 h-5" />
-          <span className="text-[10px] font-semibold">Mensajes</span>
-          {unreadMessagesCount > 0 && (
-            <span className="absolute -top-1 right-2 w-2 h-2 bg-rose-600 rounded-full" />
-          )}
-        </Link>
-
-        {/* 5. Perfil */}
-        <Link href={`/profile/${user?.username || 'usuario_A'}`} className="flex flex-col items-center gap-0.5 text-slate-400 hover:text-teal-400">
-          <User className="w-5 h-5" />
-          <span className="text-[10px] font-semibold">Perfil</span>
-        </Link>
-      </div>
+      {/* Mobile Bottom Navigation Bar */}
+      <MobileBottomBar />
 
       {/* Delete Post Confirmation Modal */}
       {deleteConfirmPostId && (

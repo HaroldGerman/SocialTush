@@ -4,6 +4,8 @@ import com.socialtush.modules.posts.entity.Post;
 import com.socialtush.modules.posts.repository.PostRepository;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
+import com.socialtush.modules.social.entity.Follow;
+import com.socialtush.modules.social.repository.FollowRepository;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
@@ -40,6 +43,9 @@ public class PostControllerIntegrationTest {
     @Autowired
     private ProfileRepository profileRepository;
 
+    @Autowired
+    private FollowRepository followRepository;
+
     private User testUser;
     private User otherUser;
 
@@ -62,6 +68,11 @@ public class PostControllerIntegrationTest {
                 .email("other@socialtush.com")
                 .passwordHash("pass")
                 .role("USER")
+                .build());
+
+        profileRepository.save(Profile.builder()
+                .user(otherUser)
+                .displayName("Other User")
                 .build());
 
         SecurityContextHolder.getContext().setAuthentication(
@@ -108,5 +119,75 @@ public class PostControllerIntegrationTest {
 
         mockMvc.perform(delete("/api/v1/posts/" + otherPost.getId()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void feed_returnsOnlyOwnAndFollowedPosts() throws Exception {
+        // Save post for other user (not followed yet)
+        postRepository.save(Post.builder()
+                .user(otherUser)
+                .caption("Post de otro usuario")
+                .build());
+
+        // A's own post
+        Post ownPost = postRepository.save(Post.builder()
+                .user(testUser)
+                .caption("Mi post propio")
+                .build());
+
+        // Feed should contain A's post, but NOT B's post
+        mockMvc.perform(get("/api/v1/posts/feed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.posts.length()").value(1))
+                .andExpect(jsonPath("$.posts[0].caption").value("Mi post propio"));
+
+        // Now A follows B
+        followRepository.save(Follow.builder()
+                .follower(testUser)
+                .following(otherUser)
+                .build());
+
+        // Feed should now contain BOTH A's post and B's post
+        mockMvc.perform(get("/api/v1/posts/feed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.posts.length()").value(2));
+
+        // Now A unfollows B
+        followRepository.deleteAll(); // removes follow relation
+
+        // Feed should go back to containing only A's own post
+        mockMvc.perform(get("/api/v1/posts/feed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.posts.length()").value(1))
+                .andExpect(jsonPath("$.posts[0].caption").value("Mi post propio"));
+    }
+
+    @Test
+    void chat_creatingConversationTwice_returnsSameConversation() throws Exception {
+        String requestBody = "{\"recipientUsername\": \"other_user\", \"isGroup\": false}";
+
+        // First call to create conversation
+        String response1 = mockMvc.perform(post("/api/v1/chat/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversationId").exists())
+                .andReturn().getResponse().getContentAsString();
+
+        // Second call to create conversation with same recipient
+        String response2 = mockMvc.perform(post("/api/v1/chat/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversationId").exists())
+                .andReturn().getResponse().getContentAsString();
+
+        // Check both responses returned same ID
+        org.json.JSONObject obj1 = new org.json.JSONObject(response1);
+        org.json.JSONObject obj2 = new org.json.JSONObject(response2);
+        org.junit.jupiter.api.Assertions.assertEquals(
+                obj1.getString("conversationId"), 
+                obj2.getString("conversationId")
+        );
     }
 }

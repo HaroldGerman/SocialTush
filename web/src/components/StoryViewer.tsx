@@ -12,6 +12,7 @@ interface Story {
   textContent: string;
   backgroundColor: string;
   musicTitle: string;
+  overlayData?: string;
   createdAt: string;
 }
 
@@ -239,6 +240,32 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose 
               </h2>
             </div>
           )}
+
+          {/* Overlays Rendering */}
+          {(() => {
+            let parsedOverlays: any[] = [];
+            if ((currentStory as any).overlayData) {
+              try {
+                parsedOverlays = JSON.parse((currentStory as any).overlayData);
+              } catch (e) {}
+            }
+            return parsedOverlays.map((o: any) => (
+              <div
+                key={o.id}
+                className="absolute pointer-events-none select-none origin-center z-20"
+                style={{
+                  left: `${o.x * 100}%`,
+                  top: `${o.y * 100}%`,
+                  transform: `translate(-50%, -50%) scale(${o.scale})`,
+                  color: o.color || '#ffffff'
+                }}
+              >
+                <div className={`px-3 py-1.5 rounded-xl font-bold text-center ${o.bg ? 'bg-black/75 text-white' : ''}`}>
+                  {o.value}
+                </div>
+              </div>
+            ));
+          })()}
 
           {/* Music Tag overlay */}
           {currentStory.musicTitle && (

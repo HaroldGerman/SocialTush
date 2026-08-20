@@ -77,6 +77,8 @@ public class ChatController {
         List<ConversationDto> dtos = filteredConversations.stream().map(c -> {
             String name = c.getName();
             String avatarUrl = c.getAvatarUrl();
+            UUID otherUserId = null;
+            String otherUsername = null;
 
             // For private 1to1 chats, set name/avatar based on the other participant
             if (!c.isGroup()) {
@@ -86,6 +88,8 @@ public class ChatController {
 
                 if (otherParticipant.isPresent()) {
                     User otherUser = otherParticipant.get().getUser();
+                    otherUserId = otherUser.getId();
+                    otherUsername = otherUser.getUsername();
                     Profile otherProfile = profileRepository.findById(otherUser.getId()).orElse(null);
                     name = otherProfile != null ? otherProfile.getDisplayName() : otherUser.getUsername();
                     avatarUrl = otherProfile != null ? otherProfile.getAvatarUrl() : "";
@@ -107,6 +111,8 @@ public class ChatController {
                     .latestMessageSenderUsername(latestSender)
                     .unreadCount((int) unreadCount)
                     .updatedAt(latestTime)
+                    .otherUserId(otherUserId)
+                    .otherUsername(otherUsername)
                     .build();
         }).collect(Collectors.toList());
 
@@ -352,6 +358,8 @@ public class ChatController {
         private String latestMessageSenderUsername;
         private int unreadCount;
         private String updatedAt;
+        private UUID otherUserId;
+        private String otherUsername;
     }
 
     @Data

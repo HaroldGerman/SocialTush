@@ -49,6 +49,9 @@ public class Story {
     @Builder.Default
     private boolean isBestFriends = false;
 
+    @Column(name = "overlay_data", columnDefinition = "TEXT")
+    private String overlayData;
+
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
