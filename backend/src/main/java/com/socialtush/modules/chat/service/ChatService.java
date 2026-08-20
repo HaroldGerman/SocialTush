@@ -10,6 +10,7 @@ import com.socialtush.modules.chat.repository.MessageRepository;
 import com.socialtush.modules.chat.repository.MessageAttachmentRepository;
 import com.socialtush.modules.media.service.StorageService;
 import com.socialtush.modules.notifications.service.NotificationService;
+import com.socialtush.modules.notifications.repository.NotificationRepository;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class ChatService {
     private final MessageAttachmentRepository attachmentRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final NotificationRepository notificationRepository;
     private final StorageService storageService;
 
     private static final long IMAGE_MAX_BYTES = 10L * 1024 * 1024;
@@ -221,6 +223,25 @@ public class ChatService {
         participantRepository.save(participant);
     }
 
+    @Transactional
+    public ReadResult markConversationAsRead(User currentUser, UUID conversationId) {
+        requireAuthenticated(currentUser);
+        conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversación no encontrada"));
+        ConversationParticipant participant = participantRepository
+                .findByConversationIdAndUserId(conversationId, currentUser.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "No eres miembro de esta conversación"));
+
+        Message latestVisible = participant.getClearedAt() == null
+                ? messageRepository.findFirstByConversationIdOrderByCreatedAtDesc(conversationId).orElse(null)
+                : messageRepository.findFirstByConversationIdAndCreatedAtAfterOrderByCreatedAtDesc(
+                        conversationId, participant.getClearedAt()).orElse(null);
+        participant.setLastReadMessageId(latestVisible == null ? null : latestVisible.getId());
+        participantRepository.save(participant);
+        notificationRepository.markConversationMessagesAsRead(currentUser, conversationId);
+        return new ReadResult(conversationId, participant.getLastReadMessageId(), Instant.now());
+    }
+
     private void requireAuthenticated(User user) {
         if (user == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No autenticado");
     }
@@ -232,5 +253,6 @@ public class ChatService {
     }
 
     public record SendResult(Conversation conversation, Message message) {}
+    public record ReadResult(UUID conversationId, UUID lastReadMessageId, Instant readAt) {}
     private record MediaSpec(String fileType, String extension, String mimeType, long maxBytes) {}
 }

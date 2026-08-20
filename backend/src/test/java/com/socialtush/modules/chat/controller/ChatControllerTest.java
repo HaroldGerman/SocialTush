@@ -10,6 +10,7 @@ import com.socialtush.modules.chat.repository.MessageRepository;
 import com.socialtush.modules.chat.service.ChatService;
 import com.socialtush.modules.notifications.repository.NotificationRepository;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
+import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class ChatControllerTest {
@@ -67,5 +70,69 @@ class ChatControllerTest {
             assertThat(attachment.getFileUrl()).isEqualTo("https://cdn/chat/photo.jpg");
             assertThat(attachment.getFileSize()).isEqualTo(123L);
         }));
+    }
+
+    @Test
+    void receiptsCoverOnlyMessagesAtOrBeforeRecipientsLastReadMessage() {
+        User sender = user("sender");
+        User recipient = user("recipient");
+        UUID conversationId = UUID.randomUUID();
+        Conversation conversation = Conversation.builder().id(conversationId).isGroup(false).createdBy(sender).build();
+        Instant base = Instant.parse("2026-01-01T10:00:00Z");
+        Message m1 = message(conversation, sender, "m1", base);
+        Message m2 = message(conversation, sender, "m2", base.plusSeconds(1));
+        Message m3 = message(conversation, sender, "m3", base.plusSeconds(2));
+        ConversationParticipant senderPart = ConversationParticipant.builder().conversation(conversation).user(sender).build();
+        ConversationParticipant recipientPart = ConversationParticipant.builder().conversation(conversation).user(recipient)
+                .lastReadMessageId(m2.getId()).build();
+        Profile recipientProfile = new Profile();
+        recipientProfile.setReadReceiptsEnabled(true);
+        when(participants.findByConversationIdAndUserId(conversationId, sender.getId())).thenReturn(Optional.of(senderPart));
+        when(participants.findByConversationId(conversationId)).thenReturn(List.of(senderPart, recipientPart));
+        when(messages.findById(m2.getId())).thenReturn(Optional.of(m2));
+        when(profiles.findById(recipient.getId())).thenReturn(Optional.of(recipientProfile));
+        when(messages.findByConversationIdOrderByCreatedAtDesc(any(), any()))
+                .thenReturn(new PageImpl<>(List.of(m3, m2, m1)));
+        ChatController controller = new ChatController(conversations, participants, messages, users, profiles, notifications, chatService, messaging);
+
+        @SuppressWarnings("unchecked")
+        List<ChatController.MessageResponseDto> body = (List<ChatController.MessageResponseDto>)
+                controller.getMessages(conversationId, 0, 30, sender).getBody();
+
+        assertThat(body).extracting(ChatController.MessageResponseDto::getReadByRecipient)
+                .containsExactly(true, true, false);
+        assertThat(body).extracting(ChatController.MessageResponseDto::getReadReceiptVisible)
+                .containsOnly(true);
+    }
+
+    @Test
+    void disabledReadReceiptsAreNeitherExposedNorBroadcast() {
+        User reader = user("reader");
+        UUID conversationId = UUID.randomUUID();
+        Profile profile = new Profile();
+        profile.setReadReceiptsEnabled(false);
+        when(chatService.markConversationAsRead(reader, conversationId))
+                .thenReturn(new ChatService.ReadResult(conversationId, UUID.randomUUID(), Instant.now()));
+        when(profiles.findById(reader.getId())).thenReturn(Optional.of(profile));
+        when(conversations.findById(conversationId))
+                .thenReturn(Optional.of(Conversation.builder().id(conversationId).isGroup(false).createdBy(reader).build()));
+        ChatController controller = new ChatController(conversations, participants, messages, users, profiles, notifications, chatService, messaging);
+
+        ResponseEntity<?> response = controller.markConversationAsRead(conversationId, reader);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        verify(messaging, never()).convertAndSend(any(String.class), any(Object.class));
+    }
+
+    private User user(String username) {
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setUsername(username);
+        return user;
+    }
+
+    private Message message(Conversation conversation, User sender, String content, Instant createdAt) {
+        return Message.builder().id(UUID.randomUUID()).conversation(conversation).sender(sender)
+                .content(content).messageType("TEXT").createdAt(createdAt).build();
     }
 }

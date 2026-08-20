@@ -41,6 +41,8 @@ interface Message {
   messageType: string;
   createdAt: string;
   attachments?: MessageAttachment[];
+  readByRecipient?: boolean;
+  readReceiptVisible?: boolean;
 }
 
 interface MessageAttachment {
@@ -83,6 +85,7 @@ function ChatContent() {
   const [audioDurationSeconds, setAudioDurationSeconds] = useState<number | null>(null);
   const [mediaError, setMediaError] = useState('');
   const [failedAttachmentUrls, setFailedAttachmentUrls] = useState<Record<string, boolean>>({});
+  const [isSendingAttachment, setIsSendingAttachment] = useState(false);
 
   // Call states
   const [activeCallUsername, setActiveCallUsername] = useState<string | null>(null);
@@ -111,6 +114,7 @@ function ChatContent() {
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recordingSecondsRef = useRef(0);
+  const recordingCancelledRef = useRef(false);
 
   // Redirect if not logged in
   useEffect(() => {
@@ -227,6 +231,20 @@ function ChatContent() {
     };
   }, [user, accessToken]);
 
+  const markConversationRead = useCallback(async (conversationId: string) => {
+    try {
+      await api.patch(`/chat/conversations/${conversationId}/read`);
+      setConversations(previous => previous.map(conversation =>
+        conversation.conversationId === conversationId ? { ...conversation, unreadCount: 0 } : conversation
+      ));
+      return true;
+    } catch (error) {
+      console.error('No se pudo marcar la conversación como leída:', error);
+      setChatError('Los mensajes se cargaron, pero no pudimos marcar la conversación como leída. Reintenta al abrirla.');
+      return false;
+    }
+  }, []);
+
   // Load messages when active conversation changes
   useEffect(() => {
     if (!activeConversation || activeConversation.isDraft || !activeConversation.conversationId) {
@@ -239,6 +257,7 @@ function ChatContent() {
         const res = await api.get(`/chat/conversations/${activeConversation.conversationId}/messages`);
         const list = res.data?.content || res.data || [];
         setMessages(list);
+        await markConversationRead(activeConversation.conversationId!);
         scrollToBottom();
       } catch (err) {
         console.error('Error al cargar mensajes:', err);
@@ -259,12 +278,31 @@ function ChatContent() {
             if (body.senderUsername !== user?.username) {
               setOtherUserTyping(body.content === 'true');
             }
-          } else {
+          } else if (body.type === 'READ_RECEIPT') {
+            if (body.readerUsername?.toLowerCase() !== user?.username?.toLowerCase()) {
+              setMessages(previous => {
+                const lastRead = previous.find(item => item.messageId === body.lastReadMessageId);
+                if (!lastRead) return previous;
+                const cutoff = new Date(lastRead.createdAt).getTime();
+                return previous.map(item =>
+                  item.senderUsername?.toLowerCase() === user?.username?.toLowerCase()
+                  && item.readReceiptVisible
+                  && new Date(item.createdAt).getTime() <= cutoff
+                    ? { ...item, readByRecipient: true }
+                    : item
+                );
+              });
+            }
+          } else if (body.messageId) {
             // Actual message
             setMessages((prev) => {
               if (prev.some(m => m.messageId === body.messageId)) return prev;
               return [...prev, body];
             });
+            if (body.senderUsername?.toLowerCase() !== user?.username?.toLowerCase()
+                && document.visibilityState === 'visible') {
+              void markConversationRead(activeConversation.conversationId!);
+            }
             scrollToBottom();
           }
         }
@@ -274,7 +312,17 @@ function ChatContent() {
         subscription.unsubscribe();
       };
     }
-  }, [activeConversation, stompConnected]);
+  }, [activeConversation, stompConnected, markConversationRead, user?.username]);
+
+  useEffect(() => {
+    const conversationId = activeConversation?.conversationId;
+    if (!conversationId || activeConversation?.isDraft) return;
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void markConversationRead(conversationId);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [activeConversation?.conversationId, activeConversation?.isDraft, markConversationRead]);
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -339,12 +387,18 @@ function ChatContent() {
     setShowEmojiPicker(false);
     setMediaError('');
     clearSelectedAttachment();
-    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+    if (mediaRecorderRef.current?.state === 'recording') {
+      recordingCancelledRef.current = true;
+      mediaRecorderRef.current.stop();
+    }
     stopMicrophone();
   }, [activeConversation?.conversationId, activeConversation?.otherUsername, clearSelectedAttachment, stopMicrophone]);
 
   useEffect(() => () => {
-    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+    if (mediaRecorderRef.current?.state === 'recording') {
+      recordingCancelledRef.current = true;
+      mediaRecorderRef.current.stop();
+    }
     stopMicrophone();
     if (attachmentPreviewUrl) URL.revokeObjectURL(attachmentPreviewUrl);
   }, [attachmentPreviewUrl, stopMicrophone]);
@@ -413,12 +467,18 @@ function ChatContent() {
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
       recordingChunksRef.current = [];
+      recordingCancelledRef.current = false;
       setRecordingSeconds(0);
       recordingSecondsRef.current = 0;
       recorder.ondataavailable = event => {
         if (event.data.size > 0) recordingChunksRef.current.push(event.data);
       };
       recorder.onstop = () => {
+        if (recordingCancelledRef.current) {
+          recordingChunksRef.current = [];
+          stopMicrophone();
+          return;
+        }
         const actualMime = recorder.mimeType || mimeType || 'audio/webm';
         const blob = new Blob(recordingChunksRef.current, { type: actualMime });
         if (blob.size > 0) {
@@ -453,21 +513,21 @@ function ChatContent() {
 
   const cancelRecording = () => {
     const recorder = mediaRecorderRef.current;
-    if (recorder) recorder.onstop = null;
+    recordingCancelledRef.current = true;
     if (recorder?.state === 'recording') recorder.stop();
     recordingChunksRef.current = [];
     setRecordingSeconds(0);
     stopMicrophone();
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const sendCurrentMessage = async () => {
     if ((!inputText.trim() && !selectedAttachment) || !activeConversation || isRecording) return;
 
     const content = inputText.trim();
     setIsTyping(false);
     sendTypingSignal(false);
     setChatError('');
+    if (selectedAttachment) setIsSendingAttachment(true);
 
     try {
       if (selectedAttachment) {
@@ -504,8 +564,17 @@ function ChatContent() {
       }
     } catch (err: any) {
       console.error('Error al enviar mensaje:', err);
-      setChatError(err.response?.data?.message || 'No se pudo enviar el mensaje. Puedes reintentar.');
+      setChatError(selectedAttachment?.type.startsWith('audio/')
+        ? 'No se pudo enviar el audio. Reintentar.'
+        : err.response?.data?.message || 'No se pudo enviar el mensaje. Puedes reintentar.');
+    } finally {
+      setIsSendingAttachment(false);
     }
+  };
+
+  const handleSendMessage = (event: React.FormEvent) => {
+    event.preventDefault();
+    void sendCurrentMessage();
   };
 
   const handleCreateNewChat = async (e: React.FormEvent) => {
@@ -898,7 +967,12 @@ function ChatContent() {
                         <span className="text-[9px] text-slate-400 font-medium">
                           {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                        {isOwn && <CheckCheck className="h-3.5 w-3.5 text-teal-600" />}
+                        {isOwn && (
+                          <span className="flex items-center gap-1 text-[9px] font-semibold text-slate-400">
+                            <CheckCheck className={`h-3.5 w-3.5 ${m.readReceiptVisible && m.readByRecipient ? 'text-teal-600' : 'text-slate-400'}`} />
+                            {m.readReceiptVisible && m.readByRecipient ? 'Leído' : 'Enviado'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -926,7 +1000,7 @@ function ChatContent() {
                 </div>
               )}
               {selectedAttachment && attachmentPreviewUrl && (
-                <div className="mx-4 mb-2 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+                <div className="mx-4 mb-2 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
                   {selectedAttachment.type.startsWith('image/') && <img src={attachmentPreviewUrl} alt="Vista previa" className="h-16 w-16 rounded-lg object-cover" />}
                   {selectedAttachment.type.startsWith('video/') && <video src={attachmentPreviewUrl} className="h-16 w-24 rounded-lg object-cover" muted playsInline />}
                   {selectedAttachment.type.startsWith('audio/') && <audio src={attachmentPreviewUrl} controls className="h-10 flex-1" />}
@@ -934,7 +1008,17 @@ function ChatContent() {
                     <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{selectedAttachment.name}</p>
                     <p className="text-[10px] text-slate-500">{(selectedAttachment.size / 1024 / 1024).toFixed(2)} MB</p>
                   </div>
-                  <button type="button" onClick={clearSelectedAttachment} className="rounded-lg p-2 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800" aria-label="Quitar archivo"><X className="h-4 w-4" /></button>
+                  <button type="button" disabled={isSendingAttachment} onClick={clearSelectedAttachment} className="rounded-lg p-2 text-slate-500 hover:bg-slate-200 disabled:opacity-40 dark:hover:bg-slate-800" aria-label="Quitar archivo"><X className="h-4 w-4" /></button>
+                  {selectedAttachment.type.startsWith('audio/') && (
+                    <button
+                      type="button"
+                      disabled={isSendingAttachment}
+                      onClick={() => void sendCurrentMessage()}
+                      className="ml-auto inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+                    >
+                      {isSendingAttachment ? 'Enviando…' : 'Enviar audio'} <Send className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               )}
               <div 
@@ -972,7 +1056,7 @@ function ChatContent() {
 
                   <button 
                     type="submit"
-                    disabled={isRecording || (!inputText.trim() && !selectedAttachment)}
+                    disabled={isRecording || isSendingAttachment || (!inputText.trim() && !selectedAttachment)}
                     className="p-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md flex items-center justify-center disabled:opacity-40"
                   >
                     <Send className="h-4 w-4" />

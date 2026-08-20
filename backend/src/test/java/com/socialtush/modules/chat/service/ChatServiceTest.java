@@ -9,6 +9,7 @@ import com.socialtush.modules.chat.repository.MessageRepository;
 import com.socialtush.modules.chat.repository.MessageAttachmentRepository;
 import com.socialtush.modules.media.service.StorageService;
 import com.socialtush.modules.notifications.service.NotificationService;
+import com.socialtush.modules.notifications.repository.NotificationRepository;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +37,7 @@ class ChatServiceTest {
     @Mock MessageAttachmentRepository attachments;
     @Mock UserRepository users;
     @Mock NotificationService notifications;
+    @Mock NotificationRepository notificationRepository;
     @Mock StorageService storage;
 
     private ChatService service;
@@ -44,7 +46,7 @@ class ChatServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ChatService(conversations, participants, messages, attachments, users, notifications, storage);
+        service = new ChatService(conversations, participants, messages, attachments, users, notifications, notificationRepository, storage);
         sender = user("sender");
         recipient = user("recipient");
     }
@@ -220,6 +222,37 @@ class ChatServiceTest {
 
         assertThatThrownBy(() -> service.clearConversation(sender, existing.getId()))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403");
+    }
+
+    @Test
+    void markingReadPersistsLatestVisibleMessageAndClearsMessageNotifications() {
+        Conversation existing = conversation();
+        ConversationParticipant recipientPart = participant(existing, recipient);
+        Message latest = Message.builder().id(UUID.randomUUID()).conversation(existing).sender(sender)
+                .content("m2").createdAt(Instant.now()).build();
+        when(conversations.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(participants.findByConversationIdAndUserId(existing.getId(), recipient.getId()))
+                .thenReturn(Optional.of(recipientPart));
+        when(messages.findFirstByConversationIdOrderByCreatedAtDesc(existing.getId())).thenReturn(Optional.of(latest));
+
+        ChatService.ReadResult result = service.markConversationAsRead(recipient, existing.getId());
+
+        assertThat(result.lastReadMessageId()).isEqualTo(latest.getId());
+        assertThat(recipientPart.getLastReadMessageId()).isEqualTo(latest.getId());
+        verify(participants).save(recipientPart);
+        verify(notificationRepository).markConversationMessagesAsRead(recipient, existing.getId());
+    }
+
+    @Test
+    void outsiderCannotMarkConversationRead() {
+        Conversation existing = conversation();
+        when(conversations.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(participants.findByConversationIdAndUserId(existing.getId(), recipient.getId()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.markConversationAsRead(recipient, existing.getId()))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403");
+        verifyNoInteractions(notificationRepository);
     }
 
     @Test

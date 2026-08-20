@@ -13,6 +13,7 @@ interface Conversation {
   isGroup: boolean;
   latestMessage: string;
   updatedAt: string;
+  unreadCount?: number;
 }
 
 interface ChatListScreenProps {
@@ -71,7 +72,9 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
     }
   };
 
-  const renderConversationItem = ({ item }: { item: Conversation }) => (
+  const renderConversationItem = ({ item }: { item: Conversation }) => {
+    const hasUnread = (item.unreadCount || 0) > 0;
+    return (
     <TouchableOpacity 
       style={[styles.chatCard, { borderColor: theme.border }]} 
       onPress={() => onSelectConversation(item)}
@@ -89,14 +92,16 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
       
       <View style={styles.cardContent}>
         <View style={styles.cardHeader}>
-          <Text style={[styles.chatName, { color: theme.textPrimary }]}>{item.name}</Text>
+          <Text style={[styles.chatName, { color: theme.textPrimary }, hasUnread && styles.unreadText]}>{item.name}</Text>
+          {hasUnread ? <View style={[styles.unreadBadge, { backgroundColor: theme.primary }]}><Text style={styles.unreadBadgeText}>{item.unreadCount}</Text></View> : null}
         </View>
-        <Text style={[styles.latestMessage, { color: theme.textSecondary }]} numberOfLines={1}>
+        <Text style={[styles.latestMessage, { color: theme.textSecondary }, hasUnread && styles.unreadText]} numberOfLines={1}>
           {item.latestMessage}
         </Text>
       </View>
     </TouchableOpacity>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -229,6 +234,22 @@ const styles = StyleSheet.create({
   },
   latestMessage: {
     fontSize: 12,
+  },
+  unreadText: {
+    fontWeight: '800',
+  },
+  unreadBadge: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   emptyContainer: {
     flexGrow: 1,

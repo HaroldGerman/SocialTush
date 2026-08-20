@@ -21,5 +21,7 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
     Page<Message> findByConversationIdAndCreatedAtAfterOrderByCreatedAtDesc(UUID conversationId, Instant clearedAt, Pageable pageable);
     @EntityGraph(attributePaths = {"attachments", "sender"})
     Optional<Message> findFirstByConversationIdOrderByCreatedAtDesc(UUID conversationId);
+    @EntityGraph(attributePaths = {"attachments", "sender"})
+    Optional<Message> findFirstByConversationIdAndCreatedAtAfterOrderByCreatedAtDesc(UUID conversationId, Instant clearedAt);
     long countByConversationId(UUID conversationId);
 }

@@ -9,6 +9,7 @@ import com.socialtush.modules.users.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -24,6 +25,7 @@ class ChatRepositoryTest {
     @Autowired MessageRepository messages;
     @Autowired MessageAttachmentRepository attachments;
     @Autowired UserRepository users;
+    @Autowired TestEntityManager entityManager;
 
     @Test
     void emptyPrivateConversationDoesNotAppearButEmptyGroupCanAppear() {
@@ -61,6 +63,25 @@ class ChatRepositoryTest {
                                 .extracting(MessageAttachment::getFileUrl).isEqualTo("https://cdn/old.jpg");
                     }
                 });
+    }
+
+    @Test
+    void lastReadMessageIdSurvivesFlushAndClear() {
+        User a = user("read_a");
+        User b = user("read_b");
+        Conversation conversation = conversation(a, false);
+        ConversationParticipant participant = participants.save(participant(conversation, b));
+        Message m1 = messages.saveAndFlush(Message.builder().conversation(conversation).sender(a).content("m1").build());
+        Message m2 = messages.saveAndFlush(Message.builder().conversation(conversation).sender(a).content("m2").build());
+
+        participant.setLastReadMessageId(m2.getId());
+        participants.saveAndFlush(participant);
+        entityManager.clear();
+
+        ConversationParticipant reloaded = participants
+                .findByConversationIdAndUserId(conversation.getId(), b.getId()).orElseThrow();
+        assertThat(reloaded.getLastReadMessageId()).isEqualTo(m2.getId());
+        assertThat(reloaded.getLastReadMessageId()).isNotEqualTo(m1.getId());
     }
 
     private User user(String username) {

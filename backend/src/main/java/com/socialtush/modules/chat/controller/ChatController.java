@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.time.Instant;
 
 import com.socialtush.modules.chat.entity.Conversation;
 import com.socialtush.modules.chat.entity.ConversationParticipant;
@@ -229,8 +230,9 @@ public class ChatController {
                 ? messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
                 : messageRepository.findByConversationIdAndCreatedAtAfterOrderByCreatedAtDesc(conversationId, participant.get().getClearedAt(), pageable);
 
+        ReceiptContext receiptContext = receiptContext(conversationId, currentUser);
         List<MessageResponseDto> dtos = messagePage.getContent().stream()
-                .map(this::toMessageDto)
+                .map(message -> toMessageDto(message, currentUser, receiptContext))
                 .collect(Collectors.toList());
 
         // Reverse to return messages in chronological order
@@ -252,7 +254,7 @@ public class ChatController {
         if (request == null) return ResponseEntity.badRequest().body(Map.of("message", "El mensaje no puede estar vacío"));
         Message message = chatService.sendMessage(currentUser, conversationId,
                 request.getContent(), request.getMessageType(), request.getStoryPreviewId());
-        MessageResponseDto dto = toMessageDto(message);
+        MessageResponseDto dto = toMessageDto(message, currentUser);
         broadcastMessage(conversationId, dto);
         return ResponseEntity.ok(dto);
     }
@@ -266,8 +268,22 @@ public class ChatController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
 
-        notificationRepository.markConversationMessagesAsRead(currentUser, conversationId);
-        return ResponseEntity.ok(Map.of("message", "Conversación marcada como leída"));
+        ChatService.ReadResult result = chatService.markConversationAsRead(currentUser, conversationId);
+        Profile readerProfile = profileRepository.findById(currentUser.getId()).orElse(null);
+        ReadReceiptDto receipt = ReadReceiptDto.builder()
+                .type("READ_RECEIPT")
+                .conversationId(result.conversationId())
+                .readerUserId(currentUser.getId())
+                .readerUsername(currentUser.getUsername())
+                .lastReadMessageId(result.lastReadMessageId())
+                .readAt(result.readAt().toString())
+                .build();
+        boolean directConversation = conversationRepository.findById(conversationId)
+                .map(conversation -> !conversation.isGroup()).orElse(false);
+        if (directConversation && (readerProfile == null || readerProfile.isReadReceiptsEnabled())) {
+            messagingTemplate.convertAndSend("/topic/conversation." + conversationId, receipt);
+        }
+        return ResponseEntity.ok(receipt);
     }
 
     @PostMapping("/direct/{username}/messages")
@@ -286,7 +302,7 @@ public class ChatController {
         ChatService.SendResult result = chatService.sendDirectMessage(currentUser, username, request.getContent(),
                 request.getMessageType(), request.getStoryPreviewId());
 
-        MessageResponseDto dto = toMessageDto(result.message());
+        MessageResponseDto dto = toMessageDto(result.message(), currentUser);
         broadcastMessage(result.conversation().getId(), dto);
         return ResponseEntity.ok(Map.of(
             "conversationId", result.conversation().getId(),
@@ -306,7 +322,7 @@ public class ChatController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
         MessageResponseDto dto = toMessageDto(
-                chatService.sendMediaMessage(currentUser, conversationId, content, file, durationSeconds));
+                chatService.sendMediaMessage(currentUser, conversationId, content, file, durationSeconds), currentUser);
         broadcastMessage(conversationId, dto);
         return ResponseEntity.ok(dto);
     }
@@ -324,7 +340,7 @@ public class ChatController {
         }
         ChatService.SendResult result = chatService.sendDirectMediaMessage(
                 currentUser, username, content, file, durationSeconds);
-        MessageResponseDto dto = toMessageDto(result.message());
+        MessageResponseDto dto = toMessageDto(result.message(), currentUser);
         broadcastMessage(result.conversation().getId(), dto);
         return ResponseEntity.ok(Map.of(
                 "conversationId", result.conversation().getId(),
@@ -360,8 +376,15 @@ public class ChatController {
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
-    private MessageResponseDto toMessageDto(Message message) {
+    private MessageResponseDto toMessageDto(Message message, User viewer) {
+        return toMessageDto(message, viewer, receiptContext(message.getConversation().getId(), viewer));
+    }
+
+    private MessageResponseDto toMessageDto(Message message, User viewer, ReceiptContext receipt) {
         Profile senderProfile = profileRepository.findById(message.getSender().getId()).orElse(null);
+        boolean ownMessage = viewer != null && message.getSender().getId().equals(viewer.getId());
+        boolean read = ownMessage && receipt.visible() && receipt.lastReadAt() != null
+                && message.getCreatedAt() != null && !message.getCreatedAt().isAfter(receipt.lastReadAt());
         return MessageResponseDto.builder()
                 .messageId(message.getId()).senderId(message.getSender().getId())
                 .senderUsername(message.getSender().getUsername())
@@ -370,7 +393,26 @@ public class ChatController {
                 .content(message.getContent()).messageType(message.getMessageType())
                 .storyPreviewId(message.getStoryPreviewId())
                 .attachments(message.getAttachments().stream().map(this::toAttachmentDto).toList())
+                .readReceiptVisible(ownMessage && receipt.visible())
+                .readByRecipient(read)
                 .createdAt((message.getCreatedAt() != null ? message.getCreatedAt() : java.time.Instant.now()).toString()).build();
+    }
+
+    private ReceiptContext receiptContext(UUID conversationId, User viewer) {
+        if (viewer == null) return new ReceiptContext(false, null);
+        List<ConversationParticipant> participants = participantRepository.findByConversationId(conversationId);
+        if (participants.size() != 2) return new ReceiptContext(false, null);
+        if (participants.get(0).getConversation().isGroup()) return new ReceiptContext(false, null);
+        ConversationParticipant recipient = participants.stream()
+                .filter(participant -> !participant.getUser().getId().equals(viewer.getId()))
+                .findFirst().orElse(null);
+        if (recipient == null) return new ReceiptContext(false, null);
+        Profile recipientProfile = profileRepository.findById(recipient.getUser().getId()).orElse(null);
+        boolean visible = recipientProfile == null || recipientProfile.isReadReceiptsEnabled();
+        Instant lastReadAt = recipient.getLastReadMessageId() == null ? null
+                : messageRepository.findById(recipient.getLastReadMessageId())
+                    .map(Message::getCreatedAt).orElse(null);
+        return new ReceiptContext(visible, lastReadAt);
     }
 
     private AttachmentDto toAttachmentDto(MessageAttachment attachment) {
@@ -427,6 +469,21 @@ public class ChatController {
         private UUID storyPreviewId;
         private List<AttachmentDto> attachments;
         private String createdAt;
+        private Boolean readByRecipient;
+        private Boolean readReceiptVisible;
+    }
+
+    private record ReceiptContext(boolean visible, Instant lastReadAt) {}
+
+    @Data
+    @Builder
+    public static class ReadReceiptDto {
+        private String type;
+        private UUID conversationId;
+        private UUID readerUserId;
+        private String readerUsername;
+        private UUID lastReadMessageId;
+        private String readAt;
     }
 
     @Data

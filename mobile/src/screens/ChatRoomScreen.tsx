@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, AppState } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { getWebSocketUrl } from '../config/api';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +14,8 @@ interface Message {
   content: string;
   messageType: string;
   createdAt: string;
+  readByRecipient?: boolean;
+  readReceiptVisible?: boolean;
 }
 
 interface Conversation {
@@ -25,6 +27,7 @@ interface Conversation {
   isGroup: boolean;
   latestMessage: string;
   updatedAt: string;
+  unreadCount?: number;
 }
 
 interface ChatRoomScreenProps {
@@ -44,6 +47,17 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
 
   const ws = useRef<WebSocket | null>(null);
 
+  const markRead = async () => {
+    if (!conversation.conversationId) return false;
+    try {
+      await api.patch(`/chat/conversations/${conversation.conversationId}/read`);
+      return true;
+    } catch (err) {
+      setSendError('Los mensajes se cargaron, pero no pudimos marcarlos como leídos.');
+      return false;
+    }
+  };
+
   const fetchMessages = async () => {
     if (!conversation.conversationId) {
       setMessages([]);
@@ -53,6 +67,7 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
     try {
       const res = await api.get(`/chat/conversations/${conversation.conversationId}/messages`);
       setMessages(res.data || []);
+      await markRead();
     } catch (err) {
       setMessages([]);
     } finally {
@@ -84,10 +99,30 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
         if (bodyMatch && bodyMatch[1]) {
           try {
             const parsed = JSON.parse(bodyMatch[1]);
-            setMessages((prev) => {
-              if (prev.some((m) => m.messageId === parsed.messageId)) return prev;
-              return [...prev, parsed];
-            });
+            if (parsed.type === 'READ_RECEIPT') {
+              if (parsed.readerUsername?.toLowerCase() !== user?.username?.toLowerCase()) {
+                setMessages((prev) => {
+                  const lastRead = prev.find(message => message.messageId === parsed.lastReadMessageId);
+                  if (!lastRead) return prev;
+                  const cutoff = new Date(lastRead.createdAt).getTime();
+                  return prev.map(message =>
+                    (message.senderId === user?.userId || message.senderUsername === user?.username)
+                    && message.readReceiptVisible
+                    && new Date(message.createdAt).getTime() <= cutoff
+                      ? { ...message, readByRecipient: true }
+                      : message
+                  );
+                });
+              }
+            } else if (parsed.messageId) {
+              setMessages((prev) => {
+                if (prev.some((m) => m.messageId === parsed.messageId)) return prev;
+                return [...prev, parsed];
+              });
+              if (parsed.senderId !== user?.userId && AppState.currentState === 'active') {
+                void markRead();
+              }
+            }
           } catch (err) {}
         }
       }
@@ -100,7 +135,15 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
         socket.close();
       }
     };
-  }, [conversation.conversationId, accessToken]);
+  }, [conversation.conversationId, accessToken, user?.userId, user?.username]);
+
+  useEffect(() => {
+    if (!conversation.conversationId) return;
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') void markRead();
+    });
+    return () => subscription.remove();
+  }, [conversation.conversationId]);
 
   const handleSend = async () => {
     if (!inputText.trim()) return;
@@ -157,6 +200,11 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
             {item.content}
           </Text>
         </View>
+        {isOwn && (
+          <Text style={[styles.receipt, { color: item.readReceiptVisible && item.readByRecipient ? theme.accent : theme.textMuted }]}>
+            {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {item.readReceiptVisible && item.readByRecipient ? 'Leído' : 'Enviado'}
+          </Text>
+        )}
       </View>
     );
   };
@@ -294,6 +342,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
     marginBottom: 2,
+  },
+  receipt: {
+    fontSize: 10,
+    marginTop: 3,
   },
   inputRow: {
     flexDirection: 'row',
