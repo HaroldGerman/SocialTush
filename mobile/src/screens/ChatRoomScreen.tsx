@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, AppState, Image } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, AppState, Image, Modal, Alert, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioPlayer, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { getWebSocketUrl } from '../config/api';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../theme';
+import UserAvatar from '../components/UserAvatar';
 
 interface Message {
   messageId: string;
@@ -20,6 +21,7 @@ interface Message {
   readByRecipient?: boolean;
   readReceiptVisible?: boolean;
   attachments?: Array<{id:string;fileUrl:string;fileType:'IMAGE'|'VIDEO'|'AUDIO';fileName?:string;fileSize?:number;durationSeconds?:number}>;
+  reactions?: Array<{emoji:string;count:number;reactedByMe:boolean}>;
 }
 
 interface Conversation {
@@ -32,15 +34,20 @@ interface Conversation {
   latestMessage: string;
   updatedAt: string;
   unreadCount?: number;
+  isPinned?: boolean;
+  nickname?: string;
+  notificationsMuted?: boolean;
+  chatTheme?: string;
 }
 
 interface ChatRoomScreenProps {
   conversation: Conversation;
   onBack: () => void;
   onConversationPersisted: (conversation: Conversation) => void;
+  onOpenCircle: (slug: string) => void;
 }
 
-export default function ChatRoomScreen({ conversation, onBack, onConversationPersisted }: ChatRoomScreenProps) {
+export default function ChatRoomScreen({ conversation, onBack, onConversationPersisted, onOpenCircle }: ChatRoomScreenProps) {
   const { api, user, accessToken } = useAuth();
   const { theme } = useAppTheme();
   
@@ -52,10 +59,19 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
   const [audioPreview,setAudioPreview]=useState<{uri:string;durationSeconds:number}|null>(null);
   const [sendingMedia,setSendingMedia]=useState(false);
   const [recordingCancelled,setRecordingCancelled]=useState(false);
+  const [showInfo,setShowInfo]=useState(false);
+  const [reactionMessageId,setReactionMessageId]=useState<string|null>(null);
+  const [nickname,setNickname]=useState(conversation.nickname||'');
+  const [presence,setPresence]=useState<{online:boolean;lastSeenAt?:string;lastSeenVisible?:boolean}|null>(null);
+  const [infoMedia,setInfoMedia]=useState<Message['attachments']>([]);
+  const [messageSearch,setMessageSearch]=useState('');
+  const [searchResults,setSearchResults]=useState<Message[]>([]);
+  const [commonCircles,setCommonCircles]=useState<Array<{slug:string;name:string;avatarUrl?:string}>>([]);
   const recorder=useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState=useAudioRecorderState(recorder,250);
 
   const ws = useRef<WebSocket | null>(null);
+  useEffect(()=>setNickname(conversation.nickname||''),[conversation.nickname,conversation.conversationId]);
 
   const markRead = async () => {
     if (!conversation.conversationId) return false;
@@ -102,6 +118,7 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
       const data = e.data;
       if (typeof data === 'string' && data.startsWith('CONNECTED')) {
         socket.send(`SUBSCRIBE\nid:sub-0\ndestination:/topic/conversation.${conversation.conversationId}\n\n\u0000`);
+        socket.send(`SUBSCRIBE\nid:sub-presence\ndestination:/topic/presence\n\n\u0000`);
         return;
       }
       if (typeof data === 'string' && data.includes('MESSAGE')) {
@@ -109,7 +126,9 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
         if (bodyMatch && bodyMatch[1]) {
           try {
             const parsed = JSON.parse(bodyMatch[1]);
-            if (parsed.type === 'READ_RECEIPT') {
+            if(parsed.type==='PRESENCE_CHANGED'&&parsed.username?.toLowerCase()===conversation.otherUsername?.toLowerCase()){
+              setPresence(old=>({online:Boolean(parsed.online),lastSeenAt:parsed.lastSeenAt||old?.lastSeenAt,lastSeenVisible:Boolean(parsed.lastSeenAt)}));
+            } else if (parsed.type === 'READ_RECEIPT') {
               if (parsed.readerUsername?.toLowerCase() !== user?.username?.toLowerCase()) {
                 setMessages((prev) => {
                   const lastRead = prev.find(message => message.messageId === parsed.lastReadMessageId);
@@ -124,6 +143,8 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
                   );
                 });
               }
+            } else if(parsed.type==='MESSAGE_REACTION_UPDATED'){
+              void fetchMessages();
             } else if (parsed.messageId) {
               setMessages((prev) => {
                 if (prev.some((m) => m.messageId === parsed.messageId)) return prev;
@@ -146,6 +167,8 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
       }
     };
   }, [conversation.conversationId, accessToken, user?.userId, user?.username]);
+
+  useEffect(()=>{if(!conversation.otherUsername)return setPresence(null);api.get(`/chat/presence/${encodeURIComponent(conversation.otherUsername)}`).then(res=>setPresence(res.data)).catch(()=>setPresence(null));},[conversation.otherUsername,api]);
 
   useEffect(() => {
     if (!conversation.conversationId) return;
@@ -196,6 +219,22 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
   const startRecording=async()=>{setSendError('');const permission=await AudioModule.requestRecordingPermissionsAsync();if(!permission.granted)return setSendError('No pudimos acceder al micrófono.');try{setRecordingCancelled(false);setAudioPreview(null);await setAudioModeAsync({allowsRecording:true,playsInSilentMode:true});await recorder.prepareToRecordAsync();recorder.record();}catch(error){console.error(error);setSendError('No se pudo iniciar la grabación.');}};
   const stopRecording=async(cancel=false)=>{setRecordingCancelled(cancel);try{await recorder.stop();await setAudioModeAsync({allowsRecording:false,playsInSilentMode:true});if(!cancel&&recorder.uri)setAudioPreview({uri:recorder.uri,durationSeconds:Math.max(1,Math.round((recorderState.durationMillis||0)/1000))});}catch(error){console.error(error);if(!cancel)setSendError('No se pudo preparar la nota de voz.');}};
   const sendMedia=async(kind:'asset'|'audio')=>{const source=kind==='audio'?audioPreview?{uri:audioPreview.uri,name:`voice_${Date.now()}.m4a`,type:'audio/mp4'}:null:selectedMedia?{uri:selectedMedia.uri,name:selectedMedia.fileName||`chat_${Date.now()}.${selectedMedia.type==='video'?'mp4':'jpg'}`,type:selectedMedia.mimeType||(selectedMedia.type==='video'?'video/mp4':'image/jpeg')}:null;if(!source)return;setSendingMedia(true);setSendError('');try{const data=new FormData();data.append('file',{...source,uri:Platform.OS==='ios'?source.uri.replace('file://',''):source.uri} as any);if(inputText.trim())data.append('content',inputText.trim());if(kind==='audio'&&audioPreview)data.append('durationSeconds',String(audioPreview.durationSeconds));const res=conversation.conversationId?await api.post(`/chat/conversations/${conversation.conversationId}/messages/media`,data,{headers:{'Content-Type':'multipart/form-data'}}):await api.post(`/chat/direct/${encodeURIComponent(conversation.otherUsername||'')}/messages/media`,data,{headers:{'Content-Type':'multipart/form-data'}});const message:Message=conversation.conversationId?res.data:res.data.message;if(!conversation.conversationId)onConversationPersisted({...conversation,conversationId:res.data.conversationId,isDraft:false,latestMessage:message.content|| (kind==='audio'?'Nota de voz':'Archivo'),updatedAt:message.createdAt});setMessages(old=>old.some(item=>item.messageId===message.messageId)?old:[...old,message]);setInputText('');if(kind==='audio')setAudioPreview(null);else setSelectedMedia(null);}catch(error:any){console.error(error);setSendError(kind==='audio'?'No se pudo enviar el audio. Reintentar.':'No se pudo enviar el archivo. Reintentar.');}finally{setSendingMedia(false);}};
+  const mediaAttachments=infoMedia?.length?infoMedia:messages.flatMap(message=>message.attachments||[]);
+  const toggleReaction=async(message:Message,emoji:string)=>{try{const mine=message.reactions?.find(item=>item.reactedByMe);if(mine?.emoji===emoji)await api.delete(`/chat/messages/${message.messageId}/reaction`);else await api.put(`/chat/messages/${message.messageId}/reaction`,{emoji});await fetchMessages();setReactionMessageId(null);}catch{setSendError('No se pudo actualizar la reacción.');}};
+  const togglePin=async()=>{if(!conversation.conversationId)return;try{conversation.isPinned?await api.delete(`/chat/conversations/${conversation.conversationId}/pin`):await api.patch(`/chat/conversations/${conversation.conversationId}/pin`);onConversationPersisted({...conversation,isPinned:!conversation.isPinned});}catch{setSendError('No se pudo cambiar el anclado.');}};
+  const saveNickname=async()=>{if(!conversation.conversationId)return;try{await api.patch(`/chat/conversations/${conversation.conversationId}/nickname`,{nickname});onConversationPersisted({...conversation,nickname:nickname.trim()||undefined,name:nickname.trim()||conversation.name});}catch{setSendError('No se pudo guardar el apodo.');}};
+  const updatePreferences=async(values:{notificationsMuted?:boolean;mutedUntil?:string|null;chatTheme?:string})=>{if(!conversation.conversationId)return;try{const res=await api.patch(`/chat/conversations/${conversation.conversationId}/preferences`,values);onConversationPersisted({...conversation,...res.data});}catch{setSendError('No se pudieron guardar los ajustes.');}};
+  const openMuteMenu=()=>Alert.alert('Señales de conversación','Elige durante cuánto tiempo silenciarlas.',[
+    {text:'Todas',onPress:()=>void updatePreferences({notificationsMuted:false})},
+    {text:'1 hora',onPress:()=>void updatePreferences({notificationsMuted:true,mutedUntil:new Date(Date.now()+3600000).toISOString()})},
+    {text:'8 horas',onPress:()=>void updatePreferences({notificationsMuted:true,mutedUntil:new Date(Date.now()+8*3600000).toISOString()})},
+    {text:'1 día',onPress:()=>void updatePreferences({notificationsMuted:true,mutedUntil:new Date(Date.now()+24*3600000).toISOString()})},
+    {text:'Siempre',onPress:()=>void updatePreferences({notificationsMuted:true,mutedUntil:null})},
+    {text:'Cancelar',style:'cancel'}]);
+  const searchConversation=async()=>{if(!conversation.conversationId||messageSearch.trim().length<2)return;try{const res=await api.get(`/chat/conversations/${conversation.conversationId}/messages/search`,{params:{q:messageSearch.trim()}});setSearchResults(res.data?.content||[]);}catch{setSendError('No se pudo buscar en la conversación.');}};
+  useEffect(()=>{if(!showInfo||!conversation.conversationId)return;api.get(`/chat/conversations/${conversation.conversationId}/media`).then(res=>setInfoMedia((res.data?.content||[]).flatMap((message:Message)=>message.attachments||[]))).catch(()=>setSendError('No se pudo cargar la multimedia.'));},[showInfo,conversation.conversationId,api]);
+  useEffect(()=>{if(!showInfo||!user?.username||!conversation.otherUsername)return setCommonCircles([]);Promise.all([api.get(`/circles/user/${encodeURIComponent(user.username)}`),api.get(`/circles/user/${encodeURIComponent(conversation.otherUsername)}`)]).then(([mine,theirs])=>{const own=new Set((mine.data||[]).map((circle:{slug:string})=>circle.slug));setCommonCircles((theirs.data||[]).filter((circle:{slug:string})=>own.has(circle.slug)));}).catch(()=>setCommonCircles([]));},[showInfo,user?.username,conversation.otherUsername,api]);
+  const deleteConversation=()=>{if(!conversation.conversationId)return;Alert.alert('Eliminar conversación','Se eliminará solo de tus Conversaciones. La otra persona conservará la suya.',[{text:'Cancelar',style:'cancel'},{text:'Eliminar',style:'destructive',onPress:async()=>{try{await api.delete(`/chat/conversations/${conversation.conversationId}`);setShowInfo(false);onBack();}catch{setSendError('No se pudo eliminar la conversación.');}}}]);};
 
   const renderMessageItem = ({ item }: { item: Message }) => {
     const isOwn = item.senderUsername === user?.username || item.senderId === user?.userId;
@@ -216,6 +255,8 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
             {item.content}
           </Text> : null}
         </View>
+        <View style={styles.reactionRow}>{item.reactions?.map(reaction=><TouchableOpacity key={reaction.emoji} onPress={()=>void toggleReaction(item,reaction.emoji)} style={[styles.reactionChip,{borderColor:reaction.reactedByMe?theme.accent:theme.border,backgroundColor:theme.surface}]}><Text>{reaction.emoji} {reaction.count}</Text></TouchableOpacity>)}<TouchableOpacity onPress={()=>setReactionMessageId(reactionMessageId===item.messageId?null:item.messageId)} style={styles.reactionAdd}><Ionicons name="happy-outline" size={15} color={theme.textMuted}/></TouchableOpacity></View>
+        {reactionMessageId===item.messageId?<View style={[styles.reactionPicker,{backgroundColor:theme.surface,borderColor:theme.border}]}>{['❤️','😂','😮','😢','🔥','👍'].map(emoji=><TouchableOpacity key={emoji} onPress={()=>void toggleReaction(item,emoji)}><Text style={{fontSize:21}}>{emoji}</Text></TouchableOpacity>)}</View>:null}
         {isOwn && (
           <Text style={[styles.receipt, { color: item.readReceiptVisible && item.readByRecipient ? theme.accent : theme.textMuted }]}>
             {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {item.readReceiptVisible && item.readByRecipient ? 'Leído' : 'Enviado'}
@@ -232,10 +273,11 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
       </View>
     );
   }
+  const themedBackground=({DEEP_TEAL:'#082b2a',OCEAN:'#082230',FOREST:'#10281d',NIGHT:'#071018'} as Record<string,string>)[conversation.chatTheme||'']||theme.background;
 
   return (
     <KeyboardAvoidingView 
-      style={[styles.container, { backgroundColor: theme.background }]} 
+      style={[styles.container, { backgroundColor: themedBackground }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Header */}
@@ -244,12 +286,11 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
           <Ionicons name="arrow-back" size={22} color={theme.textPrimary} />
         </TouchableOpacity>
         
-        <View style={styles.headerInfo}>
-          <Text style={[styles.title, { color: theme.textPrimary }]}>{conversation.name}</Text>
-          <Text style={[styles.status, { color: theme.textSecondary }]}>Conversación directa</Text>
-        </View>
-
-        <Text style={[styles.webCallNotice, { color: theme.textMuted }]}>Llamadas disponibles en web</Text>
+        <TouchableOpacity style={styles.headerIdentity} onPress={()=>setShowInfo(true)} accessibilityLabel="Abrir información de la conversación">
+          <UserAvatar avatarUrl={conversation.avatarUrl} displayName={conversation.name} username={conversation.otherUsername} size={38}/>
+          <View style={styles.headerInfo}><Text style={[styles.title, { color: theme.textPrimary }]}>{conversation.name}</Text>{conversation.otherUsername?<Text style={[styles.status, { color: presence?.online?theme.accent:theme.textSecondary }]}>{presence?.online?'Disponible':`@${conversation.otherUsername}`}</Text>:null}</View>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={()=>setShowInfo(true)} style={styles.infoButton} accessibilityLabel="Abrir información"><Ionicons name="ellipsis-vertical" size={20} color={theme.textPrimary}/></TouchableOpacity>
       </View>
 
       {/* Messages */}
@@ -287,6 +328,23 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
           <Ionicons name="send" size={16} color="#ffffff" />
         </TouchableOpacity>
       </View>
+      <Modal visible={showInfo} animationType="slide" onRequestClose={()=>setShowInfo(false)}>
+        <ScrollView style={{backgroundColor:theme.background}} contentContainerStyle={styles.infoContent}>
+          <View style={styles.infoTop}><TouchableOpacity onPress={()=>setShowInfo(false)} accessibilityLabel="Volver"><Ionicons name="arrow-back" size={23} color={theme.textPrimary}/></TouchableOpacity><Text style={[styles.infoTitle,{color:theme.textPrimary}]}>Información</Text><View style={{width:23}}/></View>
+          <View style={[styles.infoHero,{backgroundColor:theme.surface,borderColor:theme.border}]}><View style={styles.halo}/><UserAvatar avatarUrl={conversation.avatarUrl} displayName={conversation.name} username={conversation.otherUsername} size={96}/><Text style={[styles.infoName,{color:theme.textPrimary}]}>{conversation.name}</Text>{conversation.otherUsername?<Text style={{color:theme.textSecondary}}>@{conversation.otherUsername}</Text>:null}</View>
+          <Text style={[styles.infoSection,{color:theme.textPrimary}]}>Multimedia, enlaces y archivos</Text>
+          {mediaAttachments.length?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaRail}>{mediaAttachments.slice(0,12).map(item=>item.fileType==='IMAGE'?<Image key={item.id} source={{uri:item.fileUrl}} style={styles.mediaTile}/>:<View key={item.id} style={[styles.mediaTile,styles.mediaType,{backgroundColor:theme.surface}]}><Ionicons name={item.fileType==='VIDEO'?'videocam':'musical-notes'} size={25} color={theme.accent}/><Text style={{fontSize:10,color:theme.textMuted}}>{item.fileType==='VIDEO'?'Video':'Audio'}</Text></View>)}</ScrollView>:<Text style={{color:theme.textMuted,fontSize:13}}>Todavía no hay archivos compartidos.</Text>}
+          <TouchableOpacity onPress={()=>void togglePin()} style={[styles.infoCard,{backgroundColor:theme.surface,borderColor:theme.border}]}><View style={styles.infoOption}><Ionicons name={conversation.isPinned?'bookmark':'bookmark-outline'} size={20} color={theme.accent}/><Text style={{color:theme.textPrimary,fontWeight:'700'}}>{conversation.isPinned?'Desanclar conversación':'Anclar conversación'}</Text></View></TouchableOpacity>
+          <View style={[styles.infoCard,{backgroundColor:theme.surface,borderColor:theme.border}]}><Text style={[styles.optionLabel,{color:theme.textMuted}]}>APODO PRIVADO</Text><View style={styles.nicknameRow}><TextInput value={nickname} onChangeText={setNickname} maxLength={40} placeholder="Añadir apodo" placeholderTextColor={theme.textMuted} style={[styles.nicknameInput,{borderColor:theme.border,color:theme.textPrimary}]}/><TouchableOpacity onPress={()=>void saveNickname()} style={[styles.smallButton,{backgroundColor:theme.primary}]}><Text style={styles.smallButtonText}>Guardar</Text></TouchableOpacity></View></View>
+          <TouchableOpacity onPress={openMuteMenu} style={[styles.infoCard,{backgroundColor:theme.surface,borderColor:theme.border}]}><View style={styles.infoOption}><Ionicons name={conversation.notificationsMuted?'notifications-off-outline':'notifications-outline'} size={20} color={theme.accent}/><View><Text style={{color:theme.textPrimary,fontWeight:'700'}}>Señales</Text><Text style={{color:theme.textMuted,fontSize:11}}>{conversation.notificationsMuted?'Silenciadas':'Todas'}</Text></View></View></TouchableOpacity>
+          <View style={[styles.infoCard,{backgroundColor:theme.surface,borderColor:theme.border}]}><Text style={[styles.optionLabel,{color:theme.textMuted}]}>FONDO DEL CHAT</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8}}>{[['DEFAULT','Predeterminado'],['DEEP_TEAL','Teal'],['OCEAN','Océano'],['FOREST','Bosque'],['NIGHT','Noche']].map(([value,label])=><TouchableOpacity key={value} onPress={()=>void updatePreferences({chatTheme:value})} style={[styles.themeChip,{borderColor:conversation.chatTheme===value?theme.accent:theme.border}]}><Text style={{color:theme.textPrimary,fontSize:11,fontWeight:'700'}}>{label}</Text></TouchableOpacity>)}</ScrollView></View>
+          <View style={[styles.infoCard,{backgroundColor:theme.surface,borderColor:theme.border}]}><View style={styles.infoOption}><Ionicons name="person-outline" size={20} color={theme.accent}/><Text style={{color:theme.textPrimary,fontWeight:'700'}}>Espacio de @{conversation.otherUsername||conversation.name}</Text></View></View>
+          {conversation.conversationId?<TouchableOpacity onPress={deleteConversation} style={[styles.deleteOption,{borderColor:theme.danger}]}><Ionicons name="trash-outline" size={20} color={theme.danger}/><Text style={{color:theme.danger,fontWeight:'800'}}>Eliminar conversación</Text></TouchableOpacity>:null}
+          {conversation.conversationId?<View style={[styles.infoCard,{backgroundColor:theme.surface,borderColor:theme.border}]}><Text style={[styles.optionLabel,{color:theme.textMuted}]}>BUSCAR MENSAJES</Text><View style={styles.nicknameRow}><TextInput value={messageSearch} onChangeText={setMessageSearch} placeholder="Buscar texto…" placeholderTextColor={theme.textMuted} style={[styles.nicknameInput,{borderColor:theme.border,color:theme.textPrimary}]}/><TouchableOpacity onPress={()=>void searchConversation()} style={[styles.smallButton,{backgroundColor:theme.primary}]}><Ionicons name="search" size={18} color="#fff"/></TouchableOpacity></View>{searchResults.map(item=><Text key={item.messageId} numberOfLines={2} style={{color:theme.textSecondary,fontSize:11,marginTop:9}}>@{item.senderUsername}: {item.content}</Text>)}</View>:null}
+          {commonCircles.length?<View><Text style={[styles.infoSection,{color:theme.textPrimary}]}>Círculos en común</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaRail}>{commonCircles.map(circle=><TouchableOpacity key={circle.slug} style={styles.commonCircle} onPress={()=>{setShowInfo(false);onOpenCircle(circle.slug);}}><UserAvatar avatarUrl={circle.avatarUrl} displayName={circle.name} size={48}/><Text numberOfLines={1} style={{color:theme.textSecondary,fontSize:10,width:62,textAlign:'center'}}>{circle.name}</Text></TouchableOpacity>)}</ScrollView></View>:null}
+          <Text style={{color:theme.textMuted,fontSize:11,textAlign:'center',marginTop:24}}>Las llamadas de audio y video están disponibles en Lifonk Web.</Text>
+        </ScrollView>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -312,9 +370,8 @@ const styles = StyleSheet.create({
   backBtn: {
     padding: 4,
   },
-  headerInfo: {
-    alignItems: 'center',
-  },
+  headerIdentity:{flex:1,flexDirection:'row',alignItems:'center',gap:10,marginHorizontal:8},
+  headerInfo: {alignItems:'flex-start'},
   title: {
     fontSize: 15,
     fontWeight: 'bold',
@@ -323,11 +380,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 1,
   },
-  webCallNotice: {
-    maxWidth: 90,
-    fontSize: 9,
-    textAlign: 'right',
-  },
+  infoButton:{width:40,height:40,alignItems:'center',justifyContent:'center'},
   messageRow: {
     marginVertical: 4,
     maxWidth: '80%',
@@ -416,6 +469,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   attachmentImage:{width:220,height:220,borderRadius:12,marginBottom:6},attachmentVideo:{width:240,height:220,borderRadius:12,backgroundColor:'#000'},audio:{minWidth:190,flexDirection:'row',alignItems:'center',gap:10,paddingVertical:4},recording:{borderTopWidth:1,padding:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},recordActions:{flexDirection:'row',alignItems:'center',gap:15},stop:{paddingHorizontal:15,paddingVertical:8,borderRadius:10},preview:{borderTopWidth:1,padding:10,flexDirection:'row',alignItems:'center',gap:10},selectedThumb:{width:44,height:44,borderRadius:9},audioSend:{minHeight:38,paddingHorizontal:13,borderRadius:11,alignItems:'center',justifyContent:'center'},
+  infoContent:{padding:18,paddingBottom:42},infoTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingVertical:10},infoTitle:{fontSize:15,fontWeight:'900'},infoHero:{height:250,borderWidth:1,borderRadius:28,alignItems:'center',justifyContent:'center',overflow:'hidden',marginTop:10},halo:{position:'absolute',width:260,height:160,borderRadius:130,backgroundColor:'rgba(20,184,166,.22)',transform:[{scaleX:1.5}]},infoName:{fontSize:20,fontWeight:'900',marginTop:12},infoSection:{fontSize:13,fontWeight:'900',marginTop:24,marginBottom:12},mediaRail:{gap:8},mediaTile:{width:76,height:76,borderRadius:14},mediaType:{alignItems:'center',justifyContent:'center',gap:5},infoCard:{borderWidth:1,borderRadius:18,padding:16,marginTop:22},infoOption:{flexDirection:'row',alignItems:'center',gap:12},deleteOption:{borderWidth:1,borderRadius:18,padding:16,marginTop:12,flexDirection:'row',alignItems:'center',gap:12},
+  reactionRow:{flexDirection:'row',alignItems:'center',gap:4,marginTop:3},reactionChip:{borderWidth:1,borderRadius:14,paddingHorizontal:7,paddingVertical:3},reactionAdd:{padding:4},reactionPicker:{flexDirection:'row',gap:8,borderWidth:1,borderRadius:20,paddingHorizontal:10,paddingVertical:6,marginTop:5},optionLabel:{fontSize:10,fontWeight:'900',marginBottom:9},nicknameRow:{flexDirection:'row',gap:8},nicknameInput:{flex:1,borderWidth:1,borderRadius:12,paddingHorizontal:11,height:42},smallButton:{borderRadius:12,paddingHorizontal:12,justifyContent:'center'},smallButtonText:{color:'#fff',fontSize:11,fontWeight:'800'},themeChip:{borderWidth:1,borderRadius:16,paddingHorizontal:12,paddingVertical:8},
+  commonCircle:{width:64,alignItems:'center',gap:5},
 });
 
 function formatDuration(seconds:number){return `${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`;}

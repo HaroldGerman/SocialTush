@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, TextInput, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, TextInput, RefreshControl, ScrollView } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../theme';
@@ -15,6 +15,10 @@ interface Conversation {
   latestMessage: string;
   updatedAt: string;
   unreadCount?: number;
+  isPinned?: boolean;
+  nickname?: string;
+  notificationsMuted?: boolean;
+  chatTheme?: string;
 }
 
 interface ChatListScreenProps {
@@ -30,6 +34,8 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
   const [searchQuery, setSearchQuery] = useState('');
   const [error,setError]=useState('');
   const [refreshing,setRefreshing]=useState(false);
+  const [filter,setFilter]=useState<'ALL'|'UNREAD'|'PINNED'|'CIRCLES'>('ALL');
+  const searchInputRef=useRef<TextInput>(null);
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -83,6 +89,7 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
     <TouchableOpacity 
       style={[styles.chatCard, { borderColor: theme.border }]} 
       onPress={() => onSelectConversation(item)}
+      onLongPress={async()=>{if(!item.conversationId)return;try{item.isPinned?await api.delete(`/chat/conversations/${item.conversationId}/pin`):await api.patch(`/chat/conversations/${item.conversationId}/pin`);await fetchConversations();}catch{setError('No se pudo cambiar el anclado.');}}}
       activeOpacity={0.8}
     >
       {item.isGroup?<View style={[styles.avatar,{backgroundColor:theme.primary}]}>
@@ -97,8 +104,8 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
       
       <View style={styles.cardContent}>
         <View style={styles.cardHeader}>
-          <Text style={[styles.chatName, { color: theme.textPrimary }, hasUnread && styles.unreadText]}>{item.name}</Text>
-          {hasUnread ? <View style={[styles.unreadBadge, { backgroundColor: theme.primary }]}><Text style={styles.unreadBadgeText}>{item.unreadCount}</Text></View> : null}
+          <Text style={[styles.chatName, { color: theme.textPrimary }, hasUnread && styles.unreadText]}>{item.isPinned?'📌 ':''}{item.name}{item.notificationsMuted?'  🔕':''}</Text>
+          <View style={styles.cardMeta}><Text style={[styles.time,{color:theme.textMuted}]}>{new Date(item.updatedAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</Text>{hasUnread ? <View style={[styles.unreadBadge, { backgroundColor: theme.primary }]}><Text style={styles.unreadBadgeText}>{Math.min(item.unreadCount||0,99)}{(item.unreadCount||0)>99?'+':''}</Text></View> : null}</View>
         </View>
         <Text style={[styles.latestMessage, { color: theme.textSecondary }, hasUnread && styles.unreadText]} numberOfLines={1}>
           {item.latestMessage}
@@ -107,6 +114,14 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
     </TouchableOpacity>
     );
   };
+  const visibleConversations=conversations.filter(item=>{
+    if(filter==='UNREAD'&&!(item.unreadCount||0))return false;
+    if(filter==='PINNED'&&!item.isPinned)return false;
+    if(filter==='CIRCLES'&&!item.isGroup)return false;
+    const query=searchQuery.trim().toLowerCase();
+    return !query||item.name.toLowerCase().includes(query)||item.otherUsername?.toLowerCase().includes(query);
+  });
+  const recents=conversations.filter(item=>!item.isGroup).slice(0,7);
 
   if (loading) {
     return (
@@ -120,15 +135,17 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Top Header */}
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Mensajería</Text>
+        <View><Text style={[styles.brand, { color: theme.accent }]}>LIFONK</Text><Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Conversaciones</Text></View>
+        <TouchableOpacity onPress={()=>searchInputRef.current?.focus()} style={[styles.newButton,{backgroundColor:theme.primary}]} accessibilityLabel="Nueva conversación"><Ionicons name="add" size={22} color="#fff"/></TouchableOpacity>
       </View>
       {error?<TouchableOpacity onPress={()=>setError('')} style={{backgroundColor:'#7f1d1d',padding:9}}><Text style={{color:'#fee2e2',textAlign:'center'}}>{error}</Text></TouchableOpacity>:null}
 
       {/* Start Chat Form */}
       <View style={styles.searchSection}>
         <TextInput
+          ref={searchInputRef}
           style={[styles.searchInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary }]}
-          placeholder="Escribe un usuario para chatear..."
+          placeholder="Buscar conversaciones o personas..."
           placeholderTextColor={theme.textMuted}
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -136,25 +153,25 @@ export default function ChatListScreen({ onSelectConversation }: ChatListScreenP
           autoCorrect={false}
         />
         <TouchableOpacity style={[styles.searchBtn, { backgroundColor: theme.primary }]} onPress={handleStartConversation}>
-          <Ionicons name="paper-plane-outline" size={16} color="#ffffff" />
-          <Text style={styles.searchBtnText}>Nueva conversación</Text>
+          <Ionicons name="search" size={17} color="#ffffff" />
         </TouchableOpacity>
       </View>
 
       {/* List */}
       <FlatList
-        data={conversations}
+        data={visibleConversations}
         keyExtractor={(item) => item.conversationId || `draft-${item.otherUsername}`}
         renderItem={renderConversationItem}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={()=>{setRefreshing(true);void fetchConversations();}} tintColor={theme.accent}/>}
-        contentContainerStyle={conversations.length === 0 ? styles.emptyContainer : { paddingHorizontal: 16 }}
+        ListHeaderComponent={<><Text style={[styles.sectionLabel,{color:theme.textMuted}]}>RECIENTES</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recentRail}>{recents.map(item=><TouchableOpacity key={item.conversationId} onPress={()=>onSelectConversation(item)} style={styles.recentItem}><UserAvatar avatarUrl={item.avatarUrl} displayName={item.name} username={item.otherUsername} size={48}/><Text numberOfLines={1} style={[styles.recentName,{color:theme.textSecondary}]}>{item.name.split(' ')[0]}</Text></TouchableOpacity>)}</ScrollView><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>{([['ALL','Todas'],['UNREAD','No leídas'],['PINNED','Ancladas'],['CIRCLES','Círculos']] as const).map(([value,label])=><TouchableOpacity key={value} onPress={()=>setFilter(value)} style={[styles.filterChip,{borderColor:theme.border},filter===value&&{backgroundColor:theme.primary,borderColor:theme.primary}]}><Text style={{color:filter===value?'#fff':theme.textSecondary,fontSize:11,fontWeight:'800'}}>{label}</Text></TouchableOpacity>)}</ScrollView><Text style={[styles.sectionLabel,{color:theme.textMuted}]}>CONVERSACIONES</Text></>}
+        contentContainerStyle={visibleConversations.length === 0 ? styles.emptyContainer : { paddingHorizontal: 16 }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <View style={[styles.emptyIconBox, { backgroundColor: theme.surfaceSecondary }]}>
               <Ionicons name="chatbubbles-outline" size={36} color={theme.textMuted} />
             </View>
-            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No tienes conversaciones activas</Text>
-            <Text style={[styles.emptySub, { color: theme.textMuted }]}>Escribe un usuario arriba para iniciar un chat.</Text>
+            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Aún no tienes conversaciones</Text>
+            <Text style={[styles.emptySub, { color: theme.textMuted }]}>Busca una persona para iniciar una conversación.</Text>
           </View>
         }
       />
@@ -176,11 +193,23 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
+  brand: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
   headerTitle: {
     fontSize: 22,
     fontWeight: 'bold',
   },
+  newButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  sectionLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1, marginTop: 12, marginBottom: 9 },
+  recentRail: { gap: 13, paddingBottom: 8 },
+  recentItem: { width: 58, alignItems: 'center' },
+  recentName: { width: 58, textAlign: 'center', fontSize: 10, fontWeight: '700', marginTop: 5 },
+  filters: { gap: 8, paddingVertical: 8 },
+  filterChip: { borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 7 },
+  cardMeta:{alignItems:'flex-end',gap:5},time:{fontSize:9,fontWeight:'600'},
   searchSection: {
     flexDirection: 'row',
     padding: 16,

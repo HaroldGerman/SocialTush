@@ -40,6 +40,12 @@ interface Conversation {
   isGroup: boolean;
   latestMessage: string;
   updatedAt: string;
+  unreadCount?: number;
+  isPinned?: boolean;
+  nickname?: string;
+  notificationsMuted?: boolean;
+  mutedUntil?: string;
+  chatTheme?: string;
 }
 
 type TabType =
@@ -174,6 +180,7 @@ function MainApp() {
                     conversation={activeConversation}
                     onBack={() => setActiveConversation(null)}
                     onConversationPersisted={setActiveConversation}
+                    onOpenCircle={(slug) => { setActiveConversation(null); setActiveCircleSlug(slug); }}
                   />
                 ) : (
                   <ChatListScreen
