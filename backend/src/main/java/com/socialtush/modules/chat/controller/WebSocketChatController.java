@@ -19,6 +19,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
 import java.time.Instant;
+import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,11 +36,12 @@ public class WebSocketChatController {
     private final NotificationService notificationService;
 
     @MessageMapping("/chat.sendMessage")
-    public void sendMessage(ChatMessagePayload payload) {
+    public void sendMessage(ChatMessagePayload payload, Principal principal) {
+        if (principal == null || payload == null || payload.getConversationId() == null) return;
         Conversation conversation = conversationRepository.findById(UUID.fromString(payload.getConversationId())).orElse(null);
-        User sender = userRepository.findByUsername(payload.getSenderUsername()).orElse(null);
+        User sender = userRepository.findByUsernameIgnoreCase(principal.getName()).orElse(null);
 
-        if (conversation == null || sender == null) return;
+        if (conversation == null || sender == null || !participantRepository.existsByConversationIdAndUserId(conversation.getId(), sender.getId())) return;
 
         // 1. Create and Save Message
         Message message = Message.builder()
@@ -86,7 +88,11 @@ public class WebSocketChatController {
     }
 
     @MessageMapping("/chat.typing")
-    public void handleTyping(TypingPayload payload) {
+    public void handleTyping(TypingPayload payload, Principal principal) {
+        if (principal == null || payload == null || payload.getConversationId() == null) return;
+        User sender = userRepository.findByUsernameIgnoreCase(principal.getName()).orElse(null);
+        if (sender == null || !participantRepository.existsByConversationIdAndUserId(UUID.fromString(payload.getConversationId()), sender.getId())) return;
+        payload.setSenderUsername(sender.getUsername());
         messagingTemplate.convertAndSend("/topic/conversation." + payload.getConversationId() + ".typing", payload);
     }
 
@@ -101,8 +107,8 @@ public class WebSocketChatController {
     @Data
     public static class TypingPayload {
         private String conversationId;
-        private String username;
-        private boolean isTyping;
+        private String senderUsername;
+        private String content;
     }
 
     @Data

@@ -34,7 +34,7 @@ interface ChatRoomScreenProps {
 }
 
 export default function ChatRoomScreen({ conversation, onBack, onConversationPersisted }: ChatRoomScreenProps) {
-  const { api, user } = useAuth();
+  const { api, user, accessToken } = useAuth();
   const { theme } = useAppTheme();
   
   const [messages, setMessages] = useState<Message[]>([]);
@@ -63,21 +63,22 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
   useEffect(() => {
     fetchMessages();
 
-    if (!conversation.conversationId) return;
+    if (!conversation.conversationId || !accessToken) return;
 
     const wsUrl = getWebSocketUrl();
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
-      const connectFrame = 'CONNECT\naccept-version:1.1,1.2\nheart-beat:10000,10000\n\n\u0000';
+      const connectFrame = `CONNECT\naccept-version:1.1,1.2\nheart-beat:10000,10000\nAuthorization:Bearer ${accessToken}\n\n\u0000`;
       socket.send(connectFrame);
-
-      const subscribeFrame = `SUBSCRIBE\nid:sub-0\ndestination:/topic/conversation.${conversation.conversationId}\n\n\u0000`;
-      socket.send(subscribeFrame);
     };
 
     socket.onmessage = (e) => {
       const data = e.data;
+      if (typeof data === 'string' && data.startsWith('CONNECTED')) {
+        socket.send(`SUBSCRIBE\nid:sub-0\ndestination:/topic/conversation.${conversation.conversationId}\n\n\u0000`);
+        return;
+      }
       if (typeof data === 'string' && data.includes('MESSAGE')) {
         const bodyMatch = data.match(/\n\n([\s\S]*)\u0000$/);
         if (bodyMatch && bodyMatch[1]) {
@@ -99,7 +100,7 @@ export default function ChatRoomScreen({ conversation, onBack, onConversationPer
         socket.close();
       }
     };
-  }, [conversation.conversationId]);
+  }, [conversation.conversationId, accessToken]);
 
   const handleSend = async () => {
     if (!inputText.trim()) return;
