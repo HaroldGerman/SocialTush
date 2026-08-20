@@ -72,8 +72,20 @@ public class AccountAccessService {
 
     @Transactional
     public void verifyEmail(String rawToken) {
-        AccountActionToken token = requireUsableToken(rawToken, PURPOSE_VERIFY_EMAIL,
-                "El enlace de verificación no es válido o ha expirado.");
+        String message = "El enlace de verificación no es válido o ha expirado.";
+        if (rawToken == null || rawToken.isBlank()) throw new IllegalArgumentException(message);
+
+        AccountActionToken token = tokenRepository
+                .findByTokenHashAndPurpose(hash(rawToken.trim()), PURPOSE_VERIFY_EMAIL)
+                .orElseThrow(() -> new IllegalArgumentException(message));
+
+        // Make the verification link idempotent. A browser retry must not turn a successful
+        // verification into an error just because the token was consumed milliseconds earlier.
+        if (token.isUsed() && token.getUser().isVerified()) return;
+        if (token.isUsed() || token.isExpired() || !token.getUser().isActive()) {
+            throw new IllegalArgumentException(message);
+        }
+
         User user = token.getUser();
         user.setVerified(true);
         userRepository.save(user);
@@ -105,7 +117,6 @@ public class AccountAccessService {
                 "El enlace para restablecer la contraseña no es válido o ha expirado.");
         User user = token.getUser();
         user.setPasswordHash(passwordEncoder.encode(newPassword));
-        // Possession of the reset link also proves control of the registered email.
         user.setVerified(true);
         userRepository.save(user);
 
