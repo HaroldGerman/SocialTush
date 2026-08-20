@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
+import { Ionicons } from '@expo/vector-icons';
 
 interface LoginScreenProps {
   onNavigateToRegister: () => void;
@@ -15,6 +16,7 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [showPassword,setShowPassword]=useState(false);
 
   const handleLogin = async () => {
     if (!usernameOrEmail.trim() || !password.trim()) {
@@ -49,8 +51,8 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
       <View style={styles.form}>
         <View style={styles.inputGroup}>
           <Text style={[styles.label, { color: theme.textSecondary }]}>Usuario o Email</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary }]}
+          <View style={[styles.passwordBox,{backgroundColor:theme.surface,borderColor:theme.border}]}><TextInput
+            style={[styles.passwordInput,{color:theme.textPrimary}]}
             placeholder="Usuario o correo"
             placeholderTextColor={theme.textMuted}
             value={usernameOrEmail}
@@ -66,12 +68,12 @@ export default function LoginScreen({ onNavigateToRegister, onLoginSuccess }: Lo
             style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.textPrimary }]}
             placeholder="Tu contraseña"
             placeholderTextColor={theme.textMuted}
-            secureTextEntry
+            secureTextEntry={!showPassword}
             value={password}
             onChangeText={setPassword}
             autoCapitalize="none"
             autoCorrect={false}
-          />
+          /><TouchableOpacity accessibilityLabel={showPassword?'Ocultar contraseña':'Mostrar contraseña'} onPress={()=>setShowPassword(value=>!value)}><Ionicons name={showPassword?'eye-off-outline':'eye-outline'} size={21} color={theme.textMuted}/></TouchableOpacity></View>
         </View>
 
         <TouchableOpacity 
@@ -161,6 +163,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 14,
   },
+  passwordBox:{height:50,borderWidth:1,borderRadius:14,paddingHorizontal:16,flexDirection:'row',alignItems:'center'},passwordInput:{flex:1,fontSize:14},
   button: {
     height: 50,
     borderRadius: 14,

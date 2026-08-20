@@ -11,14 +11,18 @@ interface UserSession {
   email: string;
   displayName: string;
   role: string;
+  avatarUrl?: string;
 }
 
 interface AuthContextType {
   user: UserSession | null;
   accessToken: string | null;
   isLoading: boolean;
+  registrationOnboardingPending: boolean;
   login: (usernameOrEmail: string, password: string) => Promise<void>;
   register: (email: string, username: string, displayName: string, password: string) => Promise<void>;
+  updateUserProfile: (updates: Partial<Pick<UserSession, 'displayName' | 'avatarUrl'>>) => Promise<void>;
+  completeRegistrationOnboarding: () => Promise<void>;
   logout: () => Promise<void>;
   api: AxiosInstance;
 }
@@ -27,11 +31,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const REFRESH_TOKEN_KEY = 'socialtush_refresh_token';
 const USER_KEY = 'socialtush_user';
+const ONBOARDING_REGISTRATION_KEY = 'lifonk_onboarding_from_registration';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserSession | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [registrationOnboardingPending, setRegistrationOnboardingPending] = useState(false);
 
   // Restore session on startup
   useEffect(() => {
@@ -39,6 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
         const storedUser = await SecureStore.getItemAsync(USER_KEY);
+        setRegistrationOnboardingPending((await SecureStore.getItemAsync(ONBOARDING_REGISTRATION_KEY)) === '1');
         if (storedRefreshToken && storedUser) {
           const parsedUser = JSON.parse(storedUser);
           const res = await axios.post(`${BACKEND_URL}/auth/refresh`, {
@@ -48,7 +55,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (res.data.refreshToken) {
             await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, res.data.refreshToken);
           }
-          setUser(parsedUser);
+          const refreshedUser = { ...parsedUser, avatarUrl: res.data.avatarUrl ?? parsedUser.avatarUrl };
+          setUser(refreshedUser);
+          await SecureStore.setItemAsync(USER_KEY, JSON.stringify(refreshedUser));
         }
       } catch (e) {
         // Session expired or invalid token
@@ -90,6 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: res.data.email,
         displayName: res.data.displayName,
         role: res.data.role,
+        avatarUrl: res.data.avatarUrl,
       };
 
       setAccessToken(res.data.accessToken);
@@ -99,6 +109,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, res.data.refreshToken);
       }
       await SecureStore.setItemAsync(USER_KEY, JSON.stringify(userSession));
+      await SecureStore.deleteItemAsync(ONBOARDING_REGISTRATION_KEY).catch(() => {});
+      setRegistrationOnboardingPending(false);
     } catch (err: any) {
       throw new Error(err.response?.data?.message || 'Error al conectar con el servidor');
     } finally {
@@ -116,6 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: res.data.email,
         displayName: res.data.displayName,
         role: res.data.role,
+        avatarUrl: res.data.avatarUrl,
       };
 
       setAccessToken(res.data.accessToken);
@@ -125,6 +138,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, res.data.refreshToken);
       }
       await SecureStore.setItemAsync(USER_KEY, JSON.stringify(userSession));
+      await SecureStore.setItemAsync(ONBOARDING_REGISTRATION_KEY, '1');
+      setRegistrationOnboardingPending(true);
     } catch (err: any) {
       throw new Error(err.response?.data?.message || 'Error al crear cuenta');
     } finally {
@@ -141,6 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {});
       await SecureStore.deleteItemAsync(USER_KEY).catch(() => {});
+      await SecureStore.deleteItemAsync(ONBOARDING_REGISTRATION_KEY).catch(() => {});
       setAccessToken(null);
       setUser(null);
     } finally {
@@ -148,8 +164,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const updateUserProfile = async (updates: Partial<Pick<UserSession, 'displayName' | 'avatarUrl'>>) => {
+    if (!user) return;
+    const nextUser = { ...user, ...updates };
+    setUser(nextUser);
+    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(nextUser));
+  };
+
+  const completeRegistrationOnboarding = async () => {
+    await SecureStore.deleteItemAsync(ONBOARDING_REGISTRATION_KEY).catch(() => {});
+    setRegistrationOnboardingPending(false);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, accessToken, isLoading, login, register, logout, api }}>
+    <AuthContext.Provider value={{ user, accessToken, isLoading, registrationOnboardingPending, login, register, updateUserProfile, completeRegistrationOnboarding, logout, api }}>
       {children}
     </AuthContext.Provider>
   );
