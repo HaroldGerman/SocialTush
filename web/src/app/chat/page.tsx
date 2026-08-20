@@ -982,13 +982,13 @@ function ChatContent() {
         </div>
 
         {/* ================= CENTER MAIN CHAT CANVAS ================= */}
-        <div className={`flex-1 flex flex-col justify-between bg-slate-50 dark:bg-[#07151d] relative ${
-          !activeConversation ? 'hidden md:flex' : 'flex'
-        }`}>
+        <div className={`flex-1 min-w-0 min-h-0 h-full overflow-hidden flex flex-col bg-slate-50 dark:bg-[#07151d] relative ${
+            !activeConversation ? 'hidden md:flex' : 'flex'
+          }`}>
           {activeConversation ? (
             <>
               {/* Main Chat Header */}
-              <div className="p-3.5 px-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-sm flex items-center justify-between z-10">
+              <div className="shrink-0 p-3.5 px-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-sm flex items-center justify-between z-10">
                 <div className="flex items-center gap-3">
                   <button 
                     onClick={() => { setActiveConversation(null); setMessages([]); setChatError(''); }}
@@ -1034,7 +1034,12 @@ function ChatContent() {
               </div>
 
               {/* Chat Messages Area */}
-              <div className="flex-1 p-4 md:p-6 overflow-y-auto space-y-4 bg-[radial-gradient(circle_at_80%_10%,rgba(20,184,166,.08),transparent_25%),radial-gradient(circle_at_20%_60%,rgba(14,116,144,.07),transparent_30%)] dark:bg-[radial-gradient(circle_at_75%_15%,rgba(20,184,166,.10),transparent_26%),radial-gradient(circle_at_20%_65%,rgba(8,47,73,.45),transparent_32%),#07151d]" style={activeConversation.chatTheme && activeConversation.chatTheme !== 'DEFAULT' ? { backgroundImage: chatThemeBackground[activeConversation.chatTheme] } : undefined}>
+              <div
+                    className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 md:p-6 space-y-4 bg-[radial-gradient(circle_at_80%_10%,rgba(20,184,166,.08),transparent_25%),radial-gradient(circle_at_20%_60%,rgba(14,116,144,.07),transparent_30%)] dark:bg-[radial-gradient(circle_at_75%_15%,rgba(20,184,166,.10),transparent_26%),radial-gradient(circle_at_20%_65%,rgba(8,47,73,.45),transparent_32%),#07151d]"
+                    style={activeConversation.chatTheme && activeConversation.chatTheme !== 'DEFAULT'
+                      ? { backgroundImage: chatThemeBackground[activeConversation.chatTheme] }
+                      : undefined}
+                  >
                 {messages.map((m) => {
                   const isOwn = m.senderUsername === user?.username;
                   return (
@@ -1147,9 +1152,9 @@ function ChatContent() {
                 </div>
               )}
               <div 
-                className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-sm flex items-center gap-3"
-                style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
-              >
+                  className="shrink-0 p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-sm flex items-center gap-3"
+                  style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+                >
                 <button type="button" onClick={() => attachmentInputRef.current?.click()} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 transition-all" aria-label="Adjuntar foto o video">
                   <Plus className="h-4 w-4" />
                 </button>
