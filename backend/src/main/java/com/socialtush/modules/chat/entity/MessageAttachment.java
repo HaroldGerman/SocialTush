@@ -49,4 +49,26 @@ public class MessageAttachment {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    /**
+     * Regular chat DTOs call this getter. Never leak the backing object URL for
+     * one-time media through history, search, websocket replay or media lists.
+     */
+    public String getFileUrl() {
+        return viewOnce ? "" : fileUrl;
+    }
+
+    /** Internal-only accessor used by the consume endpoint after authorization. */
+    public String getStoredFileUrl() {
+        return fileUrl;
+    }
+
+    /** Makes old DTOs understand the attachment without changing every response class. */
+    public String getFileType() {
+        return viewOnce ? "VIEW_ONCE_IMAGE" : fileType;
+    }
+
+    public String getStoredFileType() {
+        return fileType;
+    }
 }
