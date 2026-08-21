@@ -36,6 +36,8 @@ interface CommentItem {
   content: string;
 }
 
+type WatchReporter = (postId: string, watchMillis: number, completed: boolean) => void;
+
 function normalize(value: string) {
   return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
@@ -61,56 +63,56 @@ function PulseVideo({ post, active, muted, onToggleMuted, onWatch }: {
   active: boolean;
   muted: boolean;
   onToggleMuted: () => void;
-  onWatch: (watchMillis: number, completed: boolean) => void;
+  onWatch: WatchReporter;
 }) {
-  const ref = useRef<HTMLVideoElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [paused, setPaused] = useState(false);
   const activeSinceRef = useRef<number | null>(null);
   const wasActiveRef = useRef(false);
   const completedRef = useRef(false);
+  const reportedRef = useRef(false);
+
+  const reportSession = useCallback(() => {
+    if (!wasActiveRef.current || activeSinceRef.current == null || reportedRef.current) return;
+    const watched = Math.max(0, Math.min(120000, Date.now() - activeSinceRef.current));
+    reportedRef.current = true;
+    if (watched >= 800) onWatch(post.postId, watched, completedRef.current);
+  }, [onWatch, post.postId]);
 
   useEffect(() => {
-    const video = ref.current;
+    const video = videoRef.current;
     if (!video) return;
     if (active) {
       activeSinceRef.current = Date.now();
       completedRef.current = false;
+      reportedRef.current = false;
       wasActiveRef.current = true;
       video.play().then(() => setPaused(false)).catch(() => setPaused(true));
       return;
     }
 
-    if (wasActiveRef.current && activeSinceRef.current != null) {
-      const watched = Math.max(0, Math.min(120000, Date.now() - activeSinceRef.current));
-      if (watched >= 800) onWatch(watched, completedRef.current);
-    }
+    reportSession();
     wasActiveRef.current = false;
     activeSinceRef.current = null;
     video.pause();
     video.currentTime = 0;
     setPaused(false);
-  }, [active, onWatch]);
+  }, [active, reportSession]);
 
-  useEffect(() => () => {
-    if (wasActiveRef.current && activeSinceRef.current != null) {
-      const watched = Math.max(0, Math.min(120000, Date.now() - activeSinceRef.current));
-      if (watched >= 800) onWatch(watched, completedRef.current);
-    }
-  }, [onWatch]);
+  useEffect(() => () => reportSession(), [reportSession]);
+  useEffect(() => { if (videoRef.current) videoRef.current.muted = muted; }, [muted]);
 
-  useEffect(() => { if (ref.current) ref.current.muted = muted; }, [muted]);
-
-  const toggle = () => {
-    const video = ref.current;
+  const togglePlayback = () => {
+    const video = videoRef.current;
     if (!video) return;
     if (video.paused) void video.play().then(() => setPaused(false));
     else { video.pause(); setPaused(true); }
   };
 
   return <>
-    <button type="button" onClick={toggle} className="absolute inset-0 h-full w-full bg-black" aria-label={paused ? 'Reproducir' : 'Pausar'}>
+    <button type="button" onClick={togglePlayback} className="absolute inset-0 h-full w-full bg-black" aria-label={paused ? 'Reproducir' : 'Pausar'}>
       <video
-        ref={ref}
+        ref={videoRef}
         src={post.mediaUrls[0]}
         poster={post.mediaThumbnailUrls?.[0]}
         loop
@@ -190,7 +192,7 @@ export default function PulsePage() {
     return () => observer.disconnect();
   }, [rankedPosts]);
 
-  const recordWatch = useCallback((postId: string, watchMillis: number, completed: boolean) => {
+  const recordWatch = useCallback<WatchReporter>((postId, watchMillis, completed) => {
     void api.post(`/posts/${postId}/pulse-view`, { watchMillis, completed }).catch(() => {});
   }, []);
 
@@ -244,7 +246,7 @@ export default function PulsePage() {
 
     {loading ? <div className="flex h-full items-center justify-center"><div className="flex flex-col items-center gap-3"><div className="h-11 w-11 animate-pulse rounded-2xl bg-teal-600"/><p className="text-sm font-bold text-white/70">Buscando pulsos…</p></div></div> : rankedPosts.length === 0 ? <div className="flex h-full items-center justify-center px-8 pb-16 text-center"><div className="max-w-sm"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-teal-600/20 text-teal-300"><Sparkles className="h-8 w-8"/></div><h1 className="mt-5 text-2xl font-black">Sé el primer Pulso</h1><p className="mt-2 text-sm leading-relaxed text-white/60">Publica un clip corto y deja que Lifonk lo descubra más allá de tus conexiones.</p><button onClick={openPulseComposer} className="mt-5 rounded-2xl bg-teal-600 px-6 py-3 text-sm font-black">Crear Pulso</button></div></div> : <main className="h-full snap-y snap-mandatory overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {rankedPosts.map(post => <article key={post.postId} ref={element => { itemRefs.current[post.postId] = element; }} data-post-id={post.postId} className="relative h-[calc(100dvh-4rem)] min-h-[calc(100dvh-4rem)] snap-start snap-always overflow-hidden bg-black md:h-[100dvh] md:min-h-[100dvh]">
-        <PulseVideo post={post} active={activePostId === post.postId} muted={muted} onToggleMuted={() => setMuted(value => !value)} onWatch={(watchMillis, completed) => recordWatch(post.postId, watchMillis, completed)} />
+        <PulseVideo post={post} active={activePostId === post.postId} muted={muted} onToggleMuted={() => setMuted(value => !value)} onWatch={recordWatch}/>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2/5 bg-gradient-to-t from-black via-black/45 to-transparent"/>
         <div className="absolute bottom-20 left-4 right-20 z-20 md:bottom-8"><Link href={`/profile/${encodeURIComponent(post.username)}`} className="inline-flex items-center gap-2.5"><UserAvatar avatarUrl={post.avatarUrl} name={post.displayName || post.username} className="h-10 w-10 rounded-full border-2 border-white/80 text-xs"/><div><p className="text-sm font-black drop-shadow">{post.displayName || post.username}</p><p className="text-[11px] font-semibold text-white/70">@{post.username} · {timeLabel(post.createdAt)}</p></div></Link>{post.caption && <p className="mt-3 line-clamp-3 text-sm font-semibold leading-relaxed text-white drop-shadow">{post.caption}</p>}{post.musicTitle && <p className="mt-2 text-[11px] font-bold text-white/75">♫ {post.musicTitle}</p>}</div>
         <div className="absolute bottom-20 right-3 z-20 flex flex-col items-center gap-4 md:bottom-8"><button onClick={() => void toggleLike(post.postId)} className="flex flex-col items-center gap-1"><span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/35 backdrop-blur"><Heart className={`h-5 w-5 ${post.hasLiked ? 'fill-rose-500 text-rose-500' : 'text-white'}`}/></span><span className="text-[10px] font-black">{post.likesCount || 0}</span></button><button onClick={() => void openComments(post)} className="flex flex-col items-center gap-1"><span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/35 backdrop-blur"><MessageCircle className="h-5 w-5"/></span><span className="text-[10px] font-black">{post.commentsCount || 0}</span></button><button onClick={() => void toggleSave(post.postId)} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/35 backdrop-blur"><Bookmark className={`h-5 w-5 ${post.isSaved ? 'fill-teal-300 text-teal-300' : ''}`}/></button><button onClick={() => void share(post)} className="flex h-11 w-11 items-center justify-center rounded-full bg-black/35 backdrop-blur"><Share2 className="h-5 w-5"/></button></div>
