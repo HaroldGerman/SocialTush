@@ -23,9 +23,12 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -33,6 +36,8 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/v1/stories")
 @RequiredArgsConstructor
 public class StoryController {
+
+    private static final double MAX_STORY_VIDEO_SECONDS = 30.0;
 
     private final StoryRepository storyRepository;
     private final FollowRepository followRepository;
@@ -53,6 +58,8 @@ public class StoryController {
             @RequestParam(value = "musicTitle", required = false) String musicTitle,
             @RequestParam(value = "isBestFriends", defaultValue = "false") boolean isBestFriends,
             @RequestParam(value = "overlayData", required = false) String overlayData,
+            @RequestParam(value = "trimStart", required = false) Double trimStart,
+            @RequestParam(value = "trimEnd", required = false) Double trimEnd,
             @RequestParam(value = "file", required = false) MultipartFile file,
             @AuthenticationPrincipal User currentUser
     ) {
@@ -64,18 +71,36 @@ public class StoryController {
         String mType = mediaType.toUpperCase().trim();
 
         if (file != null && !file.isEmpty()) {
-            try {
-                String originalFilename = file.getOriginalFilename();
-                String ext = originalFilename != null && originalFilename.contains(".")
-                        ? originalFilename.substring(originalFilename.lastIndexOf("."))
-                        : ".jpg";
-                String randomFilename = UUID.randomUUID().toString() + ext;
+            String contentType = Optional.ofNullable(file.getContentType()).orElse("");
+            boolean isVideo = contentType.startsWith("video") || "VIDEO".equals(mType);
 
-                fileUrl = storageService.uploadFile(randomFilename, file.getBytes(), file.getContentType());
-                mType = file.getContentType() != null && file.getContentType().startsWith("video") ? "VIDEO" : "IMAGE";
+            try {
+                if (isVideo) {
+                    double start = trimStart == null ? 0.0 : trimStart;
+                    double end = trimEnd == null ? start + MAX_STORY_VIDEO_SECONDS : trimEnd;
+                    if (!Double.isFinite(start) || !Double.isFinite(end) || start < 0 || end <= start) {
+                        return ResponseEntity.badRequest().body(Map.of("message", "El recorte del video no es válido"));
+                    }
+                    if (end - start > MAX_STORY_VIDEO_SECONDS + 0.5) {
+                        return ResponseEntity.badRequest().body(Map.of("message", "Los Momentos de video pueden durar como máximo 30 segundos"));
+                    }
+
+                    byte[] processedVideo = transcodeStoryVideo(file, start, Math.min(end - start, MAX_STORY_VIDEO_SECONDS));
+                    fileUrl = storageService.uploadFile(UUID.randomUUID() + ".mp4", processedVideo, "video/mp4");
+                    mType = "VIDEO";
+                } else {
+                    String originalFilename = file.getOriginalFilename();
+                    String ext = originalFilename != null && originalFilename.contains(".")
+                            ? originalFilename.substring(originalFilename.lastIndexOf("."))
+                            : ".jpg";
+                    fileUrl = storageService.uploadFile(UUID.randomUUID() + ext, file.getBytes(), contentType);
+                    mType = "IMAGE";
+                }
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
             } catch (Exception e) {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body(Map.of("message", "Error al procesar archivo: " + e.getMessage()));
+                        .body(Map.of("message", "Error al preparar el momento: " + e.getMessage()));
             }
         }
 
@@ -92,8 +117,47 @@ public class StoryController {
                 .build();
 
         story = storyRepository.save(story);
-
         return ResponseEntity.ok(convertToDto(story, currentUser));
+    }
+
+    private byte[] transcodeStoryVideo(MultipartFile file, double start, double duration) throws Exception {
+        Path input = Files.createTempFile("lifonk-story-input-", ".media");
+        Path output = Files.createTempFile("lifonk-story-output-", ".mp4");
+        try {
+            file.transferTo(input.toFile());
+
+            Process process = new ProcessBuilder(
+                    "ffmpeg",
+                    "-hide_banner", "-loglevel", "error", "-y",
+                    "-ss", String.format(Locale.ROOT, "%.3f", start),
+                    "-i", input.toString(),
+                    "-t", String.format(Locale.ROOT, "%.3f", duration),
+                    "-vf", "scale='floor(min(1080,iw)/2)*2':-2",
+                    "-c:v", "libx264",
+                    "-preset", "veryfast",
+                    "-crf", "23",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                    "-b:a", "128k",
+                    "-movflags", "+faststart",
+                    output.toString()
+            ).redirectErrorStream(true).start();
+
+            boolean finished = process.waitFor(120, TimeUnit.SECONDS);
+            String ffmpegOutput = new String(process.getInputStream().readAllBytes());
+            if (!finished) {
+                process.destroyForcibly();
+                throw new IllegalArgumentException("El video tardó demasiado en procesarse. Intenta con un archivo más corto o liviano.");
+            }
+            if (process.exitValue() != 0 || !Files.exists(output) || Files.size(output) == 0) {
+                String detail = ffmpegOutput.isBlank() ? "No se pudo convertir el video" : ffmpegOutput.trim();
+                throw new IllegalArgumentException("No pudimos preparar este video. " + detail.substring(0, Math.min(detail.length(), 300)));
+            }
+            return Files.readAllBytes(output);
+        } finally {
+            Files.deleteIfExists(input);
+            Files.deleteIfExists(output);
+        }
     }
 
     @GetMapping("/active")
