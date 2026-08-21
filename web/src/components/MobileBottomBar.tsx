@@ -24,45 +24,45 @@ export default function MobileBottomBar({ onOpenCreate }: MobileBottomBarProps) 
     else openCreateHub();
   };
 
-  const base = 'flex min-w-0 flex-1 flex-col items-center gap-0.5';
+  const base = 'flex h-full min-w-0 flex-col items-center justify-center gap-1 text-center';
   const active = 'text-teal-700 dark:text-teal-400 font-bold';
   const inactive = 'text-slate-500 dark:text-slate-400';
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 flex h-16 items-center justify-around border-t border-slate-200 bg-white px-1 shadow-lg dark:border-slate-800 dark:bg-[#0f172a] md:hidden">
+    <div className="fixed bottom-0 left-0 right-0 z-50 grid h-[68px] grid-cols-6 items-stretch border-t border-slate-200 bg-white px-1 shadow-[0_-6px_20px_rgba(15,23,42,.07)] dark:border-slate-800 dark:bg-[#0f172a] md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <Link href="/feed" className={`${base} ${pathname === '/feed' || pathname === '/' ? active : inactive}`}>
-        <Home className="h-5 w-5" />
-        <span className="text-[9px]">Ritmo</span>
+        <Home className="h-5 w-5 shrink-0" />
+        <span className="w-full truncate text-[9px] leading-none">Ritmo</span>
       </Link>
 
       <Link href="/pulse" className={`${base} ${pathname.startsWith('/pulse') ? active : inactive}`}>
-        <PlaySquare className="h-5 w-5" />
-        <span className="text-[9px]">Pulso</span>
+        <PlaySquare className="h-5 w-5 shrink-0" />
+        <span className="w-full truncate text-[9px] leading-none">Pulso</span>
       </Link>
 
       <Link href="/circles" className={`${base} ${pathname.startsWith('/circles') ? active : inactive}`}>
-        <Compass className="h-5 w-5" />
-        <span className="text-[9px]">Círculos</span>
+        <Compass className="h-5 w-5 shrink-0" />
+        <span className="w-full truncate text-[9px] leading-none">Círculos</span>
       </Link>
 
-      <button onClick={handleCreateClick} className="flex min-w-0 flex-1 flex-col items-center">
-        <div className="-mt-5 flex h-10 w-10 items-center justify-center rounded-full border border-teal-500/50 bg-teal-700 text-white shadow-md">
-          <Plus className="h-6 w-6 stroke-[3]" />
-        </div>
-        <span className="mt-0.5 text-[9px] font-bold text-teal-700 dark:text-teal-400">Crear</span>
+      <button onClick={handleCreateClick} className={`${base} text-teal-700 dark:text-teal-400`} aria-label="Crear">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-teal-700 text-white shadow-sm shadow-teal-900/20">
+          <Plus className="h-5 w-5 stroke-[2.7]" />
+        </span>
+        <span className="w-full truncate text-[9px] font-bold leading-none">Crear</span>
       </button>
 
       <Link href="/chat" className={`${base} ${pathname.startsWith('/chat') ? active : inactive}`}>
-        <span className="relative">
+        <span className="relative shrink-0">
           <MessageSquare className="h-5 w-5" />
           {totalUnreadMessages > 0 && <span className="absolute -right-3 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-black leading-none text-white">{totalUnreadMessages > 99 ? '99+' : totalUnreadMessages}</span>}
         </span>
-        <span className="text-[9px]">Chat</span>
+        <span className="w-full truncate text-[9px] leading-none">Chat</span>
       </Link>
 
       <Link href={user ? `/profile/${user.username}` : '/login'} className={`${base} ${pathname.startsWith('/profile') ? active : inactive}`}>
-        {user ? <UserAvatar avatarUrl={user.avatarUrl} name={user.displayName || user.username} className={`h-6 w-6 rounded-full border ${pathname.startsWith('/profile') ? 'border-teal-600' : 'border-slate-300 dark:border-slate-700'} text-[9px]`} /> : <User className="h-5 w-5" />}
-        <span className="text-[9px]">Espacio</span>
+        {user ? <UserAvatar avatarUrl={user.avatarUrl} name={user.displayName || user.username} className={`h-5 w-5 shrink-0 rounded-full border ${pathname.startsWith('/profile') ? 'border-teal-600' : 'border-slate-300 dark:border-slate-700'} text-[8px]`} /> : <User className="h-5 w-5 shrink-0" />}
+        <span className="w-full truncate text-[9px] leading-none">Espacio</span>
       </Link>
     </div>
   );
