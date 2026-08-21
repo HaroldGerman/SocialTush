@@ -1,0 +1,147 @@
+name: Apply Lifonk chat and daily UX patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifonk-chat-daily-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch Lifonk web and backend
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              text = path.read_text()
+              if old not in text:
+                  raise SystemExit(f'Missing patch target: {label} in {path}')
+              path.write_text(text.replace(old, new, 1))
+
+          daily = Path('web/src/components/DailyQuestionCard.tsx')
+          replace_once(
+              daily,
+              "  const dateKey = useMemo(localDateKey, []);\n  const question = useMemo(() => DAILY_QUESTIONS[hashIndex(dateKey, DAILY_QUESTIONS.length)], [dateKey]);",
+              "  const [dateKey, setDateKey] = useState(localDateKey);\n  const question = useMemo(() => DAILY_QUESTIONS[hashIndex(dateKey, DAILY_QUESTIONS.length)], [dateKey]);",
+              'daily local date state'
+          )
+          replace_once(
+              daily,
+              "  const [profileLoaded, setProfileLoaded] = useState(false);\n\n  useEffect(() => {",
+              "  const [profileLoaded, setProfileLoaded] = useState(false);\n\n  useEffect(() => {\n    let midnightTimer: number | undefined;\n    const answeredKey = `lifonk.daily-question.answered.${user?.userId || user?.username || 'guest'}`;\n\n    const syncLocalDay = () => {\n      const nextKey = localDateKey();\n      setDateKey(previous => {\n        if (previous !== nextKey) {\n          setAnswer('');\n          setError('');\n          setPublished(false);\n        }\n        return nextKey;\n      });\n      setPublished(window.localStorage.getItem(answeredKey) === nextKey);\n    };\n\n    const scheduleMidnight = () => {\n      const now = new Date();\n      const nextMidnight = new Date(now);\n      nextMidnight.setHours(24, 0, 0, 0);\n      midnightTimer = window.setTimeout(() => {\n        syncLocalDay();\n        scheduleMidnight();\n      }, Math.max(1000, nextMidnight.getTime() - now.getTime() + 100));\n    };\n\n    syncLocalDay();\n    scheduleMidnight();\n    document.addEventListener('visibilitychange', syncLocalDay);\n    window.addEventListener('focus', syncLocalDay);\n    return () => {\n      if (midnightTimer) window.clearTimeout(midnightTimer);\n      document.removeEventListener('visibilitychange', syncLocalDay);\n      window.removeEventListener('focus', syncLocalDay);\n    };\n  }, [user?.userId, user?.username]);\n\n  useEffect(() => {",
+              'daily midnight reset effect'
+          )
+          replace_once(
+              daily,
+              "      onPublished?.(response.data); setAnswer(''); setPublished(true);",
+              "      onPublished?.(response.data); setAnswer(''); setPublished(true);\n      window.localStorage.setItem(`lifonk.daily-question.answered.${user?.userId || user?.username || 'guest'}`, dateKey);",
+              'daily answered persistence'
+          )
+
+          chat = Path('web/src/app/chat/page.tsx')
+          replace_once(chat, "  Bookmark, Camera, CheckCheck, ChevronLeft, Eye, Home, Image as ImageIcon, Info,", "  Bookmark, Camera, ChevronLeft, Eye, Home, Image as ImageIcon, Info,", 'remove checkcheck import')
+          replace_once(
+              chat,
+              "  latestMessageSenderUsername?: string;\n  unreadCount?: number;",
+              "  latestMessageSenderUsername?: string;\n  latestMessageReadByRecipient?: boolean;\n  latestMessageReadReceiptVisible?: boolean;\n  unreadCount?: number;",
+              'conversation receipt fields'
+          )
+          replace_once(
+              chat,
+              "  chatTheme?: 'DEFAULT' | 'DEEP_TEAL' | 'OCEAN' | 'FOREST' | 'NIGHT';",
+              "  chatTheme?: 'DEFAULT' | 'DEEP_TEAL' | 'OCEAN' | 'FOREST' | 'NIGHT' | 'PEARL' | 'AURORA_LIGHT';",
+              'chat theme union'
+          )
+          replace_once(
+              chat,
+              "const MESSAGE_REACTIONS = ['❤️', '😂', '😮', '😢', '🔥', '👍'];\n\nfunction ChatContent() {",
+              "const MESSAGE_REACTIONS = ['❤️', '😂', '😮', '😢', '🔥', '👍'];\n\nfunction LifonkReceipt({ read, compact = false }: { read: boolean; compact?: boolean }) {\n  return <span className={`inline-flex items-center ${compact ? 'gap-0.5' : 'gap-1'}`} aria-label={read ? 'Leído' : 'Entregado'} title={read ? 'Leído' : 'Entregado'}>\n    <span className={`relative inline-flex ${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} items-center justify-center rounded-full border font-black ${read ? 'border-[#18877e] bg-[#18877e] text-white' : 'border-slate-400/80 bg-transparent text-slate-400'}`}>\n      <span className={`${compact ? 'text-[7px]' : 'text-[8px]'} leading-none`}>L</span>\n      <span className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${read ? 'bg-[#62d0c4]' : 'bg-slate-400'}`}/>\n    </span>\n  </span>;\n}\n\nfunction ChatContent() {",
+              'lifonk receipt component'
+          )
+          replace_once(
+              chat,
+              "          setMessages(previous => {\n            const lastRead = previous.find(item => item.messageId === body.lastReadMessageId);\n            if (!lastRead) return previous;\n            const cutoff = new Date(lastRead.createdAt).getTime();\n            return previous.map(item => item.senderUsername?.toLowerCase() === user?.username?.toLowerCase() && item.readReceiptVisible && new Date(item.createdAt).getTime() <= cutoff\n              ? { ...item, readByRecipient: true }\n              : item);\n          });",
+              "          setMessages(previous => {\n            const lastRead = previous.find(item => item.messageId === body.lastReadMessageId);\n            if (!lastRead) return previous;\n            const cutoff = new Date(lastRead.createdAt).getTime();\n            return previous.map(item => item.senderUsername?.toLowerCase() === user?.username?.toLowerCase() && item.readReceiptVisible && new Date(item.createdAt).getTime() <= cutoff\n              ? { ...item, readByRecipient: true }\n              : item);\n          });\n          void fetchConversations();",
+              'refresh conversation receipts'
+          )
+          replace_once(
+              chat,
+              "      }\n    } catch (error: any) {\n      setChatError(selectedAttachment?.type.startsWith('audio/')",
+              "      }\n      void fetchConversations();\n    } catch (error: any) {\n      setChatError(selectedAttachment?.type.startsWith('audio/')",
+              'refresh list after send'
+          )
+          replace_once(
+              chat,
+              "  const recentDirectConversations = conversations.filter(item => !item.isGroup).slice(0, 8);\n  const chatThemeBackground: Record<string, string> = {",
+              "  const recentDirectConversations = conversations.filter(item => !item.isGroup).slice(0, 8);\n  const lastOwnMessageId = [...messages].reverse().find(message => message.senderUsername?.toLowerCase() === user?.username?.toLowerCase())?.messageId;\n  const chatThemeBackground: Record<string, string> = {",
+              'last own message id'
+          )
+          replace_once(
+              chat,
+              "    NIGHT: 'linear-gradient(145deg,#070b13,#101827)',\n  };",
+              "    NIGHT: 'linear-gradient(145deg,#070b13,#101827)',\n    PEARL: 'radial-gradient(circle at 12% 18%,rgba(24,135,126,.10),transparent 24%), radial-gradient(circle at 88% 82%,rgba(148,163,184,.12),transparent 28%), linear-gradient(145deg,#ffffff,#f3f8f7)',\n    AURORA_LIGHT: 'radial-gradient(circle at 80% 8%,rgba(45,212,191,.14),transparent 24%), radial-gradient(circle at 8% 78%,rgba(125,211,252,.16),transparent 30%), radial-gradient(circle at 72% 68%,rgba(196,181,253,.10),transparent 25%), linear-gradient(155deg,#fffefd,#f3fbfa 52%,#f6f8ff)',\n  };",
+              'light chat themes'
+          )
+          replace_once(
+              chat,
+              "<div className=\"mt-1 flex items-center justify-between\"><span className={`truncate text-[10px] ${hasUnread ? 'font-bold text-[#177f76] dark:text-[#55c7bb]' : 'text-slate-500 dark:text-slate-400'}`}>{preview}</span>{hasUnread && <span className=\"ml-2 min-w-4 rounded-full bg-[#177f76] px-1.5 py-0.5 text-center text-[9px] font-black text-white\">{item.unreadCount}</span>}</div>",
+              "<div className=\"mt-1 flex items-center justify-between gap-2\"><span className={`flex min-w-0 items-center gap-1 truncate text-[10px] ${hasUnread ? 'font-bold text-[#177f76] dark:text-[#55c7bb]' : 'text-slate-500 dark:text-slate-400'}`}>{item.latestMessageSenderUsername?.toLowerCase() === user?.username?.toLowerCase() && <LifonkReceipt compact read={Boolean(item.latestMessageReadReceiptVisible && item.latestMessageReadByRecipient)}/>}<span className=\"truncate\">{preview}</span></span>{hasUnread && <span className=\"ml-2 min-w-4 rounded-full bg-[#177f76] px-1.5 py-0.5 text-center text-[9px] font-black text-white\">{item.unreadCount}</span>}</div>",
+              'conversation list receipt'
+          )
+          replace_once(
+              chat,
+              "<div className=\"mt-1 flex items-center gap-1.5 px-1\"><span className=\"text-[9px] text-slate-400\">{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>{isOwn && <span className=\"flex items-center gap-1 text-[9px] font-semibold text-slate-400\"><CheckCheck className={`h-3.5 w-3.5 ${message.readReceiptVisible && message.readByRecipient ? 'text-[#2a968b]' : 'text-slate-400'}`}/>{message.readReceiptVisible && message.readByRecipient ? 'Leído' : 'Enviado'}</span>}</div>",
+              "<div className=\"mt-1 flex items-center gap-1.5 px-1\"><span className=\"text-[9px] text-slate-400\">{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>{isOwn && message.messageId === lastOwnMessageId && <span className=\"flex items-center gap-1 text-[9px] font-semibold text-slate-400\"><LifonkReceipt read={Boolean(message.readReceiptVisible && message.readByRecipient)}/>{message.readReceiptVisible && message.readByRecipient ? 'Leído' : 'Entregado'}</span>}</div>",
+              'single message receipt'
+          )
+          replace_once(
+              chat,
+              "{[['DEFAULT','Predeterminado'],['DEEP_TEAL','Teal profundo'],['OCEAN','Océano'],['FOREST','Bosque'],['NIGHT','Noche']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}",
+              "{[['DEFAULT','Predeterminado'],['PEARL','Perla clara'],['AURORA_LIGHT','Aurora suave'],['DEEP_TEAL','Teal profundo'],['OCEAN','Océano'],['FOREST','Bosque'],['NIGHT','Noche']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}",
+              'theme selector options'
+          )
+
+          backend = Path('backend/src/main/java/com/socialtush/modules/chat/controller/ChatController.java')
+          replace_once(
+              backend,
+              "            String latestSender = latestMessage.map(m -> m.getSender() != null ? m.getSender().getUsername() : \"\").orElse(\"\");\n            long unreadCount = notificationRepository.countByReceiverAndNotificationTypeAndTargetIdAndIsReadFalse(currentUser, \"MESSAGE\", c.getId());",
+              "            String latestSender = latestMessage.map(m -> m.getSender() != null ? m.getSender().getUsername() : \"\").orElse(\"\");\n            ReceiptContext latestReceipt = receiptContext(c.getId(), currentUser);\n            boolean latestOwnMessage = latestMessage.map(message -> message.getSender() != null && message.getSender().getId().equals(currentUser.getId())).orElse(false);\n            boolean latestReceiptVisible = latestOwnMessage && latestReceipt.visible();\n            boolean latestReadByRecipient = latestOwnMessage && latestReceiptVisible && latestReceipt.lastReadAt() != null\n                    && latestMessage.map(Message::getCreatedAt).map(created -> !created.isAfter(latestReceipt.lastReadAt())).orElse(false);\n            long unreadCount = notificationRepository.countByReceiverAndNotificationTypeAndTargetIdAndIsReadFalse(currentUser, \"MESSAGE\", c.getId());",
+              'backend latest receipt calculation'
+          )
+          replace_once(
+              backend,
+              "                    .latestMessageSenderUsername(latestSender)\n                    .unreadCount((int) unreadCount)",
+              "                    .latestMessageSenderUsername(latestSender)\n                    .latestMessageReadByRecipient(latestReadByRecipient)\n                    .latestMessageReadReceiptVisible(latestReceiptVisible)\n                    .unreadCount((int) unreadCount)",
+              'backend conversation receipt builder'
+          )
+          replace_once(
+              backend,
+              "        private String latestMessageSenderUsername;\n        private int unreadCount;",
+              "        private String latestMessageSenderUsername;\n        private boolean latestMessageReadByRecipient;\n        private boolean latestMessageReadReceiptVisible;\n        private int unreadCount;",
+              'backend conversation receipt dto'
+          )
+
+          # Remove this one-shot workflow in the same resulting commit.
+          Path('.github/workflows/lifonk-chat-daily-patch.yml').unlink()
+          PY
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "Lifonk Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add web/src/components/DailyQuestionCard.tsx web/src/app/chat/page.tsx backend/src/main/java/com/socialtush/modules/chat/controller/ChatController.java .github/workflows/lifonk-chat-daily-patch.yml
+          git diff --cached --check
+          git commit -m "Improve daily question reset and Lifonk chat receipts/themes"
+          git push origin HEAD:main
