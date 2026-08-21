@@ -109,6 +109,23 @@ public class CommentController {
         return ResponseEntity.ok(dtos);
     }
 
+    @DeleteMapping("/{commentId}")
+    public ResponseEntity<?> deleteComment(@PathVariable UUID commentId, @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        }
+        Comment comment = commentRepository.findById(commentId).orElse(null);
+        if (comment == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Eco no encontrado"));
+        }
+        if (!comment.getUser().getId().equals(currentUser.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Solo puedes eliminar tus propios ecos"));
+        }
+
+        commentRepository.delete(comment);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{commentId}/resonate")
     public ResponseEntity<?> toggleResonance(@PathVariable UUID commentId, @AuthenticationPrincipal User currentUser) {
         if (currentUser == null) {

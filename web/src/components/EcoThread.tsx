@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Heart, MessageCircle, Send } from 'lucide-react';
-import { api } from '@/context/AuthContext';
+import { Heart, MessageCircle, Send, Trash2 } from 'lucide-react';
+import { api, useAuth } from '@/context/AuthContext';
 import UserAvatar from '@/components/UserAvatar';
 
 export interface EcoDto {
@@ -24,6 +24,7 @@ interface EcoThreadProps {
 }
 
 export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
+  const { user } = useAuth();
   const [ecos, setEcos] = useState<EcoDto[]>([]);
   const [replies, setReplies] = useState<Record<string, EcoDto[]>>({});
   const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
@@ -31,6 +32,7 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
   const [replyTarget, setReplyTarget] = useState<{ rootId: string; username: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -125,6 +127,48 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
     }
   };
 
+  const isOwnEco = (eco: EcoDto) => {
+    const sameId = user?.userId && String(user.userId) === String(eco.userId);
+    const sameUsername = user?.username && eco.username && user.username.toLowerCase() === eco.username.toLowerCase();
+    return Boolean(sameId || sameUsername);
+  };
+
+  const deleteEco = async (eco: EcoDto, rootId?: string) => {
+    if (!isOwnEco(eco) || deletingId) return;
+    if (!window.confirm('¿Eliminar este eco?')) return;
+    setDeletingId(eco.commentId);
+    setError('');
+    try {
+      await api.delete(`/comments/${eco.commentId}`);
+      if (rootId) {
+        setReplies((prev) => ({
+          ...prev,
+          [rootId]: (prev[rootId] || []).filter((item) => item.commentId !== eco.commentId),
+        }));
+      } else {
+        setEcos((prev) => prev.filter((item) => item.commentId !== eco.commentId));
+        setReplies((prev) => {
+          const next = { ...prev };
+          delete next[eco.commentId];
+          return next;
+        });
+        setExpandedReplies((prev) => {
+          const next = { ...prev };
+          delete next[eco.commentId];
+          return next;
+        });
+      }
+      if (replyTarget?.rootId === eco.commentId) {
+        setReplyTarget(null);
+        setText('');
+      }
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.message || 'No se pudo eliminar el eco.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const beginReply = (rootId: string, username: string) => {
     setReplyTarget({ rootId, username });
     setText(`@${username} `);
@@ -148,6 +192,11 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
             <button type="button" onClick={() => beginReply(rootId || eco.commentId, eco.username)} className="inline-flex items-center gap-1 hover:text-teal-600 dark:hover:text-teal-400">
               <MessageCircle className="h-3.5 w-3.5" />Responder
             </button>
+            {isOwnEco(eco) && (
+              <button type="button" disabled={deletingId === eco.commentId} onClick={() => void deleteEco(eco, rootId)} className="inline-flex items-center gap-1 text-rose-500 hover:text-rose-600 disabled:opacity-50">
+                <Trash2 className="h-3.5 w-3.5" />{deletingId === eco.commentId ? 'Eliminando…' : 'Eliminar'}
+              </button>
+            )}
             {!rootId && (
               <button type="button" onClick={() => void loadReplies(eco.commentId)} className="hover:text-teal-600 dark:hover:text-teal-400">
                 {expandedReplies[eco.commentId] ? 'Ocultar respuestas' : 'Ver respuestas'}
