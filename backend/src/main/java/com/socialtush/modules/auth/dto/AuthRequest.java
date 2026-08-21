@@ -26,6 +26,9 @@ public class AuthRequest {
         @NotBlank(message = "El nombre público es obligatorio")
         @Size(max = 100, message = "El nombre de pantalla no puede superar los 100 caracteres")
         private String displayName;
+
+        @Pattern(regexp = "^(es|en)$", message = "El idioma debe ser es o en")
+        private String preferredLanguage = "es";
     }
 
     @Data
