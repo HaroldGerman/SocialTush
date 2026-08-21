@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { BellRing } from 'lucide-react';
-import { api } from '@/context/AuthContext';
 import {
   currentWebPushState,
   disableWebPush,
@@ -23,7 +22,6 @@ const labels: Record<WebPushState, string> = {
 export default function WebPushControls() {
   const [state, setState] = useState<WebPushState>('disabled');
   const [error, setError] = useState('');
-  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
 
   useEffect(() => {
     void registerLifonkServiceWorker()
@@ -64,20 +62,6 @@ export default function WebPushControls() {
     }
   };
 
-  const sendTest = async () => {
-    setTestStatus('sending');
-    setError('');
-    try {
-      const response = await api.post('/push/web/test');
-      setTestStatus(Number(response.data?.success || 0) > 0 ? 'sent' : 'failed');
-      if (!response.data?.success) setError('El proveedor no confirmó ninguna entrega.');
-    } catch (requestError) {
-      console.error('Web Push test:', requestError);
-      setTestStatus('failed');
-      setError('No se pudo entregar la prueba.');
-    }
-  };
-
   return (
     <div className="border-b border-slate-200 p-3 dark:border-slate-700">
       <div className="flex items-start gap-2">
@@ -91,11 +75,8 @@ export default function WebPushControls() {
             </button>
           )}
           {state === 'enabled' && (
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <button disabled={testStatus === 'sending'} onClick={() => void sendTest()} className="rounded-lg bg-teal-700 px-3 py-1.5 text-[10px] font-bold text-white disabled:opacity-60">{testStatus === 'sending' ? 'Enviando…' : 'Enviar prueba'}</button>
+            <div className="mt-2 flex items-center">
               <button onClick={() => void disable()} className="text-[10px] font-semibold text-slate-500 underline">Desactivar</button>
-              {testStatus === 'sent' && <span className="text-[10px] font-semibold text-emerald-600">Prueba enviada</span>}
-              {testStatus === 'failed' && <span className="text-[10px] font-semibold text-rose-600">No se pudo entregar</span>}
             </div>
           )}
         </div>
