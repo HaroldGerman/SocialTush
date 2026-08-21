@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -62,15 +61,16 @@ public class ShortVideoProcessingService {
 
             List<String> cover = List.of(
                     "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                    "-ss", decimal(thumbnailSecond), "-i", output.toString(), "-frames:v", "1",
+                    "-ss", decimal(thumbnailSecond), "-i", output.toString(),
                     "-vf", "scale='if(gt(iw,ih),min(720,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))':force_original_aspect_ratio=decrease",
-                    "-q:v", "3", thumbnail.toString()
+                    "-frames:v", "1", "-update", "1", "-q:v", "3", thumbnail.toString()
             );
             run(cover, "generar la portada de Pulso");
 
             byte[] videoBytes = Files.readAllBytes(output);
             byte[] coverBytes = Files.readAllBytes(thumbnail);
             if (videoBytes.length == 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El clip generado quedó vacío");
+            if (coverBytes.length == 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La portada generada quedó vacía");
             return new ProcessedShortVideo(videoBytes, coverBytes, duration);
         } catch (ResponseStatusException ex) {
             throw ex;
