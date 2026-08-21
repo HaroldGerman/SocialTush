@@ -30,6 +30,11 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
     Optional<Message> findFirstByConversationIdAndSenderIdAndMessageTypeAndStoryPreviewId(
             UUID conversationId, UUID senderId, String messageType, UUID storyPreviewId);
 
+    @Query("select count(m) from Message m join m.conversation.participants p " +
+            "where m.storyPreviewId = :storyId and p.user.id = :userId " +
+            "and m.messageType in ('STORY_REPLY','STORY_REACTION')")
+    long countStoryReferencesForParticipant(@Param("storyId") UUID storyId, @Param("userId") UUID userId);
+
     @Query(value = "select m from Message m join fetch m.sender where m.conversation.id = :conversationId and m.messageType = 'TEXT' and lower(m.content) like lower(concat('%', :content, '%')) and (:clearedAt is null or m.createdAt > :clearedAt) order by m.createdAt desc",
             countQuery = "select count(m) from Message m where m.conversation.id = :conversationId and m.messageType = 'TEXT' and lower(m.content) like lower(concat('%', :content, '%')) and (:clearedAt is null or m.createdAt > :clearedAt)")
     Page<Message> searchText(@Param("conversationId") UUID conversationId, @Param("content") String content,

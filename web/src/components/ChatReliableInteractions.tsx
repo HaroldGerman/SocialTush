@@ -12,6 +12,7 @@ const STORY_LABELS=new Set(['tu interacción con un momento','tu interaccion con
 function findStoryCard(target:HTMLElement|null){let current=target;for(let depth=0;current&&depth<8;depth+=1,current=current.parentElement){if(current.tagName!=='DIV')continue;const directLabel=Array.from(current.children).find(child=>child.tagName==='P');const label=directLabel?.textContent?.trim().toLowerCase()||'';if(STORY_LABELS.has(label)&&current.querySelector('img[alt="Momento"], video, div[style]'))return current;}return null;}
 function findActiveUsername(){const nodes=Array.from(document.querySelectorAll<HTMLElement>('span'));const match=nodes.find(node=>{const text=node.textContent?.trim()||'';if(!/^@[A-Za-z0-9_.-]+$/.test(text))return false;const rect=node.getBoundingClientRect();return rect.top>=0&&rect.top<260&&rect.width>0&&rect.height>0;});return match?.textContent?.trim().replace(/^@/,'')||'';}
 function playBuzzTone(){try{const Ctx=(window.AudioContext||(window as any).webkitAudioContext);if(!Ctx)return;const ctx=new Ctx();[0,0.12,0.24].forEach(offset=>{const osc=ctx.createOscillator();const gain=ctx.createGain();osc.frequency.value=190;gain.gain.setValueAtTime(0.0001,ctx.currentTime+offset);gain.gain.exponentialRampToValueAtTime(0.15,ctx.currentTime+offset+0.01);gain.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+offset+0.08);osc.connect(gain);gain.connect(ctx.destination);osc.start(ctx.currentTime+offset);osc.stop(ctx.currentTime+offset+0.09);});window.setTimeout(()=>void ctx.close(),700);}catch{}}
+function enhanceStoryLinks(){Array.from(document.querySelectorAll<HTMLParagraphElement>('p')).forEach(labelNode=>{const label=labelNode.textContent?.trim().toLowerCase()||'';if(!STORY_LABELS.has(label))return;const card=labelNode.parentElement;if(!card||card.dataset.lifonkMomentEnhanced==='true')return;if(!card.querySelector('img[alt="Momento"], video, div[style]'))return;card.dataset.lifonkMomentEnhanced='true';const link=document.createElement('button');link.type='button';link.dataset.lifonkMomentLink='true';link.textContent='Abrir Momento ↗';link.className='mt-1 w-full border-t border-current/10 px-2.5 py-2 text-left text-[10px] font-extrabold underline underline-offset-2 opacity-90';card.appendChild(link);});}
 
 export default function ChatReliableInteractions(){
   const {user,accessToken}=useAuth();
@@ -28,6 +29,7 @@ export default function ChatReliableInteractions(){
       const phone=document.querySelector<HTMLButtonElement>('button[title="Llamada de voz"]');
       if(phone?.parentElement){let host=phone.parentElement.querySelector<HTMLElement>('[data-lifonk-reliable-buzz]');if(!host){host=document.createElement('span');host.dataset.lifonkReliableBuzz='true';phone.insertAdjacentElement('afterend',host);}setMount(host);}
       Array.from(document.querySelectorAll<HTMLButtonElement>('button')).forEach(button=>{if(button.textContent?.trim()==='Zumbido'&&button.closest('[data-lifonk-reliable-buzz]')==null)button.style.display='none';});
+      enhanceStoryLinks();
     };
     scan();const observer=new MutationObserver(scan);observer.observe(document.body,{childList:true,subtree:true});return()=>observer.disconnect();
   },[]);
@@ -40,10 +42,14 @@ export default function ChatReliableInteractions(){
       const card=findStoryCard(targetNode);
       if(!card)return;
       event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
+      const directId=card.dataset.lifonkMomentId;
+      if(directId){window.location.assign(`/feed?moment=${encodeURIComponent(directId)}`);return;}
+      const link=card.querySelector<HTMLButtonElement>('[data-lifonk-moment-link]');
+      if(link){link.disabled=true;link.textContent='Abriendo Momento…';}
       const preview=card.querySelector('img[alt="Momento"], video') as HTMLImageElement|HTMLVideoElement|null;
       const textNode=Array.from(card.querySelectorAll('div')).find(node=>node!==card&&node.getAttribute('style'));
       const params=new URLSearchParams();if(preview?.src)params.set('mediaUrl',preview.src);else if(textNode?.textContent?.trim())params.set('textContent',textNode.textContent.trim());
-      void api.get(`/stories/resolve?${params.toString()}`).then(response=>{const id=response.data?.storyId;if(!id)throw new Error('missing');window.location.assign(`/feed?moment=${encodeURIComponent(id)}`);}).catch(()=>setNotice('Ese Momento ya no está disponible.'));
+      void api.get(`/stories/resolve?${params.toString()}`).then(response=>{const id=response.data?.storyId;if(!id)throw new Error('missing');card.dataset.lifonkMomentId=String(id);window.location.assign(`/feed?moment=${encodeURIComponent(id)}`);}).catch(()=>{if(link){link.disabled=false;link.textContent='Abrir Momento ↗';}setNotice('Ese Momento ya no está disponible.');});
     };
     document.addEventListener('click',onClick,true);return()=>document.removeEventListener('click',onClick,true);
   },[]);

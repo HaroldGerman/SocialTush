@@ -1,5 +1,6 @@
 package com.socialtush.modules.stories.controller;
 
+import com.socialtush.modules.chat.repository.MessageRepository;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
 import com.socialtush.modules.social.repository.FollowRepository;
@@ -29,6 +30,7 @@ public class StoryOpenController {
     private final StoryViewRepository storyViewRepository;
     private final FollowRepository followRepository;
     private final ProfileRepository profileRepository;
+    private final MessageRepository messageRepository;
 
     @GetMapping("/resolve")
     public ResponseEntity<?> resolve(@RequestParam(required = false) String mediaUrl,
@@ -116,7 +118,8 @@ public class StoryOpenController {
 
     private boolean canView(Story story, User currentUser) {
         if (story.getUser().getId().equals(currentUser.getId())) return true;
-        return followRepository.existsByFollowerAndFollowing(currentUser, story.getUser());
+        if (followRepository.existsByFollowerAndFollowing(currentUser, story.getUser())) return true;
+        return messageRepository.countStoryReferencesForParticipant(story.getId(), currentUser.getId()) > 0;
     }
 
     private Map<String, Object> toDto(Story story, User currentUser) {
