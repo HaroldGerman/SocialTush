@@ -9,11 +9,19 @@ type PortalTarget = {
   mount: HTMLElement;
 };
 
+function normalizePostId(rawId: string): string {
+  return rawId.trim().replace(/^post-/i, '');
+}
+
+function supportsEcoEnhancer(pathname: string): boolean {
+  return pathname.startsWith('/feed') || pathname.startsWith('/profile/');
+}
+
 export default function MobileEcoEnhancer() {
   const [targets, setTargets] = useState<PortalTarget[]>([]);
 
   useEffect(() => {
-    if (!window.location.pathname.startsWith('/feed')) return;
+    if (!supportsEcoEnhancer(window.location.pathname)) return;
     if (!window.matchMedia('(max-width: 767px)').matches) return;
 
     const scan = () => {
@@ -31,6 +39,10 @@ export default function MobileEcoEnhancer() {
 
         const legacy = input.closest<HTMLElement>('div.border-t');
         if (!legacy) continue;
+
+        const postId = normalizePostId(article.id);
+        if (!postId) continue;
+
         legacy.style.display = 'none';
         legacy.dataset.lifonkLegacyEco = 'true';
 
@@ -41,12 +53,16 @@ export default function MobileEcoEnhancer() {
           mount.className = 'border-t border-slate-100 px-4 py-3 dark:border-slate-800';
           legacy.insertAdjacentElement('afterend', mount);
         }
+        mount.dataset.lifonkEcoPostId = postId;
 
-        next.push({ postId: article.id, mount });
+        next.push({ postId, mount });
       }
 
       setTargets((previous) => {
-        if (previous.length === next.length && previous.every((item, index) => item.postId === next[index]?.postId && item.mount === next[index]?.mount)) {
+        if (
+          previous.length === next.length
+          && previous.every((item, index) => item.postId === next[index]?.postId && item.mount === next[index]?.mount)
+        ) {
           return previous;
         }
         return next;
@@ -54,7 +70,7 @@ export default function MobileEcoEnhancer() {
     };
 
     scan();
-    const observer = new MutationObserver(() => scan());
+    const observer = new MutationObserver(scan);
     observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener('resize', scan);
 
