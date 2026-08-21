@@ -78,6 +78,13 @@ function hashIndex(value: string, length: number) {
   return Math.abs(hash) % Math.max(1, length);
 }
 
+function dailySequenceIndex(dateKey: string, length: number, salt = '') {
+  if (length <= 1) return 0;
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const dayNumber = Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+  return (dayNumber + hashIndex(salt, length)) % length;
+}
+
 function normalizeInterest(value: string) {
   return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
@@ -145,11 +152,11 @@ export default function DailyQuestionCard({ onPublished }: DailyQuestionCardProp
 
   const personalFact = useMemo(() => {
     const candidates = interests.flatMap(value => FACTS_BY_INTEREST[normalizeInterest(value)] || []);
-    if (!candidates.length) return GENERAL_FACTS[hashIndex(`${dateKey}:general`, GENERAL_FACTS.length)];
-    return candidates[hashIndex(`${dateKey}:${user?.username || ''}:personal`, candidates.length)];
+    if (!candidates.length) return GENERAL_FACTS[dailySequenceIndex(dateKey, GENERAL_FACTS.length, `${user?.username || ''}:general`)];
+    return candidates[dailySequenceIndex(dateKey, candidates.length, `${user?.username || ''}:personal`)];
   }, [dateKey, interests, user?.username]);
 
-  const randomFact = useMemo(() => GENERAL_FACTS[hashIndex(`${dateKey}:random:2`, GENERAL_FACTS.length)], [dateKey]);
+  const randomFact = useMemo(() => GENERAL_FACTS[dailySequenceIndex(dateKey, GENERAL_FACTS.length, 'random')], [dateKey]);
   const discovery = useMemo(() => DISCOVERY_POSTS[hashIndex(`${dateKey}:${user?.username || ''}:landscape`, DISCOVERY_POSTS.length)], [dateKey, user?.username]);
 
   const submit = async (event: React.FormEvent) => {
