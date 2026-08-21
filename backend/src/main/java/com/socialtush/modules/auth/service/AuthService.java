@@ -69,10 +69,12 @@ public class AuthService {
                 .build();
         user = userRepository.save(user);
 
+        String preferredLanguage = "en".equalsIgnoreCase(request.getPreferredLanguage()) ? "en" : "es";
         Profile profile = Profile.builder()
                 .user(user)
                 .displayName(request.getDisplayName().trim())
                 .bio("")
+                .preferredLanguage(preferredLanguage)
                 .isPrivate(false)
                 .build();
         profileRepository.save(profile);
@@ -252,6 +254,7 @@ public class AuthService {
                     .user(user)
                     .displayName(user.getUsername())
                     .bio("")
+                    .preferredLanguage("es")
                     .isPrivate(false)
                     .build();
             profile = profileRepository.save(profile);
@@ -266,6 +269,7 @@ public class AuthService {
                 .displayName(profile.getDisplayName())
                 .avatarUrl(profile.getAvatarUrl())
                 .role(user.getRole())
+                .preferredLanguage(profile.getPreferredLanguage())
                 .build();
     }
 
