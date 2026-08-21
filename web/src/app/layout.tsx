@@ -10,6 +10,7 @@ import AccountSettingsShortcut from "@/components/AccountSettingsShortcut";
 import GlobalImageCropInterceptor from "@/components/GlobalImageCropInterceptor";
 import DeepLinkedMomentOverlay from "@/components/DeepLinkedMomentOverlay";
 import ChatScopedEnhancements from "@/components/ChatScopedEnhancements";
+import ChatReliableInteractions from "@/components/ChatReliableInteractions";
 import MobileEcoEnhancer from "@/components/MobileEcoEnhancer";
 import { RealtimeActivityProvider } from "@/context/RealtimeActivityContext";
 
@@ -19,9 +20,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   applicationName: "Lifonk",
   themeColor: "#0f766e",
-  icons: {
-    icon: "/icons/lifonk.svg",
-  },
+  icons: { icon: "/icons/lifonk.svg" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -31,42 +30,18 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                var theme = localStorage.getItem('socialtush-theme') || 'light';
-                if (theme === 'dark') document.documentElement.classList.add('dark');
-                else document.documentElement.classList.remove('dark');
-                var storedLanguage = localStorage.getItem('lifonk-language');
-                var language = storedLanguage === 'en' || storedLanguage === 'es'
-                  ? storedLanguage
-                  : ((navigator.language || 'es').toLowerCase().indexOf('en') === 0 ? 'en' : 'es');
-                document.documentElement.lang = language;
-              })();
-            `,
-          }}
-        />
+        <script dangerouslySetInnerHTML={{__html:`(function(){var theme=localStorage.getItem('socialtush-theme')||'light';if(theme==='dark')document.documentElement.classList.add('dark');else document.documentElement.classList.remove('dark');var storedLanguage=localStorage.getItem('lifonk-language');var language=storedLanguage==='en'||storedLanguage==='es'?storedLanguage:((navigator.language||'es').toLowerCase().indexOf('en')===0?'en':'es');document.documentElement.lang=language;})();`}} />
       </head>
       <body className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] transition-colors duration-200">
         <ServiceWorkerRegistrar />
         <GlobalImageCropInterceptor />
-        <ThemeProvider>
-          <LanguageProvider>
-            <AuthProvider>
-              <ChatScopedEnhancements />
-              <MobileEcoEnhancer />
-              <DeepLinkedMomentOverlay />
-              <RealtimeActivityProvider>
-                <CreateHubProvider>
-                  {children}
-                  <AccountSettingsShortcut />
-                  <AccountSecurityShortcut />
-                </CreateHubProvider>
-              </RealtimeActivityProvider>
-            </AuthProvider>
-          </LanguageProvider>
-        </ThemeProvider>
+        <ThemeProvider><LanguageProvider><AuthProvider>
+          <ChatReliableInteractions />
+          <ChatScopedEnhancements />
+          <MobileEcoEnhancer />
+          <DeepLinkedMomentOverlay />
+          <RealtimeActivityProvider><CreateHubProvider>{children}<AccountSettingsShortcut /><AccountSecurityShortcut /></CreateHubProvider></RealtimeActivityProvider>
+        </AuthProvider></LanguageProvider></ThemeProvider>
       </body>
     </html>
   );

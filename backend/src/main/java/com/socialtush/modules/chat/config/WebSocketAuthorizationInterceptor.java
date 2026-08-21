@@ -60,8 +60,10 @@ public class WebSocketAuthorizationInterceptor implements ChannelInterceptor {
         Principal principal = requirePrincipal(accessor);
         String destination = destination(accessor);
         String notificationsPrefix = "/topic/user.";
-        if (destination.startsWith(notificationsPrefix) && (destination.endsWith(".notifications") || destination.endsWith(".call"))) {
-            String suffix = destination.endsWith(".notifications") ? ".notifications" : ".call";
+        if (destination.startsWith(notificationsPrefix)
+                && (destination.endsWith(".notifications") || destination.endsWith(".call") || destination.endsWith(".buzz"))) {
+            String suffix = destination.endsWith(".notifications") ? ".notifications"
+                    : destination.endsWith(".call") ? ".call" : ".buzz";
             String username = destination.substring(notificationsPrefix.length(), destination.length() - suffix.length());
             if (!principal.getName().equalsIgnoreCase(username)) throw denied("No puedes suscribirte al canal privado de otro usuario");
             return;
@@ -85,6 +87,10 @@ public class WebSocketAuthorizationInterceptor implements ChannelInterceptor {
         if (principal == null || principal.getName() == null || principal.getName().isBlank()) throw denied("WebSocket no autenticado");
         return principal;
     }
-    private String destination(StompHeaderAccessor accessor) { return accessor.getDestination() == null ? "" : accessor.getDestination().trim().toLowerCase(Locale.ROOT); }
+
+    private String destination(StompHeaderAccessor accessor) {
+        return accessor.getDestination() == null ? "" : accessor.getDestination().trim().toLowerCase(Locale.ROOT);
+    }
+
     private MessageDeliveryException denied(String message) { return new MessageDeliveryException(message); }
 }

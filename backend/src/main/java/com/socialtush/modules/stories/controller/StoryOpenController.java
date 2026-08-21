@@ -13,9 +13,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -33,13 +35,33 @@ public class StoryOpenController {
                                      @RequestParam(required = false) String textContent,
                                      @AuthenticationPrincipal User currentUser) {
         if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        Instant now = Instant.now();
         Story story = null;
+
         if (mediaUrl != null && !mediaUrl.isBlank()) {
-            story = storyRepository.findFirstByMediaUrlAndExpiresAtAfter(mediaUrl, Instant.now()).orElse(null);
+            story = storyRepository.findFirstByMediaUrlAndExpiresAtAfter(mediaUrl, now).orElse(null);
+            if (story == null) {
+                String wanted = normalizeMedia(mediaUrl);
+                story = storyRepository.findByExpiresAtAfterOrderByCreatedAtAsc(now).stream()
+                        .filter(candidate -> canView(candidate, currentUser))
+                        .filter(candidate -> mediaMatches(wanted, normalizeMedia(candidate.getMediaUrl())))
+                        .reduce((first, second) -> second)
+                        .orElse(null);
+            }
         }
+
         if (story == null && textContent != null && !textContent.isBlank()) {
-            story = storyRepository.findFirstByTextContentAndExpiresAtAfter(textContent.trim(), Instant.now()).orElse(null);
+            String wantedText = textContent.trim();
+            story = storyRepository.findFirstByTextContentAndExpiresAtAfter(wantedText, now).orElse(null);
+            if (story == null) {
+                story = storyRepository.findByExpiresAtAfterOrderByCreatedAtAsc(now).stream()
+                        .filter(candidate -> canView(candidate, currentUser))
+                        .filter(candidate -> candidate.getTextContent() != null && candidate.getTextContent().trim().equals(wantedText))
+                        .reduce((first, second) -> second)
+                        .orElse(null);
+            }
         }
+
         if (story == null || !canView(story, currentUser)) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Momento no disponible"));
         }
@@ -67,6 +89,29 @@ public class StoryOpenController {
         group.put("hasUnseenStories", true);
         group.put("stories", stories);
         return ResponseEntity.ok(group);
+    }
+
+    private String normalizeMedia(String value) {
+        if (value == null || value.isBlank()) return "";
+        String raw = value.trim();
+        try {
+            URI uri = URI.create(raw);
+            String path = uri.getPath();
+            if (path != null && !path.isBlank()) return path.replaceAll("/+$", "").toLowerCase(Locale.ROOT);
+        } catch (Exception ignored) {}
+        int query = raw.indexOf('?');
+        if (query >= 0) raw = raw.substring(0, query);
+        int hash = raw.indexOf('#');
+        if (hash >= 0) raw = raw.substring(0, hash);
+        return raw.replaceAll("/+$", "").toLowerCase(Locale.ROOT);
+    }
+
+    private boolean mediaMatches(String first, String second) {
+        if (first == null || second == null || first.isBlank() || second.isBlank()) return false;
+        if (first.equals(second)) return true;
+        String firstName = first.substring(first.lastIndexOf('/') + 1);
+        String secondName = second.substring(second.lastIndexOf('/') + 1);
+        return !firstName.isBlank() && firstName.equals(secondName);
     }
 
     private boolean canView(Story story, User currentUser) {
