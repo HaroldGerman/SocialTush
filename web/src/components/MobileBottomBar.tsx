@@ -27,6 +27,8 @@ export default function MobileBottomBar({ onOpenCreate }: MobileBottomBarProps) 
   const base = 'flex h-full min-w-0 flex-col items-center justify-center gap-1 text-center';
   const active = 'text-teal-700 dark:text-teal-400 font-bold';
   const inactive = 'text-slate-500 dark:text-slate-400';
+  const ownProfilePath = user?.username ? `/profile/${user.username}` : '';
+  const isOwnProfile = Boolean(ownProfilePath && pathname === ownProfilePath);
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 grid h-[68px] grid-cols-6 items-stretch border-t border-slate-200 bg-white px-1 shadow-[0_-6px_20px_rgba(15,23,42,.07)] dark:border-slate-800 dark:bg-[#0f172a] md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -60,8 +62,8 @@ export default function MobileBottomBar({ onOpenCreate }: MobileBottomBarProps) 
         <span className="w-full truncate text-[9px] leading-none">Chat</span>
       </Link>
 
-      <Link href={user ? `/profile/${user.username}` : '/login'} className={`${base} ${pathname.startsWith('/profile') ? active : inactive}`}>
-        {user ? <UserAvatar avatarUrl={user.avatarUrl} name={user.displayName || user.username} className={`h-5 w-5 shrink-0 rounded-full border ${pathname.startsWith('/profile') ? 'border-teal-600' : 'border-slate-300 dark:border-slate-700'} text-[8px]`} /> : <User className="h-5 w-5 shrink-0" />}
+      <Link href={user ? ownProfilePath : '/login'} className={`${base} ${isOwnProfile ? active : inactive}`}>
+        {user ? <UserAvatar avatarUrl={user.avatarUrl} name={user.displayName || user.username} className={`h-5 w-5 shrink-0 rounded-full border ${isOwnProfile ? 'border-teal-600' : 'border-slate-300 dark:border-slate-700'} text-[8px]`} /> : <User className="h-5 w-5 shrink-0" />}
         <span className="w-full truncate text-[9px] leading-none">Espacio</span>
       </Link>
     </div>

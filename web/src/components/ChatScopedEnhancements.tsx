@@ -7,6 +7,14 @@ import { Download, Zap, X } from 'lucide-react';
 import { api, useAuth } from '@/context/AuthContext';
 import { WS_BASE_URL } from '@/config/api';
 
+type ActiveStory = {
+  storyId: string;
+  mediaType?: string;
+  mediaUrl?: string;
+  textContent?: string;
+};
+
+type ActiveStoryGroup = { stories?: ActiveStory[] };
 type AudioTarget = { key: string; audio: HTMLAudioElement; mount: HTMLElement; own: boolean };
 const STORY_LABELS = new Set(['tu interacción con un momento','tu interaccion con un momento','interacción con tu momento','interaccion con tu momento']);
 const WAVE_HEIGHTS = [8,15,11,21,13,26,18,11,23,15,28,19,12,25,17,10,22,14,27,16,9,20,13,24];
@@ -25,6 +33,26 @@ function findStoryCard(target: HTMLElement | null) {
     if (STORY_LABELS.has(label) && current.querySelector('img[alt="Momento"], video, div[style]')) return current;
   }
   return null;
+}
+
+function normalizeMedia(value?: string | null) {
+  if (!value) return '';
+  try {
+    const parsed = new URL(value, window.location.origin);
+    return decodeURIComponent(parsed.pathname).replace(/\/+$/, '').toLowerCase();
+  } catch {
+    return value.split(/[?#]/)[0].replace(/\/+$/, '').toLowerCase();
+  }
+}
+
+function mediaMatches(first?: string | null, second?: string | null) {
+  const a = normalizeMedia(first);
+  const b = normalizeMedia(second);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const aName = a.split('/').filter(Boolean).pop();
+  const bName = b.split('/').filter(Boolean).pop();
+  return Boolean(aName && bName && aName === bName);
 }
 
 function findNormalChatImage(target: HTMLElement | null) {
@@ -98,23 +126,31 @@ export default function ChatScopedEnhancements() {
 
       const card = findStoryCard(target);
       if (card) {
-        event.preventDefault(); event.stopPropagation();
+        event.preventDefault();
+        event.stopPropagation();
         const preview = card.querySelector('img[alt="Momento"], video') as HTMLImageElement | HTMLVideoElement | null;
+        const previewUrl = preview?.src || '';
         const textNode = Array.from(card.querySelectorAll('div')).find((node) => node !== card && node.getAttribute('style'));
-        const params = new URLSearchParams();
-        if (preview?.src) params.set('mediaUrl', preview.src);
-        else if (textNode?.textContent?.trim()) params.set('textContent', textNode.textContent.trim());
-        void api.get(`/stories/resolve?${params.toString()}`).then((response) => {
-          const storyId = response.data?.storyId;
-          if (!storyId) throw new Error('missing story id');
-          window.location.assign(`/feed?moment=${encodeURIComponent(storyId)}`);
-        }).catch(() => setNotice('Este momento ya no está disponible.'));
+        const textPreview = textNode?.textContent?.trim() || '';
+
+        void api.get('/stories/active').then((response) => {
+          const groups: ActiveStoryGroup[] = Array.isArray(response.data) ? response.data : [];
+          const stories = groups.flatMap((group) => group.stories || []);
+          const match = stories.find((story) => {
+            if (previewUrl && story.mediaUrl && mediaMatches(previewUrl, story.mediaUrl)) return true;
+            if (textPreview && story.textContent) return story.textContent.trim() === textPreview || textPreview.includes(story.textContent.trim());
+            return false;
+          });
+          if (!match?.storyId) throw new Error('story-not-found');
+          window.location.assign(`/feed?moment=${encodeURIComponent(match.storyId)}`);
+        }).catch(() => setNotice('No encontramos ese Momento entre tus Momentos activos.'));
         return;
       }
 
       const image = findNormalChatImage(target);
       if (!image) return;
-      event.preventDefault(); event.stopPropagation();
+      event.preventDefault();
+      event.stopPropagation();
       setImageUrl(image.currentSrc || image.src);
       setImageName(image.alt && image.alt !== 'Imagen adjunta' ? image.alt : 'imagen-lifonk.jpg');
     };
@@ -165,12 +201,16 @@ export default function ChatScopedEnhancements() {
     finally { setBuzzSending(false); }
   };
 
-  const downloadImage = async () => {
+  const downloadImage = () => {
     if (!imageUrl) return;
-    try {
-      const response = await fetch(imageUrl); const blob = await response.blob(); const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a'); link.href = objectUrl; link.download = imageName || 'imagen-lifonk.jpg'; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(objectUrl);
-    } catch { const link = document.createElement('a'); link.href = imageUrl; link.download = imageName || 'imagen-lifonk.jpg'; link.target = '_blank'; link.rel = 'noopener'; link.click(); }
+    const downloadUrl = `/api/download-image?url=${encodeURIComponent(imageUrl)}&filename=${encodeURIComponent(imageName || 'imagen-lifonk.jpg')}`;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = imageName || 'imagen-lifonk.jpg';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   return <>
@@ -180,7 +220,7 @@ export default function ChatScopedEnhancements() {
     `}</style>
     {audioTargets.map(({key,audio,mount,own})=>createPortal(<AudioBubblePlayer key={key} audio={audio} own={own}/>,mount,key))}
     {buzzTarget && typeof document !== 'undefined' && createPortal(<button type="button" onClick={()=>void sendBuzz()} disabled={buzzSending} className="fixed right-4 z-[65] flex items-center gap-2 rounded-full border border-amber-300/70 bg-amber-50/95 px-3 py-2 text-[11px] font-black text-amber-700 shadow-lg backdrop-blur disabled:opacity-50 dark:border-amber-700 dark:bg-amber-950/90 dark:text-amber-300" style={{bottom:'calc(78px + env(safe-area-inset-bottom))'}}><Zap className="h-4 w-4 fill-current"/>{buzzSending?'Enviando…':'Zumbido'}</button>,document.body)}
-    {imageUrl && typeof document !== 'undefined' && createPortal(<div className="fixed inset-0 z-[2147483000] flex items-center justify-center bg-black p-3" onClick={()=>setImageUrl('')}><div className="absolute right-3 top-[max(12px,env(safe-area-inset-top))] z-10 flex gap-2"><button type="button" onClick={(event)=>{event.stopPropagation();void downloadImage();}} className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white backdrop-blur"><Download className="h-5 w-5"/></button><button type="button" onClick={(event)=>{event.stopPropagation();setImageUrl('');}} className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white backdrop-blur"><X className="h-5 w-5"/></button></div><img src={imageUrl} alt="Imagen ampliada" onClick={(event)=>event.stopPropagation()} className="max-h-[92dvh] max-w-[96vw] object-contain"/></div>,document.body)}
+    {imageUrl && typeof document !== 'undefined' && createPortal(<div className="fixed inset-0 z-[2147483000] flex items-center justify-center bg-black p-3" onClick={()=>setImageUrl('')}><div className="absolute right-3 top-[max(12px,env(safe-area-inset-top))] z-10 flex gap-2"><button type="button" onClick={(event)=>{event.stopPropagation();downloadImage();}} className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white backdrop-blur" aria-label="Descargar imagen"><Download className="h-5 w-5"/></button><button type="button" onClick={(event)=>{event.stopPropagation();setImageUrl('');}} className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white backdrop-blur" aria-label="Cerrar"><X className="h-5 w-5"/></button></div><img src={imageUrl} alt="Imagen ampliada" onClick={(event)=>event.stopPropagation()} className="max-h-[92dvh] max-w-[96vw] object-contain"/></div>,document.body)}
     {notice && typeof document !== 'undefined' && createPortal(<div className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+1rem)] z-[2147483001] -translate-x-1/2 rounded-full bg-slate-950/92 px-4 py-2 text-xs font-bold text-white shadow-xl backdrop-blur">{notice}</div>,document.body)}
   </>;
 }

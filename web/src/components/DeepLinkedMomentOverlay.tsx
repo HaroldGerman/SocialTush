@@ -37,25 +37,32 @@ export default function DeepLinkedMomentOverlay() {
     setTargetId(id);
     setUnavailable(false);
 
-    void api.get(`/stories/${encodeURIComponent(id)}/open`).then((response) => {
-      const group = response.data as GroupedStory;
-      if (!group?.stories?.length) {
+    // Use the exact same source of truth as the Momento row in Ritmo.
+    // If a Momento is visible there, a deep link from Chat must open it too.
+    void api.get('/stories/active').then((response) => {
+      const activeGroups: GroupedStory[] = Array.isArray(response.data) ? response.data : [];
+      const ownerGroup = activeGroups.find((group) => group.stories?.some((story) => String(story.storyId) === String(id)));
+      if (!ownerGroup) {
         setUnavailable(true);
         return;
       }
-      const storyIndex = group.stories.findIndex((story) => story.storyId === id);
-      if (storyIndex < 0) {
+
+      const target = ownerGroup.stories.find((story) => String(story.storyId) === String(id));
+      if (!target) {
         setUnavailable(true);
         return;
       }
-      const reorderedStories = [group.stories[storyIndex], ...group.stories.filter((_, index) => index !== storyIndex)];
-      setGroups([{ ...group, stories: reorderedStories }]);
+
+      setGroups([{
+        ...ownerGroup,
+        stories: [target, ...ownerGroup.stories.filter((story) => String(story.storyId) !== String(id))],
+      }]);
     }).catch(() => setUnavailable(true));
   }, []);
 
   const targetUserIndex = useMemo(() => {
     if (!targetId) return -1;
-    return groups.findIndex((group) => group.stories?.[0]?.storyId === targetId);
+    return groups.findIndex((group) => group.stories?.[0] && String(group.stories[0].storyId) === String(targetId));
   }, [groups, targetId]);
 
   const close = () => {
@@ -70,8 +77,8 @@ export default function DeepLinkedMomentOverlay() {
     return (
       <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/80 p-4" onClick={close}>
         <div className="w-full max-w-sm rounded-2xl bg-white p-5 text-center shadow-2xl dark:bg-[#0f172a]" onClick={(event) => event.stopPropagation()}>
-          <p className="text-sm font-extrabold text-slate-900 dark:text-white">Este momento ya no está disponible</p>
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Puede haber expirado o haber sido eliminado.</p>
+          <p className="text-sm font-extrabold text-slate-900 dark:text-white">Este Momento no está entre tus Momentos activos</p>
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Si todavía aparece en Ritmo, actualiza una vez la página y vuelve a tocarlo desde el chat.</p>
           <button type="button" onClick={close} className="mt-4 rounded-xl bg-teal-700 px-5 py-2.5 text-xs font-bold text-white">Volver a Ritmo</button>
         </div>
       </div>
