@@ -118,7 +118,12 @@ export default function MobileFeedPage() {
       const data = response.data?.posts || response.data?.content || (Array.isArray(response.data) ? response.data : []);
       const next = Array.isArray(data) ? data : [];
       setPosts(next);
-      next.slice(0, 8).forEach((post: PostData) => post.mediaUrls?.[0] && (new Image()).src = post.mediaUrls[0]);
+      next.slice(0, 8).forEach((post: PostData) => {
+        const url = post.mediaUrls?.[0];
+        if (!url) return;
+        const image = new Image();
+        image.src = url;
+      });
     } catch { setPosts([]); }
   };
 
