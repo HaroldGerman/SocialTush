@@ -84,7 +84,7 @@ function normalizeInterest(value: string) {
 
 export default function DailyQuestionCard({ onPublished }: DailyQuestionCardProps) {
   const { user } = useAuth();
-  const dateKey = useMemo(localDateKey, []);
+  const [dateKey, setDateKey] = useState(localDateKey);
   const question = useMemo(() => DAILY_QUESTIONS[hashIndex(dateKey, DAILY_QUESTIONS.length)], [dateKey]);
   const [answer, setAnswer] = useState('');
   const [publishing, setPublishing] = useState(false);
@@ -95,6 +95,44 @@ export default function DailyQuestionCard({ onPublished }: DailyQuestionCardProp
   const [customInterest, setCustomInterest] = useState('');
   const [savingInterests, setSavingInterests] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
+
+  useEffect(() => {
+    let midnightTimer: number | undefined;
+    const answeredKey = `lifonk.daily-question.answered.${user?.userId || user?.username || 'guest'}`;
+
+    const syncLocalDay = () => {
+      const nextKey = localDateKey();
+      setDateKey(previous => {
+        if (previous !== nextKey) {
+          setAnswer('');
+          setError('');
+          setPublished(false);
+        }
+        return nextKey;
+      });
+      setPublished(window.localStorage.getItem(answeredKey) === nextKey);
+    };
+
+    const scheduleMidnight = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now);
+      nextMidnight.setHours(24, 0, 0, 0);
+      midnightTimer = window.setTimeout(() => {
+        syncLocalDay();
+        scheduleMidnight();
+      }, Math.max(1000, nextMidnight.getTime() - now.getTime() + 100));
+    };
+
+    syncLocalDay();
+    scheduleMidnight();
+    document.addEventListener('visibilitychange', syncLocalDay);
+    window.addEventListener('focus', syncLocalDay);
+    return () => {
+      if (midnightTimer) window.clearTimeout(midnightTimer);
+      document.removeEventListener('visibilitychange', syncLocalDay);
+      window.removeEventListener('focus', syncLocalDay);
+    };
+  }, [user?.userId, user?.username]);
 
   useEffect(() => {
     if (!user?.username) return;
@@ -124,6 +162,7 @@ export default function DailyQuestionCard({ onPublished }: DailyQuestionCardProp
       formData.append('caption', `💬 Pregunta del día\n${question}\n\n${value}`);
       const response = await api.post('/posts', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       onPublished?.(response.data); setAnswer(''); setPublished(true);
+      window.localStorage.setItem(`lifonk.daily-question.answered.${user?.userId || user?.username || 'guest'}`, dateKey);
     } catch (requestError: any) { setError(requestError.response?.data?.message || 'No pudimos publicar tu respuesta.'); }
     finally { setPublishing(false); }
   };

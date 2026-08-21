@@ -118,6 +118,11 @@ public class ChatController {
             String latestText = latestMessage.map(message -> messagePreview(message, currentUser)).orElse("No hay mensajes");
             String latestTime = latestMessage.map(m -> m.getCreatedAt().toString()).orElse(c.getUpdatedAt().toString());
             String latestSender = latestMessage.map(m -> m.getSender() != null ? m.getSender().getUsername() : "").orElse("");
+            ReceiptContext latestReceipt = receiptContext(c.getId(), currentUser);
+            boolean latestOwnMessage = latestMessage.map(message -> message.getSender() != null && message.getSender().getId().equals(currentUser.getId())).orElse(false);
+            boolean latestReceiptVisible = latestOwnMessage && latestReceipt.visible();
+            boolean latestReadByRecipient = latestOwnMessage && latestReceiptVisible && latestReceipt.lastReadAt() != null
+                    && latestMessage.map(Message::getCreatedAt).map(created -> !created.isAfter(latestReceipt.lastReadAt())).orElse(false);
             long unreadCount = notificationRepository.countByReceiverAndNotificationTypeAndTargetIdAndIsReadFalse(currentUser, "MESSAGE", c.getId());
 
             return ConversationDto.builder()
@@ -127,6 +132,8 @@ public class ChatController {
                     .isGroup(c.isGroup())
                     .latestMessage(latestText)
                     .latestMessageSenderUsername(latestSender)
+                    .latestMessageReadByRecipient(latestReadByRecipient)
+                    .latestMessageReadReceiptVisible(latestReceiptVisible)
                     .unreadCount((int) unreadCount)
                     .updatedAt(latestTime)
                     .otherUserId(otherUserId)
@@ -604,6 +611,8 @@ public class ChatController {
         private boolean isGroup;
         private String latestMessage;
         private String latestMessageSenderUsername;
+        private boolean latestMessageReadByRecipient;
+        private boolean latestMessageReadReceiptVisible;
         private int unreadCount;
         private String updatedAt;
         private UUID otherUserId;
