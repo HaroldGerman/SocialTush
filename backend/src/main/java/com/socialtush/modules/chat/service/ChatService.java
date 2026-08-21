@@ -44,7 +44,7 @@ public class ChatService {
     private static final long VIDEO_MAX_BYTES = 50L * 1024 * 1024;
     private static final long AUDIO_MAX_BYTES = 15L * 1024 * 1024;
     private static final Set<String> REACTION_EMOJIS = Set.of("❤️", "😂", "😮", "😢", "🔥", "👍");
-    private static final Set<String> CHAT_THEMES = Set.of("DEFAULT", "DEEP_TEAL", "OCEAN", "FOREST", "NIGHT");
+    private static final Set<String> CHAT_THEMES = Set.of("DEFAULT", "PEARL", "AURORA_LIGHT", "DEEP_TEAL", "OCEAN", "FOREST", "NIGHT");
 
     @Transactional(rollbackFor = Exception.class)
     public SendResult sendDirectMessage(User sender, String username, String content, String messageType, UUID storyPreviewId) {
