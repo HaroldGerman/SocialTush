@@ -8,16 +8,19 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.UUID;
 
 @Repository
 public interface PostRepository extends JpaRepository<Post, UUID> {
     long countByUser(User user);
 
-    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.user = :user AND (c IS NULL OR c.visibility = 'PUBLIC') ORDER BY p.createdAt DESC")
+    List<Post> findByUserAndFeaturedPositionIsNotNullOrderByFeaturedPositionAsc(User user);
+
+    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.user = :user AND (c IS NULL OR c.visibility = 'PUBLIC') ORDER BY CASE WHEN p.featuredPosition IS NULL THEN 1 ELSE 0 END, p.featuredPosition ASC, p.createdAt DESC")
     Page<Post> findPublicProfilePosts(User user, Pageable pageable);
 
-    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.user = :user AND (c IS NULL OR c.visibility = 'PUBLIC' OR EXISTS (SELECT cm FROM CircleMember cm WHERE cm.circle = c AND cm.user.id = :viewerId)) ORDER BY p.createdAt DESC")
+    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.user = :user AND (c IS NULL OR c.visibility = 'PUBLIC' OR EXISTS (SELECT cm FROM CircleMember cm WHERE cm.circle = c AND cm.user.id = :viewerId)) ORDER BY CASE WHEN p.featuredPosition IS NULL THEN 1 ELSE 0 END, p.featuredPosition ASC, p.createdAt DESC")
     Page<Post> findProfilePostsVisibleTo(User user, UUID viewerId, Pageable pageable);
 
     @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE (p.user = :currentUser OR EXISTS (SELECT f FROM Follow f WHERE f.follower = :currentUser AND f.following = p.user)) AND (c IS NULL OR c.visibility = 'PUBLIC' OR EXISTS (SELECT cm FROM CircleMember cm WHERE cm.circle = c AND cm.user = :currentUser)) ORDER BY p.createdAt DESC")
