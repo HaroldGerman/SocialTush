@@ -31,13 +31,20 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
   const [replyTarget, setReplyTarget] = useState<{ rootId: string; username: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setError('');
     void api.get(`/comments/${postId}`)
       .then((response) => active && setEcos(Array.isArray(response.data) ? response.data : []))
-      .catch(() => active && setEcos([]))
+      .catch(() => {
+        if (active) {
+          setEcos([]);
+          setError('No se pudieron cargar los ecos.');
+        }
+      })
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [postId]);
@@ -48,11 +55,13 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
       return;
     }
     try {
+      setError('');
       const response = await api.get(`/comments/replies/${rootId}`);
       setReplies((prev) => ({ ...prev, [rootId]: Array.isArray(response.data) ? response.data : [] }));
       setExpandedReplies((prev) => ({ ...prev, [rootId]: true }));
     } catch {
       setReplies((prev) => ({ ...prev, [rootId]: [] }));
+      setError('No se pudieron cargar las respuestas.');
     }
   };
 
@@ -61,11 +70,14 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
     const content = text.trim();
     if (!content || sending) return;
     setSending(true);
+    setError('');
     try {
       const response = await api.post(`/comments/${postId}`, { content });
       setEcos((prev) => [...prev, response.data]);
       setText('');
       onCommentAdded?.();
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.message || 'No se pudo publicar el eco.');
     } finally {
       setSending(false);
     }
@@ -77,6 +89,7 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
     const raw = text.trim();
     if (!raw) return;
     setSending(true);
+    setError('');
     try {
       const response = await api.post(`/comments/${postId}`, {
         content: raw,
@@ -87,6 +100,8 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
       setText('');
       setReplyTarget(null);
       onCommentAdded?.();
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.message || 'No se pudo publicar la respuesta.');
     } finally {
       setSending(false);
     }
@@ -94,6 +109,7 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
 
   const toggleResonance = async (eco: EcoDto, rootId?: string) => {
     try {
+      setError('');
       const response = await api.post(`/comments/${eco.commentId}/resonate`);
       const patch = { resonatedByMe: Boolean(response.data.resonated), resonanceCount: Number(response.data.count || 0) };
       if (rootId) {
@@ -104,8 +120,8 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
       } else {
         setEcos((prev) => prev.map((item) => item.commentId === eco.commentId ? { ...item, ...patch } : item));
       }
-    } catch {
-      // Keep the current state when the request fails.
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.message || 'No se pudo actualizar la resonancia.');
     }
   };
 
@@ -124,7 +140,7 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
             <span className="truncate text-[11px] font-extrabold text-teal-700 dark:text-teal-400">@{eco.username}</span>
           </div>
           <p className="mt-0.5 whitespace-pre-wrap text-xs leading-relaxed text-slate-700 dark:text-slate-300">{eco.content}</p>
-          <div className="mt-2 flex items-center gap-4 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] font-bold text-slate-500 dark:text-slate-400">
             <button type="button" onClick={() => void toggleResonance(eco, rootId)} className={`inline-flex items-center gap-1 transition-colors ${eco.resonatedByMe ? 'text-rose-500' : 'hover:text-rose-500'}`}>
               <Heart className={`h-3.5 w-3.5 ${eco.resonatedByMe ? 'fill-current' : ''}`} />
               Resonar{(eco.resonanceCount || 0) > 0 ? ` ${eco.resonanceCount}` : ''}
@@ -171,6 +187,8 @@ export default function EcoThread({ postId, onCommentAdded }: EcoThreadProps) {
           </button>
         </div>
       </form>
+
+      {error && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-600 dark:bg-rose-950/30 dark:text-rose-300">{error}</p>}
 
       {loading ? <p className="text-[11px] italic text-slate-500">Cargando ecos...</p> : (
         <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
