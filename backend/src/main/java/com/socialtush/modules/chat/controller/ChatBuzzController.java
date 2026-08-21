@@ -1,5 +1,7 @@
 package com.socialtush.modules.chat.controller;
 
+import com.socialtush.modules.notifications.entity.Notification;
+import com.socialtush.modules.notifications.service.NotificationService;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,6 +23,7 @@ public class ChatBuzzController {
     private static final long COOLDOWN_MS = 15000L;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationService notificationService;
     private final Map<String, Long> lastBuzzAt = new ConcurrentHashMap<>();
 
     @PostMapping("/{username}")
@@ -38,11 +42,17 @@ public class ChatBuzzController {
         }
         lastBuzzAt.put(key, now);
 
-        messagingTemplate.convertAndSend("/topic/user." + recipient.getUsername() + ".buzz", Map.of(
-                "type", "BUZZ",
-                "senderUsername", currentUser.getUsername(),
-                "sentAt", Instant.now().toString()
-        ));
-        return ResponseEntity.ok(Map.of("sent", true));
+        Notification stored = notificationService.createNotification(recipient, currentUser, "BUZZ", null);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("type", "BUZZ");
+        payload.put("senderUsername", currentUser.getUsername());
+        payload.put("sentAt", Instant.now().toString());
+        if (stored != null) payload.put("notificationId", stored.getId());
+        messagingTemplate.convertAndSend("/topic/user." + recipient.getUsername() + ".buzz", payload);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("sent", true);
+        if (stored != null) response.put("notificationId", stored.getId());
+        return ResponseEntity.ok(response);
     }
 }

@@ -11,6 +11,9 @@ import GlobalImageCropInterceptor from "@/components/GlobalImageCropInterceptor"
 import DeepLinkedMomentOverlay from "@/components/DeepLinkedMomentOverlay";
 import ChatScopedEnhancements from "@/components/ChatScopedEnhancements";
 import ChatReliableInteractions from "@/components/ChatReliableInteractions";
+import ChatReplyEnhancer from "@/components/ChatReplyEnhancer";
+import BuzzPersistenceBridge from "@/components/BuzzPersistenceBridge";
+import WebPushAutoSync from "@/components/WebPushAutoSync";
 import MobileEcoEnhancer from "@/components/MobileEcoEnhancer";
 import { RealtimeActivityProvider } from "@/context/RealtimeActivityContext";
 
@@ -36,8 +39,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ServiceWorkerRegistrar />
         <GlobalImageCropInterceptor />
         <ThemeProvider><LanguageProvider><AuthProvider>
+          <WebPushAutoSync />
+          <BuzzPersistenceBridge />
           <ChatReliableInteractions />
           <ChatScopedEnhancements />
+          <ChatReplyEnhancer />
           <MobileEcoEnhancer />
           <DeepLinkedMomentOverlay />
           <RealtimeActivityProvider><CreateHubProvider>{children}<AccountSettingsShortcut /><AccountSecurityShortcut /></CreateHubProvider></RealtimeActivityProvider>

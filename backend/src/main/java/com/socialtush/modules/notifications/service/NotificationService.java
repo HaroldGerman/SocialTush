@@ -9,8 +9,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
@@ -25,16 +25,13 @@ public class NotificationService {
     private final SimpMessagingTemplate messagingTemplate;
     private final ApplicationEventPublisher eventPublisher;
 
-    public void createNotification(User receiver, User sender, String type, UUID targetId) {
-        createNotification(receiver, sender, type, targetId, null);
+    public Notification createNotification(User receiver, User sender, String type, UUID targetId) {
+        return createNotification(receiver, sender, type, targetId, null);
     }
 
-    public void createNotification(User receiver, User sender, String type, UUID targetId, String messagePreview) {
-        if (receiver.getId().equals(sender.getId())) {
-            return; // Don't notify users of their own actions
-        }
+    public Notification createNotification(User receiver, User sender, String type, UUID targetId, String messagePreview) {
+        if (receiver.getId().equals(sender.getId())) return null;
 
-        // 1. Create and Persist
         Notification notification = Notification.builder()
                 .receiver(receiver)
                 .sender(sender)
@@ -45,7 +42,6 @@ public class NotificationService {
                 .build();
         notification = notificationRepository.save(notification);
 
-        // 2. Format DTO for WebSocket STOMP
         Profile senderProfile = profileRepository.findById(sender.getId()).orElse(null);
         NotificationDto dto = NotificationDto.builder()
                 .notificationId(notification.getId())
@@ -59,18 +55,16 @@ public class NotificationService {
                 .createdAt(notification.getCreatedAt() != null ? notification.getCreatedAt().toString() : java.time.Instant.now().toString())
                 .build();
 
-        // 3. Push real-time alert via WebSocket STOMP topic specific to receiver username
         messagingTemplate.convertAndSend("/topic/user." + receiver.getUsername() + ".notifications", dto);
 
-        // Web Push delivery is handled asynchronously after the surrounding transaction commits.
         try {
             eventPublisher.publishEvent(new NotificationCreatedEvent(
                     receiver.getId(), notification.getId(), notification.getNotificationType(),
                     notification.getTargetId(), sender.getUsername(), notification.getMessagePreview()));
         } catch (RuntimeException exception) {
-            // Push delivery is best-effort and must never invalidate the stored notification.
             log.warn("No se pudo programar Web Push para notification {}", notification.getId(), exception);
         }
+        return notification;
     }
 
     private static String limitPreview(String preview) {

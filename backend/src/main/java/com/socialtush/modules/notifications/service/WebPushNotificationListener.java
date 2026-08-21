@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+
 import java.time.Instant;
 
 @Component
@@ -38,6 +39,7 @@ public class WebPushNotificationListener {
         String username = "@" + event.senderUsername();
         String body = switch (event.type()) {
             case "MESSAGE" -> username + " te escribió";
+            case "BUZZ" -> "⚡ " + username + " te envió un zumbido";
             case "LIKE_POST" -> username + " resonó con tu contribución";
             case "LIKE_COMMENT" -> username + " resonó con tu eco";
             case "COMMENT" -> username + " dejó un eco en tu contribución";
@@ -67,7 +69,7 @@ public class WebPushNotificationListener {
     private String safeUrl(NotificationCreatedEvent event) {
         String id = event.targetId() == null ? "" : event.targetId().toString();
         return switch (event.type()) {
-            case "MESSAGE", "STORY_REPLY" -> "/chat?username=" + event.senderUsername();
+            case "MESSAGE", "STORY_REPLY", "BUZZ" -> "/chat?username=" + event.senderUsername();
             case "LIKE_POST", "COMMENT" -> "/post/" + id;
             case "FOLLOW", "FOLLOW_REQUEST" -> "/profile/" + event.senderUsername();
             case "LIKE_COMMENT", "COMMENT_REPLY", "STORY_REACTION" -> "/feed";

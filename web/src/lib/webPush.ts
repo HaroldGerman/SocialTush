@@ -27,23 +27,20 @@ async function getConfiguredPublicKey(): Promise<string> {
 }
 
 export function webPushSupported(): boolean {
-  return typeof window !== 'undefined'
-    && 'serviceWorker' in navigator
-    && 'PushManager' in window
-    && 'Notification' in window;
+  return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
 
 export async function registerLifonkServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return null;
-  await navigator.serviceWorker.register('/sw.js');
-  return navigator.serviceWorker.ready;
+  const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' });
+  try { await registration.update(); } catch {}
+  await navigator.serviceWorker.ready;
+  return registration;
 }
 
 async function syncSubscription(subscription: PushSubscription): Promise<void> {
   const json = subscription.toJSON();
-  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
-    throw new Error('El navegador devolvió una suscripción incompleta.');
-  }
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) throw new Error('El navegador devolvió una suscripción incompleta.');
   await api.post('/push/web/subscriptions', {
     endpoint: json.endpoint,
     keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
@@ -56,18 +53,13 @@ function applicationServerKeyMatches(subscription: PushSubscription, publicKey: 
   const expected = new Uint8Array(urlBase64ToArrayBuffer(publicKey));
   const actual = new Uint8Array(existing);
   if (actual.length !== expected.length) return false;
-  for (let index = 0; index < actual.length; index += 1) {
-    if (actual[index] !== expected[index]) return false;
-  }
+  for (let index = 0; index < actual.length; index += 1) if (actual[index] !== expected[index]) return false;
   return true;
 }
 
 async function removeStaleSubscription(subscription: PushSubscription): Promise<void> {
-  try {
-    await api.delete('/push/web/subscriptions', { data: { endpoint: subscription.endpoint } });
-  } catch (error: any) {
-    if (error?.response?.status !== 404) console.error('Stale Web Push cleanup:', error);
-  }
+  try { await api.delete('/push/web/subscriptions', { data: { endpoint: subscription.endpoint } }); }
+  catch (error: any) { if (error?.response?.status !== 404) console.error('Stale Web Push cleanup:', error); }
   await subscription.unsubscribe();
 }
 
@@ -93,8 +85,14 @@ export async function syncExistingWebPush(): Promise<boolean> {
   if (!webPushSupported() || Notification.permission !== 'granted') return false;
   const registration = await registerLifonkServiceWorker();
   const publicKey = await getConfiguredPublicKey();
-  const subscription = registration && publicKey ? await currentMatchingSubscription(registration, publicKey) : null;
-  if (!subscription) return false;
+  if (!registration || !publicKey) return false;
+  let subscription = await currentMatchingSubscription(registration, publicKey);
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToArrayBuffer(publicKey),
+    });
+  }
   await syncSubscription(subscription);
   return true;
 }
@@ -109,10 +107,7 @@ export async function enableWebPush(): Promise<void> {
   if (!publicKey) throw new Error('El backend no tiene una clave pública VAPID configurada.');
   let subscription = await currentMatchingSubscription(registration, publicKey);
   if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToArrayBuffer(publicKey),
-    });
+    subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToArrayBuffer(publicKey) });
   }
   await syncSubscription(subscription);
 }
