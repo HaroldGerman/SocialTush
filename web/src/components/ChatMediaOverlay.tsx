@@ -3,27 +3,78 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { api } from '@/context/AuthContext';
 
 type Media = { src: string; alt: string } | null;
 
+type ActiveStory = {
+  storyId: string;
+  mediaType?: string;
+  mediaUrl?: string;
+  textContent?: string;
+};
+
+type ActiveStoryGroup = {
+  stories?: ActiveStory[];
+};
+
+function findMomentCard(target: HTMLElement | null) {
+  let current: HTMLElement | null = target;
+  for (let depth = 0; current && depth < 7; depth += 1, current = current.parentElement) {
+    const text = current.textContent?.toLowerCase() || '';
+    if (text.includes('interacción con un momento') || text.includes('interaccion con un momento')) return current;
+  }
+  return null;
+}
+
 export default function ChatMediaOverlay() {
   const [media, setMedia] = useState<Media>(null);
+  const [openingMoment, setOpeningMoment] = useState(false);
 
   useEffect(() => {
-    if (!window.location.pathname.startsWith('/chat')) return;
     const onClick = (event: MouseEvent) => {
+      if (!window.location.pathname.startsWith('/chat')) return;
       const target = event.target as HTMLElement | null;
-      const img = target?.closest('button')?.querySelector('img') as HTMLImageElement | null;
-      if (!img?.src) return;
-      const button = target?.closest('button');
-      if (!button || !button.closest('[class*="overflow-y-auto"]')) return;
+      if (!target) return;
+
+      const momentCard = findMomentCard(target);
+      if (momentCard && !openingMoment) {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpeningMoment(true);
+
+        const previewMedia = momentCard.querySelector('img,video') as HTMLImageElement | HTMLVideoElement | null;
+        const previewUrl = previewMedia?.src || '';
+        const previewText = momentCard.textContent || '';
+
+        void api.get('/stories/active').then((response) => {
+          const groups: ActiveStoryGroup[] = Array.isArray(response.data) ? response.data : [];
+          const allStories = groups.flatMap((group) => group.stories || []);
+          const match = allStories.find((story) => {
+            if (previewUrl && story.mediaUrl) return story.mediaUrl === previewUrl;
+            if (story.mediaType === 'TEXT' && story.textContent) return previewText.includes(story.textContent);
+            return false;
+          });
+          if (!match) {
+            window.alert('Este momento ya no está disponible.');
+            return;
+          }
+          window.location.assign(`/feed?moment=${encodeURIComponent(match.storyId)}`);
+        }).catch(() => window.alert('No se pudo abrir el momento.')).finally(() => setOpeningMoment(false));
+        return;
+      }
+
+      const button = target.closest('button');
+      const img = button?.querySelector('img') as HTMLImageElement | null;
+      if (!img?.src || !button?.closest('[class*="overflow-y-auto"]')) return;
       event.preventDefault();
       event.stopPropagation();
       setMedia({ src: img.src, alt: img.alt || 'Imagen del chat' });
     };
+
     document.addEventListener('click', onClick, true);
     return () => document.removeEventListener('click', onClick, true);
-  }, []);
+  }, [openingMoment]);
 
   useEffect(() => {
     if (!media) return;
