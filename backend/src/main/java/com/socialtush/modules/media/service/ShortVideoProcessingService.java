@@ -41,11 +41,14 @@ public class ShortVideoProcessingService {
 
         Path input = null;
         Path output = null;
+        Path thumbnailDir = null;
         Path thumbnail = null;
         try {
             input = Files.createTempFile("lifonk-pulse-input-", extensionFor(source));
             output = Files.createTempFile("lifonk-pulse-output-", ".mp4");
-            thumbnail = Files.createTempFile("lifonk-pulse-cover-", ".jpg");
+            thumbnailDir = Files.createTempDirectory("lifonk-pulse-cover-");
+            thumbnail = thumbnailDir.resolve("cover-001.jpg");
+            String thumbnailPattern = thumbnailDir.resolve("cover-%03d.jpg").toString();
             source.transferTo(input);
 
             List<String> transcode = new ArrayList<>(List.of(
@@ -63,7 +66,7 @@ public class ShortVideoProcessingService {
                     "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                     "-ss", decimal(thumbnailSecond), "-i", output.toString(),
                     "-vf", "scale='if(gt(iw,ih),min(720,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))':force_original_aspect_ratio=decrease",
-                    "-frames:v", "1", "-update", "1", "-q:v", "3", thumbnail.toString()
+                    "-frames:v", "1", "-q:v", "3", thumbnailPattern
             );
             run(cover, "generar la portada de Pulso");
 
@@ -81,6 +84,7 @@ public class ShortVideoProcessingService {
             deleteQuietly(input);
             deleteQuietly(output);
             deleteQuietly(thumbnail);
+            deleteQuietly(thumbnailDir);
         }
     }
 
