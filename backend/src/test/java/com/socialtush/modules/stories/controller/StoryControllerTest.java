@@ -9,6 +9,7 @@ import com.socialtush.modules.stories.entity.StoryReaction;
 import com.socialtush.modules.stories.entity.StoryView;
 import com.socialtush.modules.stories.repository.StoryReactionRepository;
 import com.socialtush.modules.stories.repository.StoryRepository;
+import com.socialtush.modules.stories.repository.StoryViewRepository;
 import com.socialtush.modules.stories.service.StoryService;
 import com.socialtush.modules.users.entity.User;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,13 +37,22 @@ class StoryControllerTest {
     @Mock StorageService storageService;
     @Mock StoryService storyService;
     @Mock StoryReactionRepository storyReactionRepository;
+    @Mock StoryViewRepository storyViewRepository;
 
     private StoryController controller;
     private User owner;
 
     @BeforeEach
     void setUp() {
-        controller = new StoryController(storyRepository, followRepository, profileRepository, storageService, storyService, storyReactionRepository);
+        controller = new StoryController(
+                storyRepository,
+                followRepository,
+                profileRepository,
+                storageService,
+                storyService,
+                storyReactionRepository,
+                storyViewRepository
+        );
         ReflectionTestUtils.setField(controller, "storagePublicUrl", "https://media.socialtush.test");
         owner = user("owner");
     }
