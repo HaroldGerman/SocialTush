@@ -1,4 +1,40 @@
-/* Lifonk Web Push service worker. No offline cache is intentionally installed here. */
+const IMAGE_CACHE = 'lifonk-images-v1';
+
+async function trimImageCache(cache, maxEntries = 120) {
+  const keys = await cache.keys();
+  if (keys.length <= maxEntries) return;
+  await Promise.all(keys.slice(0, keys.length - maxEntries).map(key => cache.delete(key)));
+}
+
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET' || request.destination !== 'image') return;
+
+  const referrer = request.referrer || '';
+  if (referrer.includes('/chat')) return;
+
+  event.respondWith((async () => {
+    const cache = await caches.open(IMAGE_CACHE);
+    const cached = await cache.match(request);
+    const network = fetch(request).then(async response => {
+      if (response && (response.ok || response.type === 'opaque')) {
+        await cache.put(request, response.clone());
+        void trimImageCache(cache);
+      }
+      return response;
+    }).catch(() => cached);
+    return cached || network;
+  })());
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names.filter(name => name.startsWith('lifonk-images-') && name !== IMAGE_CACHE).map(name => caches.delete(name)));
+    await self.clients.claim();
+  })());
+});
+
 self.addEventListener('push', event => {
   let payload = {};
   try {
