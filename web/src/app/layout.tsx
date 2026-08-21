@@ -6,6 +6,7 @@ import { CreateHubProvider } from "@/context/CreateHubContext";
 import "./globals.css";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import AccountSecurityShortcut from "@/components/AccountSecurityShortcut";
+import AccountSettingsShortcut from "@/components/AccountSettingsShortcut";
 import GlobalImageCropInterceptor from "@/components/GlobalImageCropInterceptor";
 import { RealtimeActivityProvider } from "@/context/RealtimeActivityContext";
 
@@ -53,6 +54,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <RealtimeActivityProvider>
                 <CreateHubProvider>
                   {children}
+                  <AccountSettingsShortcut />
                   <AccountSecurityShortcut />
                 </CreateHubProvider>
               </RealtimeActivityProvider>
