@@ -2,9 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '@/context/AuthContext';
-import { 
-  X, Camera, Image as ImageIcon, Type, Sparkles, Smile, Music, Film, Check, RefreshCw
-} from 'lucide-react';
+import { X, Camera, Image as ImageIcon, Type, Sparkles, Smile, Music, RefreshCw, Scissors } from 'lucide-react';
 
 interface StoryComposerProps {
   isOpen: boolean;
@@ -14,49 +12,44 @@ interface StoryComposerProps {
 
 interface OverlayItem {
   id: string;
-  type: 'TEXT' | 'EMOJI' | 'GIF';
+  type: 'TEXT' | 'EMOJI' | 'GIF' | 'VIDEO_TRIM';
   value: string;
-  x: number; // 0 to 1 relative
-  y: number; // 0 to 1 relative
+  x: number;
+  y: number;
   scale: number;
   color?: string;
   bg?: boolean;
+  start?: number;
+  end?: number;
 }
 
 const PRESET_BACKGROUNDS = [
-  'linear-gradient(135deg, #0f766e 0%, #042f2e 100%)', // Teal Dark
-  'linear-gradient(135deg, #312e81 0%, #1e1b4b 100%)', // Indigo Dark
-  'linear-gradient(135deg, #881337 0%, #4c0519 100%)', // Rose Dark
-  'linear-gradient(135deg, #7c2d12 0%, #431407 100%)', // Orange Dark
-  '#090d16', // Slate Black
-  '#1e293b'  // Slate Gray
+  'linear-gradient(135deg, #0f766e 0%, #042f2e 100%)',
+  'linear-gradient(135deg, #312e81 0%, #1e1b4b 100%)',
+  'linear-gradient(135deg, #881337 0%, #4c0519 100%)',
+  'linear-gradient(135deg, #7c2d12 0%, #431407 100%)',
+  '#090d16', '#1e293b'
 ];
+const MAX_STORY_VIDEO_SECONDS = 30;
+
+const formatSeconds = (value: number) => `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}`;
 
 export default function StoryComposer({ isOpen, onClose, onPublished }: StoryComposerProps) {
-  // Mode selection: 'SELECT', 'CAMERA', 'GALLERY', 'TEXT', 'EDITOR'
   const [composerMode, setComposerMode] = useState<'SELECT' | 'CAMERA' | 'TEXT' | 'EDITOR'>('SELECT');
-  
-  // Media source
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<'IMAGE' | 'VIDEO' | 'TEXT'>('TEXT');
-  
-  // Text Mode & Presets
   const [textContent, setTextContent] = useState('');
   const [bgColor, setBgColor] = useState(PRESET_BACKGROUNDS[0]);
-
-  // Overlays
   const [overlays, setOverlays] = useState<OverlayItem[]>([]);
-  
-  // Tools panels
   const [activePanel, setActivePanel] = useState<'NONE' | 'TEXT' | 'EMOJI' | 'MUSIC'>('NONE');
-  
-  // New Text Inputs
   const [newText, setNewText] = useState('');
   const [newTextColor, setNewTextColor] = useState('#ffffff');
   const [newTextBg, setNewTextBg] = useState(false);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(0);
 
-  // Camera settings
   const streamRef = useRef<MediaStream | null>(null);
   const cameraRequestRef = useRef(0);
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
@@ -65,48 +58,20 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
   const [isStartingCamera, setIsStartingCamera] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const editorVideoRef = useRef<HTMLVideoElement>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-
-  // Publish Status
   const [isPublishing, setIsPublishing] = useState(false);
   const [isBestFriends, setIsBestFriends] = useState(false);
 
   const stopCamera = useCallback(() => {
     cameraRequestRef.current += 1;
-    const current = streamRef.current;
-    if (current) {
-      current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setIsCameraReady(false);
     setIsStartingCamera(false);
   }, []);
-
-  const cameraErrorMessage = (error: unknown) => {
-    const name = error instanceof DOMException ? error.name : '';
-    const messages: Record<string, string> = {
-      NotAllowedError: 'El permiso de cámara fue denegado.',
-      NotFoundError: 'No encontramos una cámara disponible.',
-      NotReadableError: 'La cámara está siendo usada por otra aplicación.',
-      OverconstrainedError: 'La cámara no admite la configuración solicitada.',
-      SecurityError: 'El navegador bloqueó el acceso seguro a la cámara.'
-    };
-    return messages[name] || 'No pudimos acceder a la cámara.';
-  };
-
-  const requestCamera = async (facing: 'user' | 'environment') => {
-    if (!navigator.mediaDevices?.getUserMedia) throw new DOMException('getUserMedia no disponible', 'NotSupportedError');
-    try {
-      return await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: facing } }, audio: false });
-    } catch (error) {
-      if (error instanceof DOMException && (error.name === 'OverconstrainedError' || error.name === 'NotFoundError')) {
-        return navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing } }, audio: false });
-      }
-      throw error;
-    }
-  };
 
   const startCamera = useCallback(async (facing: 'user' | 'environment' = 'user') => {
     stopCamera();
@@ -114,18 +79,19 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
     setCameraError(null);
     setIsStartingCamera(true);
     try {
-      const mediaStream = await requestCamera(facing);
-      if (requestId !== cameraRequestRef.current) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        return;
+      let mediaStream: MediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: facing } }, audio: false });
+      } catch {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing } }, audio: false });
       }
+      if (requestId !== cameraRequestRef.current) return mediaStream.getTracks().forEach(track => track.stop());
       streamRef.current = mediaStream;
       setCameraFacing(facing);
       setComposerMode('CAMERA');
-    } catch (err) {
-      if (requestId !== cameraRequestRef.current) return;
-      console.error('No se pudo iniciar la cámara:', err);
-      setCameraError(cameraErrorMessage(err));
+    } catch (error) {
+      console.error(error);
+      setCameraError('No pudimos acceder a la cámara. Revisa los permisos del navegador.');
       setComposerMode('SELECT');
     } finally {
       if (requestId === cameraRequestRef.current) setIsStartingCamera(false);
@@ -134,540 +100,147 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
 
   useEffect(() => {
     if (composerMode !== 'CAMERA' || !videoRef.current || !streamRef.current) return;
-    const video = videoRef.current;
-    video.srcObject = streamRef.current;
-    video.play().catch(error => {
-      console.error('No se pudo reproducir el preview de cámara:', error);
-      setCameraError('No pudimos mostrar la vista previa de la cámara.');
-      stopCamera();
-      setComposerMode('SELECT');
-    });
-  }, [composerMode, cameraFacing, stopCamera]);
-
+    videoRef.current.srcObject = streamRef.current;
+    videoRef.current.play().catch(() => setCameraError('No pudimos mostrar la cámara.'));
+  }, [composerMode, cameraFacing]);
   useEffect(() => () => stopCamera(), [stopCamera]);
-  useEffect(() => {
-    if (!isOpen) stopCamera();
-  }, [isOpen, stopCamera]);
+  useEffect(() => { if (!isOpen) stopCamera(); }, [isOpen, stopCamera]);
 
   if (!isOpen) return null;
 
-  const toggleCameraFacing = () => {
-    const nextFacing = cameraFacing === 'user' ? 'environment' : 'user';
-    startCamera(nextFacing);
-  };
-
   const capturePhoto = () => {
-    if (!videoRef.current || !isCameraReady || videoRef.current.videoWidth <= 0 || videoRef.current.videoHeight <= 0) return;
-    setIsCapturing(true);
-
     const video = videoRef.current;
+    if (!video || !isCameraReady || !video.videoWidth || !video.videoHeight) return;
+    setIsCapturing(true);
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
-    if (ctx) {
-      try {
-        if (cameraFacing === 'user') {
-          ctx.translate(canvas.width, 0);
-          ctx.scale(-1, 1);
-        }
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
-            setSelectedFile(file);
-            setMediaUrl(URL.createObjectURL(file));
-            setMediaType('IMAGE');
-            setComposerMode('EDITOR');
-            stopCamera();
-          } else setCameraError('No pudimos procesar la foto capturada.');
-          setIsCapturing(false);
-        }, 'image/jpeg', 0.95);
-      } catch (error) {
-        console.error('Error al capturar la foto:', error);
-        setCameraError('No pudimos capturar la foto. Inténtalo de nuevo.');
-        setIsCapturing(false);
-        stopCamera();
+    if (!ctx) return setIsCapturing(false);
+    if (cameraFacing === 'user') { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(blob => {
+      if (blob) {
+        const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        setSelectedFile(file); setMediaUrl(URL.createObjectURL(file)); setMediaType('IMAGE'); setComposerMode('EDITOR'); stopCamera();
       }
-    } else {
-      console.error('Canvas 2D no está disponible para capturar la cámara.');
-      setCameraError('Este navegador no permite procesar la captura.');
       setIsCapturing(false);
-      stopCamera();
-    }
+    }, 'image/jpeg', .95);
   };
 
-  // Gallery select
   const handleGallerySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     stopCamera();
     const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      const url = URL.createObjectURL(file);
-      setMediaUrl(url);
-      setMediaType(file.type.startsWith('video') ? 'VIDEO' : 'IMAGE');
-      setComposerMode('EDITOR');
+    if (!file) return;
+    if (mediaUrl) URL.revokeObjectURL(mediaUrl);
+    const url = URL.createObjectURL(file);
+    setSelectedFile(file); setMediaUrl(url);
+    const isVideo = file.type.startsWith('video');
+    setMediaType(isVideo ? 'VIDEO' : 'IMAGE');
+    setVideoDuration(0); setTrimStart(0); setTrimEnd(0);
+    setComposerMode('EDITOR');
+  };
+
+  const onVideoMetadata = (video: HTMLVideoElement) => {
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    setVideoDuration(duration);
+    const end = Math.min(duration, MAX_STORY_VIDEO_SECONDS);
+    setTrimStart(0); setTrimEnd(end);
+    video.currentTime = 0;
+  };
+
+  const updateTrimStart = (value: number) => {
+    const next = Math.max(0, Math.min(value, Math.max(0, videoDuration - 1)));
+    setTrimStart(next);
+    setTrimEnd(current => Math.min(videoDuration, Math.max(next + 1, Math.min(current, next + MAX_STORY_VIDEO_SECONDS))));
+    if (editorVideoRef.current) editorVideoRef.current.currentTime = next;
+  };
+  const updateTrimEnd = (value: number) => {
+    const next = Math.min(videoDuration, Math.max(trimStart + 1, value));
+    setTrimEnd(Math.min(next, trimStart + MAX_STORY_VIDEO_SECONDS));
+  };
+  const handlePreviewTime = (video: HTMLVideoElement) => {
+    if (trimEnd > trimStart && video.currentTime >= trimEnd - .05) {
+      video.currentTime = trimStart;
+      video.play().catch(() => {});
     }
   };
 
-  // Drag overlays
   const handleOverlayDrag = (id: string, e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
-    const container = canvasContainerRef.current;
-    if (!container) return;
-
+    const container = canvasContainerRef.current; if (!container) return;
     const rect = container.getBoundingClientRect();
-    
-    const updatePosition = (clientX: number, clientY: number) => {
-      const x = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
-      const y = Math.min(Math.max((clientY - rect.top) / rect.height, 0), 1);
-      setOverlays(prev => prev.map(o => o.id === id ? { ...o, x, y } : o));
-    };
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      updatePosition(moveEvent.clientX, moveEvent.clientY);
-    };
-
-    const handleMouseUp = () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    const handleTouchMove = (touchEvent: TouchEvent) => {
-      if (touchEvent.touches.length > 0) {
-        updatePosition(touchEvent.touches[0].clientX, touchEvent.touches[0].clientY);
-      }
-    };
-
-    const handleTouchEnd = () => {
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleTouchEnd);
-    };
-
-    if ('touches' in e) {
-      window.addEventListener('touchmove', handleTouchMove);
-      window.addEventListener('touchend', handleTouchEnd);
-    } else {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    }
+    const update = (x: number, y: number) => setOverlays(prev => prev.map(o => o.id === id ? { ...o, x: Math.min(Math.max((x-rect.left)/rect.width,0),1), y: Math.min(Math.max((y-rect.top)/rect.height,0),1) } : o));
+    const mm = (ev: MouseEvent) => update(ev.clientX, ev.clientY);
+    const mu = () => { window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); };
+    const tm = (ev: TouchEvent) => ev.touches[0] && update(ev.touches[0].clientX, ev.touches[0].clientY);
+    const tu = () => { window.removeEventListener('touchmove', tm); window.removeEventListener('touchend', tu); };
+    if ('touches' in e) { window.addEventListener('touchmove', tm); window.addEventListener('touchend', tu); }
+    else { window.addEventListener('mousemove', mm); window.addEventListener('mouseup', mu); }
   };
 
-  // Add items
   const addTextOverlay = () => {
     if (!newText.trim()) return;
-    const textItem: OverlayItem = {
-      id: 'text_' + Date.now(),
-      type: 'TEXT',
-      value: newText.trim(),
-      x: 0.5,
-      y: 0.4,
-      scale: 1.2,
-      color: newTextColor,
-      bg: newTextBg
-    };
-    setOverlays(prev => [...prev, textItem]);
-    setNewText('');
-    setActivePanel('NONE');
+    setOverlays(prev => [...prev, { id:'text_'+Date.now(), type:'TEXT', value:newText.trim(), x:.5, y:.4, scale:1.2, color:newTextColor, bg:newTextBg }]);
+    setNewText(''); setActivePanel('NONE');
   };
+  const addEmojiOverlay = (emoji:string) => { setOverlays(prev => [...prev,{id:'emoji_'+Date.now(),type:'EMOJI',value:emoji,x:.5,y:.5,scale:1.8}]); setActivePanel('NONE'); };
 
-  const addEmojiOverlay = (emoji: string) => {
-    const emojiItem: OverlayItem = {
-      id: 'emoji_' + Date.now(),
-      type: 'EMOJI',
-      value: emoji,
-      x: 0.5,
-      y: 0.5,
-      scale: 1.8
-    };
-    setOverlays(prev => [...prev, emojiItem]);
-    setActivePanel('NONE');
-  };
-
-  const removeOverlay = (id: string) => {
-    setOverlays(prev => prev.filter(o => o.id !== id));
-  };
-
-  // Publish
   const handlePublishStory = async () => {
-    setIsPublishing(true);
+    setIsPublishing(true); setCameraError(null);
     try {
       const formData = new FormData();
       formData.append('mediaType', mediaType);
       formData.append('isBestFriends', String(isBestFriends));
-
-      if (mediaType === 'TEXT') {
-        formData.append('textContent', textContent);
-        formData.append('backgroundColor', bgColor);
-      } else if (selectedFile) {
-        formData.append('file', selectedFile);
-      }
-
-      // Persist overlay items as metadata
-      if (overlays.length > 0) {
-        formData.append('overlayData', JSON.stringify(overlays));
-      }
-
-      const response = await api.post('/stories', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      onCloseClean();
-      onPublished?.(response.data);
-    } catch (err: any) {
-      console.error('Error al publicar historia:', err);
-      setCameraError(err.response?.data?.message || 'Error al publicar momento');
-    } finally {
-      setIsPublishing(false);
-    }
+      if (mediaType === 'TEXT') { formData.append('textContent', textContent); formData.append('backgroundColor', bgColor); }
+      else if (selectedFile) formData.append('file', selectedFile);
+      const payload = [...overlays];
+      if (mediaType === 'VIDEO' && videoDuration > 0) payload.push({ id:'__video_trim__', type:'VIDEO_TRIM', value:'', x:0, y:0, scale:1, start:trimStart, end:trimEnd || Math.min(videoDuration, MAX_STORY_VIDEO_SECONDS) });
+      if (payload.length) formData.append('overlayData', JSON.stringify(payload));
+      const response = await api.post('/stories', formData, { headers:{'Content-Type':'multipart/form-data'} });
+      onCloseClean(); onPublished?.(response.data);
+    } catch (err:any) { console.error(err); setCameraError(err.response?.data?.message || 'Error al publicar momento'); }
+    finally { setIsPublishing(false); }
   };
 
   const onCloseClean = () => {
-    stopCamera();
-    setSelectedFile(null);
-    if (mediaUrl) {
-      URL.revokeObjectURL(mediaUrl);
-      setMediaUrl(null);
-    }
-    setOverlays([]);
-    setTextContent('');
-    setCameraError(null);
-    setComposerMode('SELECT');
-    onClose();
+    stopCamera(); setSelectedFile(null); if (mediaUrl) URL.revokeObjectURL(mediaUrl); setMediaUrl(null);
+    setOverlays([]); setTextContent(''); setCameraError(null); setComposerMode('SELECT'); setVideoDuration(0); setTrimStart(0); setTrimEnd(0); onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-[110] bg-black flex flex-col md:p-4 justify-center items-center h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-      {/* Container wrapper */}
-      <div className="w-full h-full md:max-w-md bg-[#090d16] md:rounded-3xl border border-slate-800 shadow-2xl relative overflow-hidden flex flex-col">
-        
-        {/* SELECT MODE */}
-        {composerMode === 'SELECT' && (
-          <div className="flex-1 flex flex-col justify-center p-6 space-y-6 text-center">
-            <div className="flex justify-between items-center absolute top-4 left-4 right-4 z-10">
-              <span className="text-sm font-extrabold text-teal-400">Crear momento</span>
-              <button onClick={onCloseClean} className="p-2 rounded-full bg-slate-800 text-slate-300 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="space-y-2">
-              <Sparkles className="w-12 h-12 text-teal-500 mx-auto animate-pulse" />
-              <h2 className="text-lg font-black text-white">¿Cómo quieres contar tu momento?</h2>
-              <p className="text-xs text-slate-400">Captura un momento, sube de tu galería o comparte tus pensamientos en texto.</p>
-            </div>
+  return <div className="fixed inset-0 z-[110] bg-black flex items-center justify-center h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] md:p-4">
+    <div className="w-full h-full md:max-w-md bg-[#090d16] md:rounded-3xl border border-slate-800 shadow-2xl relative overflow-hidden flex flex-col">
+      {composerMode === 'SELECT' && <div className="flex-1 flex flex-col justify-center p-6 space-y-6 text-center">
+        <div className="absolute top-4 left-4 right-4 flex justify-between"><span className="text-sm font-extrabold text-teal-400">Crear momento</span><button onClick={onCloseClean} className="p-2 rounded-full bg-slate-800 text-white"><X className="w-5 h-5"/></button></div>
+        <div><Sparkles className="w-12 h-12 text-teal-500 mx-auto"/><h2 className="text-lg font-black text-white mt-2">¿Cómo quieres contar tu momento?</h2><p className="text-xs text-slate-400 mt-1">Foto, video o texto.</p></div>
+        <div className="grid gap-3">
+          <button onClick={()=>startCamera('user')} disabled={isStartingCamera} className="flex items-center gap-3 p-4 bg-slate-900 border border-slate-800 rounded-2xl text-left"><Camera className="w-5 h-5 text-teal-400"/><div><b className="text-sm text-white">{isStartingCamera?'Abriendo cámara…':'Usar cámara'}</b><p className="text-[11px] text-slate-500">Toma una foto ahora</p></div></button>
+          <label className="flex items-center gap-3 p-4 bg-slate-900 border border-slate-800 rounded-2xl text-left cursor-pointer"><ImageIcon className="w-5 h-5 text-emerald-400"/><div className="flex-1"><b className="text-sm text-white">Galería / archivos</b><p className="text-[11px] text-slate-500">Sube una foto o video y recórtalo antes de publicar</p></div><input type="file" onChange={handleGallerySelect} accept="image/*,video/*" className="hidden"/></label>
+          <button onClick={()=>{setMediaType('TEXT');setComposerMode('TEXT')}} className="flex items-center gap-3 p-4 bg-slate-900 border border-slate-800 rounded-2xl text-left"><Type className="w-5 h-5 text-amber-400"/><div><b className="text-sm text-white">Momento de texto</b><p className="text-[11px] text-slate-500">Comparte una idea rápida</p></div></button>
+        </div>{cameraError&&<p className="text-xs text-rose-300">{cameraError}</p>}
+        <input ref={nativeCameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleGallerySelect} className="hidden"/>
+      </div>}
 
-            <div className="grid grid-cols-1 gap-3 pt-4">
-              <button
-                onClick={() => startCamera('user')}
-                disabled={isStartingCamera}
-                className="flex items-center gap-3 p-4 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-2xl text-left transition-all group"
-              >
-                <div className="p-3 rounded-xl bg-teal-950/80 text-teal-400 group-hover:scale-105 transition-transform">
-                  <Camera className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-white">{isStartingCamera ? 'Abriendo cámara...' : 'Usar Cámara'}</h4>
-                  <p className="text-[11px] text-slate-500">Toma una foto en vivo desde tu dispositivo</p>
-                </div>
-              </button>
+      {composerMode === 'CAMERA' && <div className="flex-1 relative bg-black"><video ref={videoRef} autoPlay playsInline muted onLoadedMetadata={e=>setIsCameraReady(e.currentTarget.videoWidth>0)} className={`w-full h-full object-cover ${cameraFacing==='user'?'scale-x-[-1]':''}`}/><div className="absolute top-4 left-4 right-4 flex justify-between"><button onClick={()=>{stopCamera();setComposerMode('SELECT')}} className="p-2.5 rounded-full bg-black/60 text-white"><X className="w-5 h-5"/></button><button onClick={()=>startCamera(cameraFacing==='user'?'environment':'user')} className="p-2.5 rounded-full bg-black/60 text-white"><RefreshCw className="w-5 h-5"/></button></div><div className="absolute bottom-8 inset-x-0 flex justify-center"><button onClick={capturePhoto} disabled={isCapturing||!isCameraReady} className="w-20 h-20 rounded-full border-4 border-white p-1"><div className="w-full h-full rounded-full bg-white"/></button></div></div>}
 
-              {cameraError && (
-                <div role="alert" className="rounded-2xl border border-amber-700/60 bg-amber-950/30 p-4 text-left space-y-3">
-                  <p className="text-sm font-bold text-white">No pudimos acceder a la cámara.</p>
-                  <p className="text-xs text-amber-200">{cameraError}</p>
-                  <div className="grid gap-2">
-                    <button type="button" onClick={() => startCamera(cameraFacing)} className="rounded-xl bg-teal-700 px-3 py-2 text-xs font-bold text-white">Reintentar</button>
-                    <button type="button" onClick={() => nativeCameraInputRef.current?.click()} className="rounded-xl border border-slate-600 px-3 py-2 text-xs font-bold text-white">Usar cámara del dispositivo</button>
-                    <label className="rounded-xl border border-slate-600 px-3 py-2 text-center text-xs font-bold text-white cursor-pointer">Elegir de galería<input type="file" accept="image/*,video/*" onChange={handleGallerySelect} className="hidden" /></label>
-                  </div>
-                </div>
-              )}
-              <input ref={nativeCameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleGallerySelect} className="hidden" />
+      {composerMode === 'TEXT' && <div className="flex-1 flex flex-col p-6" style={{background:bgColor}}><div className="flex justify-between"><button onClick={()=>setComposerMode('SELECT')} className="p-2 rounded-full bg-black/40 text-white"><X className="w-5 h-5"/></button><button disabled={!textContent.trim()} onClick={()=>setComposerMode('EDITOR')} className="px-4 py-2 bg-white text-slate-900 rounded-xl text-xs font-black disabled:opacity-50">Siguiente</button></div><div className="flex-1 flex items-center"><textarea value={textContent} onChange={e=>setTextContent(e.target.value)} maxLength={250} placeholder="Escribe algo increíble…" className="w-full bg-transparent text-center text-white font-extrabold text-2xl outline-none resize-none"/></div><div className="flex justify-center gap-3">{PRESET_BACKGROUNDS.map((bg,i)=><button key={i} onClick={()=>setBgColor(bg)} className="w-8 h-8 rounded-full border-2 border-white/60" style={{background:bg}}/>)}</div></div>}
 
-              <label className="flex items-center gap-3 p-4 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-2xl text-left cursor-pointer transition-all group">
-                <div className="p-3 rounded-xl bg-emerald-950/80 text-emerald-400 group-hover:scale-105 transition-transform">
-                  <ImageIcon className="w-5 h-5" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-sm text-white">Galería / Archivos</h4>
-                  <p className="text-[11px] text-slate-500">Sube una foto o video existente</p>
-                </div>
-                <input
-                  type="file"
-                  onChange={handleGallerySelect}
-                  accept="image/*,video/*"
-                  className="hidden"
-                />
-              </label>
+      {composerMode === 'EDITOR' && <div className="flex-1 min-h-0 flex flex-col relative bg-slate-950">
+        <div className="absolute top-4 left-4 right-4 flex justify-between z-30"><button onClick={onCloseClean} className="p-2.5 rounded-full bg-black/60 text-white"><X className="w-5 h-5"/></button><div className="flex gap-2"><button onClick={()=>setActivePanel(activePanel==='TEXT'?'NONE':'TEXT')} className="p-2.5 rounded-full bg-black/60 text-white"><Type className="w-5 h-5"/></button><button onClick={()=>setActivePanel(activePanel==='EMOJI'?'NONE':'EMOJI')} className="p-2.5 rounded-full bg-black/60 text-white"><Smile className="w-5 h-5"/></button><button onClick={()=>setActivePanel(activePanel==='MUSIC'?'NONE':'MUSIC')} className="p-2.5 rounded-full bg-black/60 text-white"><Music className="w-5 h-5"/></button></div></div>
+        <div ref={canvasContainerRef} className="flex-1 min-h-0 relative overflow-hidden flex items-center justify-center" style={{background:mediaType==='TEXT'?bgColor:'#000'}}>
+          {mediaType==='IMAGE'&&mediaUrl&&<img src={mediaUrl} alt="Momento" className="w-full h-full object-cover pointer-events-none"/>}
+          {mediaType==='VIDEO'&&mediaUrl&&<video ref={editorVideoRef} src={mediaUrl} controls playsInline preload="metadata" onLoadedMetadata={e=>onVideoMetadata(e.currentTarget)} onTimeUpdate={e=>handlePreviewTime(e.currentTarget)} className="w-full h-full object-contain"/>}
+          {mediaType==='TEXT'&&<p className="text-white font-extrabold text-2xl text-center px-6 whitespace-pre-wrap">{textContent}</p>}
+          {overlays.filter(o=>o.type!=='VIDEO_TRIM').map(o=><div key={o.id} onMouseDown={e=>handleOverlayDrag(o.id,e)} onTouchStart={e=>handleOverlayDrag(o.id,e)} className="absolute cursor-move z-20" style={{left:`${o.x*100}%`,top:`${o.y*100}%`,transform:`translate(-50%,-50%) scale(${o.scale})`,color:o.color||'#fff'}}><div className={`px-3 py-1.5 rounded-xl font-bold ${o.bg?'bg-black/75':''}`}>{o.value}<button onClick={()=>setOverlays(p=>p.filter(x=>x.id!==o.id))} className="ml-2 text-rose-300">×</button></div></div>)}
+        </div>
 
-              <button
-                onClick={() => { setMediaType('TEXT'); setComposerMode('TEXT'); }}
-                className="flex items-center gap-3 p-4 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-2xl text-left transition-all group"
-              >
-                <div className="p-3 rounded-xl bg-amber-950/80 text-amber-400 group-hover:scale-105 transition-transform">
-                  <Type className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-white">Momento de texto</h4>
-                  <p className="text-[11px] text-slate-500">Escribe sobre un fondo de color personalizado</p>
-                </div>
-              </button>
-            </div>
-          </div>
-        )}
+        {mediaType==='VIDEO'&&videoDuration>0&&<div className="border-t border-slate-800 bg-[#0b111b] px-4 py-3 space-y-2 z-30"><div className="flex items-center justify-between"><div className="flex items-center gap-2 text-xs font-bold text-white"><Scissors className="h-4 w-4 text-teal-400"/>Recortar video</div><span className="text-[11px] text-teal-300">{formatSeconds(trimStart)} — {formatSeconds(trimEnd)} · {Math.max(0,trimEnd-trimStart).toFixed(1)} s</span></div><p className="text-[10px] text-slate-400">Elige el fragmento que se mostrará. Máximo {MAX_STORY_VIDEO_SECONDS} segundos.</p><label className="block text-[10px] text-slate-400">Inicio<input type="range" min={0} max={Math.max(0,videoDuration-1)} step="0.1" value={trimStart} onChange={e=>updateTrimStart(Number(e.target.value))} className="w-full accent-teal-500"/></label><label className="block text-[10px] text-slate-400">Final<input type="range" min={Math.min(videoDuration,trimStart+1)} max={Math.min(videoDuration,trimStart+MAX_STORY_VIDEO_SECONDS)} step="0.1" value={trimEnd} onChange={e=>updateTrimEnd(Number(e.target.value))} className="w-full accent-teal-500"/></label><button type="button" onClick={()=>{if(editorVideoRef.current){editorVideoRef.current.currentTime=trimStart;editorVideoRef.current.play().catch(()=>{})}}} className="w-full rounded-xl border border-teal-800 bg-teal-950/40 py-2 text-xs font-bold text-teal-200">Previsualizar recorte</button></div>}
 
-        {/* CAMERA MODE */}
-        {composerMode === 'CAMERA' && (
-          <div className="flex-1 flex flex-col justify-between relative bg-black">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              onLoadedMetadata={(event) => setIsCameraReady(event.currentTarget.videoWidth > 0 && event.currentTarget.videoHeight > 0)}
-              className={`w-full h-full object-cover ${cameraFacing === 'user' ? 'scale-x-[-1]' : ''}`}
-            />
-            {!isCameraReady && <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-sm font-bold text-white">Preparando cámara...</div>}
-            
-            {/* Header toolbar */}
-            <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-10">
-              <button 
-                onClick={() => { stopCamera(); setComposerMode('SELECT'); }}
-                className="p-2.5 rounded-full bg-black/60 text-white backdrop-blur-md"
-              >
-                <X className="w-5 h-5" />
-              </button>
-              <button
-                onClick={toggleCameraFacing}
-                className="p-2.5 rounded-full bg-black/60 text-white backdrop-blur-md"
-              >
-                <RefreshCw className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Shutter btn */}
-            <div className="absolute bottom-8 left-0 right-0 flex justify-center z-10">
-              <button
-                onClick={capturePhoto}
-                disabled={isCapturing || !isCameraReady}
-                className="w-20 h-20 rounded-full border-4 border-white bg-transparent flex items-center justify-center p-1 cursor-pointer disabled:opacity-50"
-              >
-                <div className="w-full h-full rounded-full bg-white active:scale-95 transition-transform" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* TEXT EDITOR MODE */}
-        {composerMode === 'TEXT' && (
-          <div className="flex-1 flex flex-col justify-between p-6" style={{ background: bgColor }}>
-            {/* Header */}
-            <div className="flex justify-between items-center">
-              <button onClick={() => setComposerMode('SELECT')} className="p-2 rounded-full bg-black/40 text-white">
-                <X className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setComposerMode('EDITOR')}
-                disabled={!textContent.trim()}
-                className="px-4 py-2 bg-white text-slate-900 rounded-xl text-xs font-black disabled:opacity-50"
-              >
-                Siguiente
-              </button>
-            </div>
-
-            {/* Input area */}
-            <div className="flex-1 flex items-center justify-center">
-              <textarea
-                value={textContent}
-                onChange={(e) => setTextContent(e.target.value)}
-                placeholder="Escribe algo increíble..."
-                maxLength={250}
-                className="w-full bg-transparent text-center text-white font-extrabold text-2xl border-none focus:ring-0 focus:outline-none resize-none placeholder-white/50"
-                style={{ caretColor: '#14b8a6' }}
-              />
-            </div>
-
-            {/* Color selector footer */}
-            <div className="space-y-4">
-              <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider block text-center">Fondo de momento</span>
-              <div className="flex items-center justify-center gap-3">
-                {PRESET_BACKGROUNDS.map((bg, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setBgColor(bg)}
-                    className="w-8 h-8 rounded-full border-2 border-white/60 active:scale-90 transition-transform"
-                    style={{ background: bg }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MAIN EDITOR & OVERLAY CUSTOMIZER */}
-        {composerMode === 'EDITOR' && (
-          <div className="flex-1 flex flex-col justify-between relative bg-slate-950">
-            {/* Toolbar Top */}
-            <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-30">
-              <button onClick={onCloseClean} className="p-2.5 rounded-full bg-black/60 text-white backdrop-blur-md shadow-lg">
-                <X className="w-5 h-5" />
-              </button>
-              
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setActivePanel(activePanel === 'TEXT' ? 'NONE' : 'TEXT')}
-                  className={`p-2.5 rounded-full backdrop-blur-md shadow-lg ${activePanel === 'TEXT' ? 'bg-teal-700 text-white' : 'bg-black/60 text-white'}`}
-                >
-                  <Type className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => setActivePanel(activePanel === 'EMOJI' ? 'NONE' : 'EMOJI')}
-                  className={`p-2.5 rounded-full backdrop-blur-md shadow-lg ${activePanel === 'EMOJI' ? 'bg-teal-700 text-white' : 'bg-black/60 text-white'}`}
-                >
-                  <Smile className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => setActivePanel(activePanel === 'MUSIC' ? 'NONE' : 'MUSIC')}
-                  className={`p-2.5 rounded-full backdrop-blur-md shadow-lg ${activePanel === 'MUSIC' ? 'bg-teal-700 text-white' : 'bg-black/60 text-white'}`}
-                >
-                  <Music className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Canvas / Preview Container */}
-            <div 
-              ref={canvasContainerRef}
-              className="flex-1 relative overflow-hidden flex items-center justify-center select-none"
-              style={{ background: mediaType === 'TEXT' ? bgColor : '#000000' }}
-            >
-              {/* Media rendering */}
-              {mediaType === 'IMAGE' && mediaUrl && (
-                <img src={mediaUrl} alt="Story Image" className="w-full h-full object-cover pointer-events-none" />
-              )}
-              {mediaType === 'VIDEO' && mediaUrl && (
-                <video src={mediaUrl} autoPlay loop muted playsInline className="w-full h-full object-cover pointer-events-none" />
-              )}
-              {mediaType === 'TEXT' && (
-                <p className="text-white font-extrabold text-2xl text-center px-6 whitespace-pre-wrap max-w-xs leading-snug">
-                  {textContent}
-                </p>
-              )}
-
-              {/* Overlays Rendering */}
-              {overlays.map((o) => (
-                <div
-                  key={o.id}
-                  onMouseDown={(e) => handleOverlayDrag(o.id, e)}
-                  onTouchStart={(e) => handleOverlayDrag(o.id, e)}
-                  className="absolute cursor-move select-none active:scale-95 transition-transform origin-center z-20 group"
-                  style={{
-                    left: `${o.x * 100}%`,
-                    top: `${o.y * 100}%`,
-                    transform: `translate(-50%, -50%) scale(${o.scale})`,
-                    color: o.color || '#ffffff'
-                  }}
-                >
-                  <div className={`relative px-3 py-1.5 rounded-xl font-bold text-center ${o.bg ? 'bg-black/75 text-white' : ''}`}>
-                    {o.value}
-                    {/* Delete option on hover or touch */}
-                    <button
-                      onClick={() => removeOverlay(o.id)}
-                      className="absolute -top-3 -right-3 p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-full scale-0 group-hover:scale-100 transition-transform shadow-md z-30"
-                    >
-                      <X className="w-2.5 h-2.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-            </div>
-
-            {/* Panel details */}
-            {activePanel === 'TEXT' && (
-              <div className="absolute bottom-16 left-4 right-4 bg-slate-900/95 border border-slate-800 rounded-3xl p-4 space-y-3 z-40 text-slate-200">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Escribe texto..."
-                    value={newText}
-                    onChange={(e) => setNewText(e.target.value)}
-                    autoFocus
-                    className="flex-1 px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-teal-500"
-                  />
-                  <button onClick={addTextOverlay} className="px-4 bg-teal-700 text-white text-xs font-bold rounded-xl hover:bg-teal-600">
-                    Añadir
-                  </button>
-                </div>
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <div className="flex gap-2">
-                    {['#ffffff', '#facc15', '#ef4444', '#10b981', '#3b82f6'].map(c => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setNewTextColor(c)}
-                        className="w-5 h-5 rounded-full border border-slate-600"
-                        style={{ backgroundColor: c }}
-                      />
-                    ))}
-                  </div>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" checked={newTextBg} onChange={(e) => setNewTextBg(e.target.checked)} className="rounded text-teal-600 focus:ring-0" />
-                    <span>Fondo</span>
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {activePanel === 'EMOJI' && (
-              <div className="absolute bottom-16 left-4 right-4 bg-slate-900/95 border border-slate-800 rounded-3xl p-4 z-40 text-slate-200">
-                <div className="grid grid-cols-6 gap-2 text-center text-xl max-h-48 overflow-y-auto">
-                  {['🔥','🚀','😂','❤️','😍','😎','👍','✨','🎉','🤔','😅','😭','🙏','👀','🌟','💥','👑','💯','🎶','💡'].map(em => (
-                    <button
-                      key={em}
-                      onClick={() => addEmojiOverlay(em)}
-                      className="p-2 hover:bg-slate-800 rounded-xl transition-colors active:scale-90"
-                    >
-                      {em}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activePanel === 'MUSIC' && (
-              <div className="absolute bottom-16 left-4 right-4 bg-slate-900/95 border border-slate-800 rounded-3xl p-4 z-40 text-slate-200 space-y-3">
-                <h4 className="text-xs font-black text-white">Música</h4>
-                <p className="text-xs text-slate-400">Próximamente. Todavía no hay un proveedor de música conectado.</p>
-              </div>
-            )}
-
-            {/* Bottom Actions footer */}
-            {cameraError && <div role="alert" className="absolute bottom-16 left-4 right-4 z-50 rounded-xl bg-rose-950/95 border border-rose-700 p-3 text-xs text-rose-100">{cameraError}</div>}
-            <div className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between z-30">
-              <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 font-semibold text-xs">
-                <input
-                  type="checkbox"
-                  checked={isBestFriends}
-                  onChange={(e) => setIsBestFriends(e.target.checked)}
-                  className="rounded text-teal-600 focus:ring-0"
-                />
-                <span>Mejores conexiones</span>
-              </label>
-
-              <button
-                onClick={handlePublishStory}
-                disabled={isPublishing}
-                className="px-6 py-2.5 bg-teal-700 hover:bg-teal-600 text-white font-bold text-xs rounded-xl shadow-md transition-all"
-              >
-                {isPublishing ? 'Publicando...' : 'Publicar momento'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+        {activePanel==='TEXT'&&<div className="absolute bottom-20 left-4 right-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 z-40"><div className="flex gap-2"><input value={newText} onChange={e=>setNewText(e.target.value)} placeholder="Escribe texto…" className="flex-1 rounded-xl bg-slate-800 px-3 py-2 text-xs text-white"/><button onClick={addTextOverlay} className="rounded-xl bg-teal-700 px-4 text-xs font-bold text-white">Añadir</button></div><div className="mt-2 flex items-center justify-between"><input type="color" value={newTextColor} onChange={e=>setNewTextColor(e.target.value)}/><label className="text-xs text-slate-300"><input type="checkbox" checked={newTextBg} onChange={e=>setNewTextBg(e.target.checked)} className="mr-2"/>Fondo</label></div></div>}
+        {activePanel==='EMOJI'&&<div className="absolute bottom-20 left-4 right-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 z-40 grid grid-cols-6 gap-2">{['🔥','🚀','😂','❤️','😍','😎','👍','✨','🎉','🤔','👀','💯'].map(x=><button key={x} onClick={()=>addEmojiOverlay(x)} className="text-xl p-2">{x}</button>)}</div>}
+        {activePanel==='MUSIC'&&<div className="absolute bottom-20 left-4 right-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 z-40 text-xs text-slate-400">Música conectada al audio original del video. Biblioteca externa: próximamente.</div>}
+        {cameraError&&<div className="mx-4 mb-2 rounded-xl bg-rose-950 p-3 text-xs text-rose-200">{cameraError}</div>}
+        <div className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between z-30"><label className="text-xs text-slate-300"><input type="checkbox" checked={isBestFriends} onChange={e=>setIsBestFriends(e.target.checked)} className="mr-2"/>Mejores conexiones</label><button onClick={handlePublishStory} disabled={isPublishing||mediaType==='VIDEO'&&(trimEnd-trimStart<1)} className="px-6 py-2.5 bg-teal-700 hover:bg-teal-600 text-white font-bold text-xs rounded-xl disabled:opacity-50">{isPublishing?'Publicando…':'Publicar momento'}</button></div>
+      </div>}
     </div>
-  );
+  </div>;
 }
