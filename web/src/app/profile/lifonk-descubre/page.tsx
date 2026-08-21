@@ -1,27 +1,36 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, BadgeCheck, Compass, Sparkles } from 'lucide-react';
 import MobileBottomBar from '@/components/MobileBottomBar';
+import { api } from '@/context/AuthContext';
 
-const POSTS = [
+interface DiscoveryPost {
+  postId: string;
+  caption: string;
+  mediaUrls?: string[];
+  createdAt: string;
+}
+
+const FALLBACK_POSTS: DiscoveryPost[] = [
   {
-    image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=82',
-    title: 'Hay lugares que parecen inventados',
-    caption: 'Montañas, niebla y silencio. A veces descubrir también es detenerse un momento y mirar.',
-    publishedAt: '2026-08-20T18:10:00-05:00'
+    postId: 'fallback-1',
+    caption: 'Hay lugares que parecen inventados\n\nMontañas, niebla y silencio. A veces descubrir también es detenerse un momento y mirar.',
+    mediaUrls: ['https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=82'],
+    createdAt: '2026-08-20T18:10:00-05:00'
   },
   {
-    image: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=82',
-    title: 'El desierto también guarda ritmo',
-    caption: 'Las dunas cambian lentamente con el viento: un paisaje puede estar vivo aunque parezca inmóvil.',
-    publishedAt: '2026-08-20T15:40:00-05:00'
+    postId: 'fallback-2',
+    caption: 'El desierto también guarda ritmo\n\nLas dunas cambian lentamente con el viento: un paisaje puede estar vivo aunque parezca inmóvil.',
+    mediaUrls: ['https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=82'],
+    createdAt: '2026-08-20T15:40:00-05:00'
   },
   {
-    image: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=82',
-    title: 'Un minuto de bosque',
-    caption: 'Los ecosistemas forestales conectan raíces, hongos, agua y nutrientes en redes mucho más complejas de lo que vemos.',
-    publishedAt: '2026-08-19T21:15:00-05:00'
+    postId: 'fallback-3',
+    caption: 'Un minuto de bosque\n\nLos ecosistemas forestales conectan raíces, hongos, agua y nutrientes en redes mucho más complejas de lo que vemos.',
+    mediaUrls: ['https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=82'],
+    createdAt: '2026-08-19T21:15:00-05:00'
   }
 ];
 
@@ -40,7 +49,29 @@ function relativeTime(value: string) {
   return `hace ${years} año${years === 1 ? '' : 's'}`;
 }
 
+function splitCaption(caption = '') {
+  const [title, ...rest] = caption.split(/\n\n+/);
+  return {
+    title: title?.trim() || 'Descubre algo nuevo',
+    body: rest.join('\n\n').trim()
+  };
+}
+
 export default function LifonkDescubreProfile() {
+  const [posts, setPosts] = useState<DiscoveryPost[]>(FALLBACK_POSTS);
+
+  useEffect(() => {
+    let active = true;
+    api.get('/posts/user/lifonk-descubre?size=20')
+      .then(response => {
+        if (!active) return;
+        const data = Array.isArray(response.data) ? response.data : response.data?.content;
+        if (Array.isArray(data) && data.length) setPosts(data);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   return (
     <div className="min-h-[100dvh] bg-[#f4f7f7] pb-24 text-slate-900 dark:bg-[#07151d] dark:text-white">
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 px-4 pb-3 pt-[calc(.7rem+env(safe-area-inset-top))] backdrop-blur-xl dark:border-slate-800 dark:bg-[#0f172a]/95">
@@ -66,19 +97,23 @@ export default function LifonkDescubreProfile() {
 
         <div className="flex items-center gap-2 px-1"><Compass className="h-4 w-4 text-teal-500"/><h3 className="text-sm font-black">Publicaciones</h3></div>
 
-        {POSTS.map(post => (
-          <article key={post.title} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
-            <div className="flex items-center justify-between px-4 py-3">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-600 to-cyan-600 text-sm font-black text-white">L</div>
-                <div><div className="flex items-center gap-1"><span className="text-sm font-black">Lifonk Descubre</span><BadgeCheck className="h-3.5 w-3.5 text-teal-500"/></div><span className="text-[10px] text-slate-400">@lifonk-descubre</span></div>
+        {posts.map(post => {
+          const copy = splitCaption(post.caption);
+          const image = post.mediaUrls?.[0];
+          return (
+            <article key={post.postId} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
+              <div className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-600 to-cyan-600 text-sm font-black text-white">L</div>
+                  <div><div className="flex items-center gap-1"><span className="text-sm font-black">Lifonk Descubre</span><BadgeCheck className="h-3.5 w-3.5 text-teal-500"/></div><span className="text-[10px] text-slate-400">@lifonk-descubre</span></div>
+                </div>
+                <time dateTime={post.createdAt} className="text-[10px] font-semibold text-slate-400">{relativeTime(post.createdAt)}</time>
               </div>
-              <time dateTime={post.publishedAt} className="text-[10px] font-semibold text-slate-400">{relativeTime(post.publishedAt)}</time>
-            </div>
-            <img src={post.image} alt={post.title} className="max-h-[68dvh] w-full object-cover" loading="lazy" />
-            <div className="p-4"><h4 className="text-base font-black">{post.title}</h4><p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{post.caption}</p></div>
-          </article>
-        ))}
+              {image && <img src={image} alt={copy.title} className="max-h-[68dvh] w-full object-cover" loading="lazy" />}
+              <div className="p-4"><h4 className="text-base font-black">{copy.title}</h4>{copy.body && <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{copy.body}</p>}</div>
+            </article>
+          );
+        })}
       </main>
 
       <MobileBottomBar />
