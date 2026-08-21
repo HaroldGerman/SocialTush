@@ -16,6 +16,7 @@ yarn-error.log*
 
 # Next.js
 web/.next/
+web/.open-next/
 web/out/
 admin/.next/
 admin/out/
