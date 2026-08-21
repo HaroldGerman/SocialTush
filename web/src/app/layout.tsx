@@ -9,6 +9,8 @@ import AccountSecurityShortcut from "@/components/AccountSecurityShortcut";
 import AccountSettingsShortcut from "@/components/AccountSettingsShortcut";
 import GlobalImageCropInterceptor from "@/components/GlobalImageCropInterceptor";
 import DeepLinkedMomentOverlay from "@/components/DeepLinkedMomentOverlay";
+import ChatScopedEnhancements from "@/components/ChatScopedEnhancements";
+import MobileEcoEnhancer from "@/components/MobileEcoEnhancer";
 import { RealtimeActivityProvider } from "@/context/RealtimeActivityContext";
 
 export const metadata: Metadata = {
@@ -52,6 +54,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
+              <ChatScopedEnhancements />
+              <MobileEcoEnhancer />
               <DeepLinkedMomentOverlay />
               <RealtimeActivityProvider>
                 <CreateHubProvider>
