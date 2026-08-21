@@ -1,14 +1,22 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Crop, RotateCcw, X, ZoomIn, Move } from 'lucide-react';
+import { Crop, Move, RotateCcw, X, ZoomIn } from 'lucide-react';
 
 type AspectKey = 'original' | 'square' | 'portrait' | 'wide';
+type Corner = 'nw' | 'ne' | 'sw' | 'se';
 
 interface PendingCrop {
   input: HTMLInputElement;
   file: File;
   url: string;
+}
+
+interface CropRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 const aspectValues: Record<AspectKey, number | null> = {
@@ -17,6 +25,10 @@ const aspectValues: Record<AspectKey, number | null> = {
   portrait: 4 / 5,
   wide: 16 / 9,
 };
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const DEFAULT_RECT: CropRect = { x: 4, y: 4, w: 92, h: 92 };
+const MIN_CROP_PERCENT = 15;
 
 function replaceInputFile(input: HTMLInputElement, file: File) {
   const transfer = new DataTransfer();
@@ -32,14 +44,28 @@ function extensionFor(type: string) {
   return 'jpg';
 }
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+function centeredRectForAspect(viewRatio: number, targetRatio: number | null): CropRect {
+  if (!targetRatio) return DEFAULT_RECT;
+
+  const innerW = 92;
+  const innerH = 92;
+  const availableRatio = viewRatio * (innerW / innerH);
+
+  if (availableRatio > targetRatio) {
+    const width = innerH * targetRatio / viewRatio;
+    return { x: (100 - width) / 2, y: 4, w: width, h: innerH };
+  }
+
+  const height = innerW * viewRatio / targetRatio;
+  return { x: 4, y: (100 - height) / 2, w: innerW, h: height };
+}
 
 export default function GlobalImageCropInterceptor() {
   const [pending, setPending] = useState<PendingCrop | null>(null);
   const [aspect, setAspect] = useState<AspectKey>('original');
   const [zoom, setZoom] = useState(1);
-  const [positionX, setPositionX] = useState(50);
-  const [positionY, setPositionY] = useState(50);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [cropRect, setCropRect] = useState<CropRect>(DEFAULT_RECT);
   const [processing, setProcessing] = useState(false);
   const [naturalSize, setNaturalSize] = useState({ width: 1, height: 1 });
   const [isInteracting, setIsInteracting] = useState(false);
@@ -51,9 +77,15 @@ export default function GlobalImageCropInterceptor() {
     startCenterY: 0,
     startDistance: 0,
     startZoom: 1,
-    startPositionX: 50,
-    startPositionY: 50,
+    startPanX: 0,
+    startPanY: 0,
   });
+  const resizeRef = useRef<{
+    corner: Corner;
+    startX: number;
+    startY: number;
+    rect: CropRect;
+  } | null>(null);
 
   useEffect(() => {
     const onChange = (event: Event) => {
@@ -72,8 +104,9 @@ export default function GlobalImageCropInterceptor() {
       const url = URL.createObjectURL(file);
       setAspect('original');
       setZoom(1);
-      setPositionX(50);
-      setPositionY(50);
+      setPan({ x: 0, y: 0 });
+      setCropRect(DEFAULT_RECT);
+      setNaturalSize({ width: 1, height: 1 });
       setPending({ input, file, url });
     };
 
@@ -86,14 +119,14 @@ export default function GlobalImageCropInterceptor() {
   }, [pending?.url]);
 
   const previewRatio = useMemo(() => {
-    const selected = aspectValues[aspect];
-    return selected || naturalSize.width / naturalSize.height || 1;
-  }, [aspect, naturalSize]);
+    const ratio = naturalSize.width / naturalSize.height;
+    return Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
+  }, [naturalSize]);
 
-  const resetTransform = () => {
+  const resetAll = () => {
     setZoom(1);
-    setPositionX(50);
-    setPositionY(50);
+    setPan({ x: 0, y: 0 });
+    setCropRect(centeredRectForAspect(previewRatio, aspectValues[aspect]));
   };
 
   const closeAndClear = () => {
@@ -111,41 +144,48 @@ export default function GlobalImageCropInterceptor() {
   };
 
   const cropAndUse = async () => {
-    if (!pending || processing) return;
+    if (!pending || processing || !previewRef.current) return;
     setProcessing(true);
     try {
       const image = new Image();
       image.src = pending.url;
       await image.decode();
 
+      const rect = previewRef.current.getBoundingClientRect();
+      const viewportW = rect.width;
+      const viewportH = rect.height;
       const naturalW = image.naturalWidth;
       const naturalH = image.naturalHeight;
-      const targetRatio = aspectValues[aspect] || naturalW / naturalH;
 
-      let baseW = naturalW;
-      let baseH = naturalH;
-      if (naturalW / naturalH > targetRatio) baseW = naturalH * targetRatio;
-      else baseH = naturalW / targetRatio;
+      const cropLeftPx = viewportW * cropRect.x / 100;
+      const cropTopPx = viewportH * cropRect.y / 100;
+      const cropWidthPx = viewportW * cropRect.w / 100;
+      const cropHeightPx = viewportH * cropRect.h / 100;
 
-      const cropW = Math.max(1, baseW / zoom);
-      const cropH = Math.max(1, baseH / zoom);
-      const sourceX = clamp((naturalW - cropW) * (positionX / 100), 0, naturalW - cropW);
-      const sourceY = clamp((naturalH - cropH) * (positionY / 100), 0, naturalH - cropH);
+      const centerX = viewportW / 2;
+      const centerY = viewportH / 2;
+
+      let sourceX = (((cropLeftPx - centerX - pan.x) / zoom) + centerX) / viewportW * naturalW;
+      let sourceY = (((cropTopPx - centerY - pan.y) / zoom) + centerY) / viewportH * naturalH;
+      let sourceW = cropWidthPx / zoom / viewportW * naturalW;
+      let sourceH = cropHeightPx / zoom / viewportH * naturalH;
+
+      sourceW = clamp(sourceW, 1, naturalW);
+      sourceH = clamp(sourceH, 1, naturalH);
+      sourceX = clamp(sourceX, 0, naturalW - sourceW);
+      sourceY = clamp(sourceY, 0, naturalH - sourceH);
 
       const maxOutput = 1800;
-      let outputW = Math.max(1, Math.round(Math.min(maxOutput, cropW)));
-      let outputH = Math.max(1, Math.round(outputW / targetRatio));
-      if (outputH > maxOutput) {
-        outputH = maxOutput;
-        outputW = Math.max(1, Math.round(outputH * targetRatio));
-      }
+      const scale = Math.min(1, maxOutput / Math.max(sourceW, sourceH));
+      const outputW = Math.max(1, Math.round(sourceW * scale));
+      const outputH = Math.max(1, Math.round(sourceH * scale));
 
       const canvas = document.createElement('canvas');
       canvas.width = outputW;
       canvas.height = outputH;
       const context = canvas.getContext('2d');
       if (!context) throw new Error('Canvas unavailable');
-      context.drawImage(image, sourceX, sourceY, cropW, cropH, 0, 0, outputW, outputH);
+      context.drawImage(image, sourceX, sourceY, sourceW, sourceH, 0, 0, outputW, outputH);
 
       const mime = ['image/jpeg', 'image/png', 'image/webp'].includes(pending.file.type)
         ? pending.file.type
@@ -191,13 +231,24 @@ export default function GlobalImageCropInterceptor() {
       startCenterY: center.y,
       startDistance: pointerDistance(),
       startZoom: zoom,
-      startPositionX: positionX,
-      startPositionY: positionY,
+      startPanX: pan.x,
+      startPanY: pan.y,
+    };
+  };
+
+  const clampPan = (x: number, y: number, nextZoom: number) => {
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!rect) return { x, y };
+    const maxX = ((nextZoom - 1) * rect.width) / 2;
+    const maxY = ((nextZoom - 1) * rect.height) / 2;
+    return {
+      x: clamp(x, -maxX, maxX),
+      y: clamp(y, -maxY, maxY),
     };
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!previewRef.current) return;
+    if (!previewRef.current || resizeRef.current) return;
     previewRef.current.setPointerCapture?.(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     beginGesture();
@@ -205,24 +256,24 @@ export default function GlobalImageCropInterceptor() {
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!pointersRef.current.has(event.pointerId) || !previewRef.current) return;
+    if (!pointersRef.current.has(event.pointerId) || !previewRef.current || resizeRef.current) return;
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    const rect = previewRef.current.getBoundingClientRect();
     const center = pointerCenter();
     const gesture = gestureRef.current;
 
+    let nextZoom = gesture.startZoom;
     if (pointersRef.current.size >= 2) {
       const distance = pointerDistance();
-      if (gesture.startDistance > 0) {
-        const nextZoom = clamp(gesture.startZoom * (distance / gesture.startDistance), 1, 4);
-        setZoom(nextZoom);
-      }
+      if (gesture.startDistance > 0) nextZoom = clamp(gesture.startZoom * (distance / gesture.startDistance), 1, 4);
+      setZoom(nextZoom);
     }
 
-    const sensitivityX = 100 / Math.max(1, rect.width * Math.max(1, zoom));
-    const sensitivityY = 100 / Math.max(1, rect.height * Math.max(1, zoom));
-    setPositionX(clamp(gesture.startPositionX - (center.x - gesture.startCenterX) * sensitivityX, 0, 100));
-    setPositionY(clamp(gesture.startPositionY - (center.y - gesture.startCenterY) * sensitivityY, 0, 100));
+    const nextPan = clampPan(
+      gesture.startPanX + (center.x - gesture.startCenterX),
+      gesture.startPanY + (center.y - gesture.startCenterY),
+      nextZoom,
+    );
+    setPan(nextPan);
   };
 
   const endPointer = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -233,12 +284,107 @@ export default function GlobalImageCropInterceptor() {
 
   const onWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
-    setZoom(current => clamp(current + (event.deltaY > 0 ? -0.1 : 0.1), 1, 4));
+    const next = clamp(zoom + (event.deltaY > 0 ? -0.1 : 0.1), 1, 4);
+    setZoom(next);
+    setPan(current => clampPan(current.x, current.y, next));
+  };
+
+  const beginResize = (corner: Corner, event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    resizeRef.current = {
+      corner,
+      startX: event.clientX,
+      startY: event.clientY,
+      rect: cropRect,
+    };
+    setIsInteracting(true);
+  };
+
+  const resizeCrop = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const active = resizeRef.current;
+    const preview = previewRef.current;
+    if (!active || !preview) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const bounds = preview.getBoundingClientRect();
+    const dx = (event.clientX - active.startX) / bounds.width * 100;
+    const dy = (event.clientY - active.startY) / bounds.height * 100;
+    const start = active.rect;
+    const lockedRatio = aspectValues[aspect];
+
+    let left = start.x;
+    let top = start.y;
+    let right = start.x + start.w;
+    let bottom = start.y + start.h;
+
+    if (active.corner.includes('w')) left = clamp(start.x + dx, 0, right - MIN_CROP_PERCENT);
+    if (active.corner.includes('e')) right = clamp(start.x + start.w + dx, left + MIN_CROP_PERCENT, 100);
+    if (active.corner.includes('n')) top = clamp(start.y + dy, 0, bottom - MIN_CROP_PERCENT);
+    if (active.corner.includes('s')) bottom = clamp(start.y + start.h + dy, top + MIN_CROP_PERCENT, 100);
+
+    if (lockedRatio) {
+      const desiredVisualRatio = lockedRatio / previewRatio;
+      let width = right - left;
+      let height = bottom - top;
+      const currentRatio = width / height;
+
+      if (currentRatio > desiredVisualRatio) width = height * desiredVisualRatio;
+      else height = width / desiredVisualRatio;
+
+      if (active.corner === 'nw') {
+        left = right - width;
+        top = bottom - height;
+      } else if (active.corner === 'ne') {
+        right = left + width;
+        top = bottom - height;
+      } else if (active.corner === 'sw') {
+        left = right - width;
+        bottom = top + height;
+      } else {
+        right = left + width;
+        bottom = top + height;
+      }
+
+      if (left < 0) { right -= left; left = 0; }
+      if (top < 0) { bottom -= top; top = 0; }
+      if (right > 100) { left -= right - 100; right = 100; }
+      if (bottom > 100) { top -= bottom - 100; bottom = 100; }
+    }
+
+    setCropRect({
+      x: clamp(left, 0, 100),
+      y: clamp(top, 0, 100),
+      w: clamp(right - left, MIN_CROP_PERCENT, 100),
+      h: clamp(bottom - top, MIN_CROP_PERCENT, 100),
+    });
+  };
+
+  const endResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    resizeRef.current = null;
+    setIsInteracting(false);
+  };
+
+  const selectAspect = (key: AspectKey) => {
+    setAspect(key);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setCropRect(centeredRectForAspect(previewRatio, aspectValues[key]));
   };
 
   if (!pending) return null;
 
   const viewportWidth = `min(100%, calc(52dvh * ${previewRatio}))`;
+  const cropStyle: React.CSSProperties = {
+    left: `${cropRect.x}%`,
+    top: `${cropRect.y}%`,
+    width: `${cropRect.w}%`,
+    height: `${cropRect.h}%`,
+  };
 
   return (
     <div className="fixed inset-0 z-[500] flex items-end justify-center bg-black/90 md:items-center md:p-4">
@@ -246,7 +392,10 @@ export default function GlobalImageCropInterceptor() {
         <div className="flex items-center justify-between border-b border-white/10 px-4 pb-3 pt-[calc(.75rem+env(safe-area-inset-top))]">
           <div className="flex items-center gap-2">
             <Crop className="h-5 w-5 text-teal-400"/>
-            <div><h2 className="text-sm font-black">Ajustar imagen</h2><p className="text-[10px] text-slate-400">Pellizca para ampliar · arrastra para mover</p></div>
+            <div>
+              <h2 className="text-sm font-black">Ajustar imagen</h2>
+              <p className="text-[10px] text-slate-400">Arrastra las esquinas para recortar · pellizca para ampliar</p>
+            </div>
           </div>
           <button onClick={closeAndClear} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10"><X className="h-5 w-5"/></button>
         </div>
@@ -267,31 +416,51 @@ export default function GlobalImageCropInterceptor() {
                 src={pending.url}
                 alt="Vista previa para recortar"
                 draggable={false}
-                onLoad={event => setNaturalSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
-                className="pointer-events-none h-full w-full select-none object-cover"
+                onLoad={event => {
+                  const next = { width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight };
+                  setNaturalSize(next);
+                  const ratio = next.width / next.height || 1;
+                  setCropRect(centeredRectForAspect(ratio, aspectValues[aspect]));
+                }}
+                className="pointer-events-none h-full w-full select-none object-fill"
                 style={{
-                  objectPosition: `${positionX}% ${positionY}%`,
-                  transform: `scale(${zoom})`,
-                  transformOrigin: `${positionX}% ${positionY}%`,
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transformOrigin: 'center center',
                   transition: isInteracting ? 'none' : 'transform 120ms ease-out',
                 }}
               />
 
-              <div className="pointer-events-none absolute inset-0">
-                <div className="absolute left-1/3 top-0 h-full w-px bg-white/25"/>
-                <div className="absolute left-2/3 top-0 h-full w-px bg-white/25"/>
-                <div className="absolute left-0 top-1/3 h-px w-full bg-white/25"/>
-                <div className="absolute left-0 top-2/3 h-px w-full bg-white/25"/>
-                <div className="absolute inset-0 border-2 border-white/90"/>
-                <span className="absolute left-0 top-0 h-8 w-8 border-l-4 border-t-4 border-white"/>
-                <span className="absolute right-0 top-0 h-8 w-8 border-r-4 border-t-4 border-white"/>
-                <span className="absolute bottom-0 left-0 h-8 w-8 border-b-4 border-l-4 border-white"/>
-                <span className="absolute bottom-0 right-0 h-8 w-8 border-b-4 border-r-4 border-white"/>
+              <div className="pointer-events-none absolute inset-0 bg-black/45" />
+
+              <div className="absolute z-10" style={cropStyle}>
+                <div className="pointer-events-none absolute inset-0 overflow-hidden border-2 border-white/95 shadow-[0_0_0_9999px_rgba(0,0,0,.42)]">
+                  <div className="absolute left-1/3 top-0 h-full w-px bg-white/30"/>
+                  <div className="absolute left-2/3 top-0 h-full w-px bg-white/30"/>
+                  <div className="absolute left-0 top-1/3 h-px w-full bg-white/30"/>
+                  <div className="absolute left-0 top-2/3 h-px w-full bg-white/30"/>
+                </div>
+
+                {(['nw', 'ne', 'sw', 'se'] as Corner[]).map(corner => {
+                  const position = corner === 'nw' ? '-left-3 -top-3' : corner === 'ne' ? '-right-3 -top-3' : corner === 'sw' ? '-bottom-3 -left-3' : '-bottom-3 -right-3';
+                  const borders = corner === 'nw' ? 'border-l-[5px] border-t-[5px]' : corner === 'ne' ? 'border-r-[5px] border-t-[5px]' : corner === 'sw' ? 'border-b-[5px] border-l-[5px]' : 'border-b-[5px] border-r-[5px]';
+                  return (
+                    <button
+                      key={corner}
+                      type="button"
+                      aria-label={`Ajustar esquina ${corner}`}
+                      onPointerDown={event => beginResize(corner, event)}
+                      onPointerMove={resizeCrop}
+                      onPointerUp={endResize}
+                      onPointerCancel={endResize}
+                      className={`absolute ${position} h-10 w-10 touch-none ${borders} border-white bg-transparent`}
+                    />
+                  );
+                })}
               </div>
 
-              {zoom === 1 && positionX === 50 && positionY === 50 && (
-                <div className="pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 text-[10px] font-bold text-white/90 backdrop-blur">
-                  <Move className="h-3.5 w-3.5"/> Arrastra · <ZoomIn className="h-3.5 w-3.5"/> Pellizca
+              {zoom === 1 && pan.x === 0 && pan.y === 0 && (
+                <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-bold text-white/90 backdrop-blur">
+                  <Move className="h-3.5 w-3.5"/> Mueve foto · <ZoomIn className="h-3.5 w-3.5"/> Pellizca
                 </div>
               )}
             </div>
@@ -307,7 +476,7 @@ export default function GlobalImageCropInterceptor() {
               <button
                 key={key}
                 type="button"
-                onClick={() => { setAspect(key); resetTransform(); }}
+                onClick={() => selectAspect(key)}
                 className={`rounded-xl border px-2 py-2.5 text-xs font-bold ${aspect === key ? 'border-teal-400 bg-teal-500/15 text-teal-300' : 'border-white/15 text-slate-300'}`}
               >{label}</button>
             ))}
@@ -315,9 +484,22 @@ export default function GlobalImageCropInterceptor() {
 
           <div className="mt-3 flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5">
             <div className="flex items-center gap-2 text-xs font-bold text-slate-300"><ZoomIn className="h-4 w-4 text-teal-400"/>Zoom {zoom.toFixed(1)}x</div>
-            <button type="button" onClick={resetTransform} className="flex items-center gap-1.5 rounded-xl px-2 py-1.5 text-[11px] font-bold text-slate-300"><RotateCcw className="h-3.5 w-3.5"/>Revertir</button>
+            <button type="button" onClick={resetAll} className="flex items-center gap-1.5 rounded-xl px-2 py-1.5 text-[11px] font-bold text-slate-300"><RotateCcw className="h-3.5 w-3.5"/>Revertir</button>
           </div>
-          <input aria-label="Zoom" type="range" min="1" max="4" step="0.05" value={zoom} onChange={event => setZoom(Number(event.target.value))} className="mt-2 w-full accent-teal-500"/>
+          <input
+            aria-label="Zoom"
+            type="range"
+            min="1"
+            max="4"
+            step="0.05"
+            value={zoom}
+            onChange={event => {
+              const next = Number(event.target.value);
+              setZoom(next);
+              setPan(current => clampPan(current.x, current.y, next));
+            }}
+            className="mt-2 w-full accent-teal-500"
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-3 border-t border-white/10 bg-[#071016] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
