@@ -57,9 +57,7 @@ public class PostService {
         List<MultipartFile> validFiles = files == null ? List.of() : java.util.Arrays.stream(files)
                 .filter(java.util.Objects::nonNull).filter(file -> !file.isEmpty()).toList();
         if (isShortVideo) {
-            if (validFiles.size() != 1) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pulso requiere un solo video");
-            }
+            if (validFiles.size() != 1) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pulso requiere un solo video");
             MultipartFile file = validFiles.get(0);
             if (file.getContentType() == null || !file.getContentType().toLowerCase(java.util.Locale.ROOT).startsWith("video/")) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pulso requiere un archivo de video válido");
@@ -90,23 +88,15 @@ public class PostService {
 
         try {
             if (isShortVideo) {
-                ShortVideoProcessingService.ProcessedShortVideo processed = shortVideoProcessingService.process(
-                        validFiles.get(0), trimStart, trimEnd, coverTime);
+                ShortVideoProcessingService.ProcessedShortVideo processed = shortVideoProcessingService.process(validFiles.get(0), trimStart, trimEnd, coverTime);
                 String videoFilename = UUID.randomUUID() + ".mp4";
                 String coverFilename = UUID.randomUUID() + ".jpg";
                 String videoUrl = storageService.uploadFile(videoFilename, processed.videoBytes(), "video/mp4");
                 uploadedFilenames.add(videoFilename);
                 String coverUrl = storageService.uploadFile(coverFilename, processed.coverBytes(), "image/jpeg");
                 uploadedFilenames.add(coverFilename);
-
-                mediaList.add(PostMedia.builder()
-                        .post(post)
-                        .mediaType("VIDEO")
-                        .originalUrl(videoUrl)
-                        .mediumUrl(videoUrl)
-                        .thumbnailUrl(coverUrl)
-                        .displayOrder(0)
-                        .build());
+                mediaList.add(PostMedia.builder().post(post).mediaType("VIDEO").originalUrl(videoUrl).mediumUrl(videoUrl)
+                        .thumbnailUrl(coverUrl).displayOrder(0).build());
             } else {
                 for (int i = 0; i < validFiles.size(); i++) {
                     MultipartFile file = validFiles.get(i);
@@ -116,14 +106,9 @@ public class PostService {
                     String randomFilename = UUID.randomUUID() + ext;
                     String fileUrl = storageService.uploadFile(randomFilename, file.getBytes(), file.getContentType());
                     uploadedFilenames.add(randomFilename);
-                    mediaList.add(PostMedia.builder()
-                            .post(post)
+                    mediaList.add(PostMedia.builder().post(post)
                             .mediaType(file.getContentType() != null && file.getContentType().startsWith("video") ? "VIDEO" : "IMAGE")
-                            .originalUrl(fileUrl)
-                            .mediumUrl(fileUrl)
-                            .thumbnailUrl(fileUrl)
-                            .displayOrder(i)
-                            .build());
+                            .originalUrl(fileUrl).mediumUrl(fileUrl).thumbnailUrl(fileUrl).displayOrder(i).build());
                 }
             }
         } catch (Exception e) {
@@ -141,6 +126,31 @@ public class PostService {
             post = postRepository.save(post);
         }
         return convertToDto(post, currentUser);
+    }
+
+    @Transactional
+    public PostDto featurePost(UUID postId, int position, User currentUser) {
+        if (position < 1 || position > 3) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La posición debe estar entre 1 y 3");
+        Post post = postRepository.findById(postId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
+        if (!post.getUser().getId().equals(currentUser.getId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo puedes destacar tus propias publicaciones");
+
+        List<Post> featured = postRepository.findByUserAndFeaturedPositionIsNotNullOrderByFeaturedPositionAsc(currentUser);
+        for (Post existing : featured) {
+            if (existing.getFeaturedPosition() != null && existing.getFeaturedPosition() == position && !existing.getId().equals(postId)) {
+                existing.setFeaturedPosition(null);
+                postRepository.save(existing);
+            }
+        }
+        post.setFeaturedPosition(position);
+        return convertToDto(postRepository.save(post), currentUser);
+    }
+
+    @Transactional
+    public PostDto unfeaturePost(UUID postId, User currentUser) {
+        Post post = postRepository.findById(postId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
+        if (!post.getUser().getId().equals(currentUser.getId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo puedes modificar tus propias publicaciones");
+        post.setFeaturedPosition(null);
+        return convertToDto(postRepository.save(post), currentUser);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -192,23 +202,14 @@ public class PostService {
                 .map(media -> media.getThumbnailUrl() != null ? media.getThumbnailUrl() : media.getOriginalUrl()).toList() : List.of();
 
         return PostDto.builder()
-                .postId(post.getId())
-                .userId(post.getUser().getId())
-                .username(post.getUser().getUsername())
+                .postId(post.getId()).userId(post.getUser().getId()).username(post.getUser().getUsername())
                 .displayName(profile != null ? profile.getDisplayName() : post.getUser().getUsername())
                 .avatarUrl(profile != null ? profile.getAvatarUrl() : "")
-                .caption(post.getCaption())
-                .location(post.getLocation())
-                .musicTitle(post.getMusicTitle())
-                .mediaUrls(mediaUrls)
-                .mediaTypes(mediaTypes)
-                .mediaThumbnailUrls(mediaThumbnailUrls)
-                .shortVideo(post.isShortVideo())
+                .caption(post.getCaption()).location(post.getLocation()).musicTitle(post.getMusicTitle())
+                .mediaUrls(mediaUrls).mediaTypes(mediaTypes).mediaThumbnailUrls(mediaThumbnailUrls)
+                .shortVideo(post.isShortVideo()).featuredPosition(post.getFeaturedPosition())
                 .circleId(post.getCircle() != null ? post.getCircle().getId() : null)
-                .likesCount(likesCount)
-                .commentsCount(commentsCount)
-                .hasLiked(hasLiked)
-                .isSaved(isSaved)
+                .likesCount(likesCount).commentsCount(commentsCount).hasLiked(hasLiked).isSaved(isSaved)
                 .createdAt(post.getCreatedAt() != null ? post.getCreatedAt().toString() : java.time.Instant.now().toString())
                 .build();
     }
