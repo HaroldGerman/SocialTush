@@ -53,20 +53,14 @@ public class PostController {
             @RequestParam(value = "circleId", required = false) UUID circleId,
             @AuthenticationPrincipal User currentUser
     ) {
-        if (currentUser == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
-        }
-
-        PostDto dto = postService.createPost(caption, location, musicTitle, isShortVideo,
-                trimStart, trimEnd, coverTime, files, circleId, currentUser);
-        return ResponseEntity.ok(dto);
+        if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        return ResponseEntity.ok(postService.createPost(caption, location, musicTitle, isShortVideo,
+                trimStart, trimEnd, coverTime, files, circleId, currentUser));
     }
 
     @DeleteMapping("/{postId}")
     public ResponseEntity<?> deletePost(@PathVariable UUID postId, @AuthenticationPrincipal User currentUser) {
-        if (currentUser == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
-        }
+        if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         try {
             postService.deletePost(postId, currentUser);
             return ResponseEntity.noContent().build();
@@ -77,6 +71,20 @@ public class PostController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", e.getMessage()));
         }
+    }
+
+    @PutMapping("/{postId}/feature")
+    public ResponseEntity<?> featurePost(@PathVariable UUID postId,
+                                         @RequestParam(defaultValue = "1") int position,
+                                         @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        return ResponseEntity.ok(postService.featurePost(postId, position, currentUser));
+    }
+
+    @DeleteMapping("/{postId}/feature")
+    public ResponseEntity<?> unfeaturePost(@PathVariable UUID postId, @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        return ResponseEntity.ok(postService.unfeaturePost(postId, currentUser));
     }
 
     @GetMapping("/feed")
@@ -185,6 +193,7 @@ public class PostController {
         private List<String> mediaThumbnailUrls;
         @JsonProperty("isShortVideo")
         private boolean shortVideo;
+        private Integer featuredPosition;
         private UUID circleId;
         private long likesCount;
         private long commentsCount;
