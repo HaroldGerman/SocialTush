@@ -51,11 +51,14 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
   const progressInterval=useRef<NodeJS.Timeout|null>(null);
   const storyVideoRef=useRef<HTMLVideoElement>(null);
   const videoAdvanceLock=useRef<string|null>(null);
+  const activeStoryIdRef=useRef<string|null>(null);
 
   const currentUserStories=stories[userIndex];
   const currentStory=currentUserStories?.stories[storyIndex];
   const trim=trimForStory(currentStory);
   const isOwnStory=Boolean(user&&currentUserStories&&((user.userId&&String(user.userId)===String(currentUserStories.userId))||(user.username&&user.username.toLowerCase()===currentUserStories.username?.toLowerCase())));
+
+  activeStoryIdRef.current=currentStory?.storyId||null;
 
   useEffect(()=>setStories(groupedStories),[groupedStories]);
   useEffect(()=>{setStoryIndex(0);setProgress(0)},[userIndex]);
@@ -64,6 +67,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     setProgress(0);
     setVideoReady(false);
     videoAdvanceLock.current=null;
+    activeStoryIdRef.current=currentStory?.storyId||null;
   },[currentStory?.storyId]);
 
   useEffect(()=>{
@@ -84,10 +88,9 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
 
   const handleNextStory=()=>{if(storyIndex<currentUserStories.stories.length-1){setStoryIndex(storyIndex+1);setProgress(0)}else if(userIndex<stories.length-1)setUserIndex(userIndex+1);else onClose()};
   const handlePrevStory=()=>{if(storyIndex>0){setStoryIndex(storyIndex-1);setProgress(0)}else if(userIndex>0){setUserIndex(userIndex-1);setTimeout(()=>setStoryIndex(stories[userIndex-1].stories.length-1),50)}};
-  const advanceVideoOnce=()=>{
-    const storyId=currentStory?.storyId;
-    if(!storyId||videoAdvanceLock.current===storyId)return;
-    videoAdvanceLock.current=storyId;
+  const advanceVideoOnce=(expectedStoryId:string)=>{
+    if(!expectedStoryId||activeStoryIdRef.current!==expectedStoryId||videoAdvanceLock.current===expectedStoryId)return;
+    videoAdvanceLock.current=expectedStoryId;
     handleNextStory();
   };
 
@@ -111,14 +114,15 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
     video.currentTime=start;
     setProgress(0);
   };
-  const onVideoTime=(video:HTMLVideoElement)=>{
+  const onVideoTime=(video:HTMLVideoElement,storyId:string)=>{
+    if(activeStoryIdRef.current!==storyId)return;
     const duration=Number.isFinite(video.duration)?video.duration:0;
     const start=Math.min(trim.start,Math.max(0,duration-.1));
-    const requestedEnd=trim.end>start?trim.end:duration;
-    const end=Math.min(duration,requestedEnd||duration);
+    const hasLegacyTrim=trim.end>start&&trim.end<duration-.12;
+    const end=hasLegacyTrim?Math.min(duration,trim.end):duration;
     const segment=Math.max(.1,end-start);
     setProgress(Math.max(0,Math.min(100,((video.currentTime-start)/segment)*100)));
-    if(video.currentTime>=end-.06){video.pause();advanceVideoOnce();}
+    if(hasLegacyTrim&&video.currentTime>=end-.06){video.pause();advanceVideoOnce(storyId);}
   };
 
   const openViewers=async()=>{if(!currentStory||!isOwnStory)return;setIsViewersOpen(true);setViewersLoading(true);setViewersError('');try{const r=await api.get(`/stories/${currentStory.storyId}/viewers`);setViewers(r.data||[])}catch(e:any){setViewersError(e.response?.data?.message||'No se pudieron cargar las vistas.')}finally{setViewersLoading(false)}};
@@ -136,7 +140,7 @@ export default function StoryViewer({ groupedStories, initialUserIndex, onClose,
       <div className="absolute top-6 left-4 right-4 z-30 flex items-center justify-between"><div className="flex items-center gap-2"><UserAvatar avatarUrl={currentUserStories.avatarUrl} name={currentUserStories.displayName} className="h-9 w-9 rounded-full border border-white/20"/><div><span className="text-white text-xs font-bold block">{currentUserStories.displayName}</span><span className="text-[10px] text-zinc-400">@{currentUserStories.username}{formatRelativeTime(currentStory.createdAt)}</span></div></div><div className="flex items-center gap-2">{isOwnStory&&<button onClick={()=>setIsMenuOpen(v=>!v)} className="h-11 w-11 rounded-full bg-black/40 text-white flex items-center justify-center"><MoreHorizontal className="h-5 w-5"/></button>}<button onClick={()=>setIsPaused(v=>!v)} className="h-11 w-11 rounded-full bg-black/40 text-white flex items-center justify-center">{isPaused?<Play className="h-4 w-4"/>:<Pause className="h-4 w-4"/>}</button><button onClick={onClose} className="h-11 w-11 rounded-full bg-black/40 text-white flex items-center justify-center"><X className="h-4 w-4"/></button></div></div>
       <div className="w-full h-full flex items-center justify-center relative"><div className="absolute inset-y-0 left-0 w-1/4 z-20" onClick={e=>{e.stopPropagation();handlePrevStory()}}/><div className="absolute inset-y-0 right-0 w-1/4 z-20" onClick={e=>{e.stopPropagation();handleNextStory()}}/>
         {currentStory.mediaType==='IMAGE'&&<>{!imageReady&&<div className="absolute inset-0 flex items-center justify-center bg-[#07151d] text-teal-200 text-xs font-bold">Cargando momento…</div>}<img src={currentStory.mediaUrl} onLoad={()=>setImageReady(true)} alt="Momento" className={`w-full h-full object-contain pointer-events-none ${imageReady?'opacity-100':'opacity-0'}`}/></>}
-        {currentStory.mediaType==='VIDEO'&&<><video ref={storyVideoRef} src={currentStory.mediaUrl} autoPlay playsInline preload="auto" onLoadedMetadata={e=>onVideoMetadata(e.currentTarget)} onCanPlay={()=>setVideoReady(true)} onPlaying={()=>setVideoReady(true)} onWaiting={()=>setVideoReady(false)} onStalled={()=>setVideoReady(false)} onTimeUpdate={e=>onVideoTime(e.currentTarget)} onEnded={advanceVideoOnce} className="w-full h-full object-contain"/>{!videoReady&&<div className="absolute inset-0 pointer-events-none flex items-center justify-center bg-black/20"><div className="rounded-full bg-black/60 px-3 py-2 text-xs font-bold text-white">Cargando video…</div></div>}</>}
+        {currentStory.mediaType==='VIDEO'&&<><video key={currentStory.storyId} ref={storyVideoRef} src={currentStory.mediaUrl} autoPlay playsInline preload="auto" onLoadedMetadata={e=>onVideoMetadata(e.currentTarget)} onCanPlay={()=>setVideoReady(true)} onPlaying={()=>setVideoReady(true)} onWaiting={()=>setVideoReady(false)} onStalled={()=>setVideoReady(false)} onTimeUpdate={e=>onVideoTime(e.currentTarget,currentStory.storyId)} onEnded={()=>advanceVideoOnce(currentStory.storyId)} className="w-full h-full object-contain"/>{!videoReady&&<div className="absolute inset-0 pointer-events-none flex items-center justify-center bg-black/20"><div className="rounded-full bg-black/60 px-3 py-2 text-xs font-bold text-white">Cargando video…</div></div>}</>}
         {currentStory.mediaType==='TEXT'&&<div style={{background:currentStory.backgroundColor||'#0f766e'}} className="w-full h-full flex items-center justify-center p-8"><h2 className="text-3xl font-extrabold text-white text-center">{currentStory.textContent}</h2></div>}
         {visualOverlays.map((o:any)=><div key={o.id} className="absolute pointer-events-none z-20" style={{left:`${o.x*100}%`,top:`${o.y*100}%`,transform:`translate(-50%,-50%) scale(${o.scale})`,color:o.color||'#fff'}}><div className={`px-3 py-1.5 rounded-xl font-bold ${o.bg?'bg-black/75':''}`}>{o.value}</div></div>)}
       </div>
