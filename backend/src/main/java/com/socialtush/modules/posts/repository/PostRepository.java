@@ -28,10 +28,10 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE (p.user = :currentUser OR EXISTS (SELECT f FROM Follow f WHERE f.follower = :currentUser AND f.following = p.user)) AND (c IS NULL OR c.visibility = 'PUBLIC' OR EXISTS (SELECT cm FROM CircleMember cm WHERE cm.circle = c AND cm.user = :currentUser)) ORDER BY p.createdAt DESC")
     Page<Post> findFeedPostsNew(User currentUser, Pageable pageable);
 
-    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.isShortVideo = :isShortVideo AND (c IS NULL OR c.visibility = 'PUBLIC') ORDER BY p.createdAt DESC")
+    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.isShortVideo = :isShortVideo AND (c IS NULL OR c.visibility = 'PUBLIC') ORDER BY p.pulseCompletions DESC, p.pulseWatchMillis DESC, p.pulseShares DESC, p.pulseViews DESC, p.createdAt DESC")
     Page<Post> findPublicExplorePosts(boolean isShortVideo, Pageable pageable);
 
-    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.isShortVideo = :isShortVideo AND (c IS NULL OR c.visibility = 'PUBLIC' OR EXISTS (SELECT cm FROM CircleMember cm WHERE cm.circle = c AND cm.user.id = :viewerId)) ORDER BY p.createdAt DESC")
+    @Query("SELECT p FROM Post p LEFT JOIN p.circle c WHERE p.isShortVideo = :isShortVideo AND (c IS NULL OR c.visibility = 'PUBLIC' OR EXISTS (SELECT cm FROM CircleMember cm WHERE cm.circle = c AND cm.user.id = :viewerId)) ORDER BY p.pulseCompletions DESC, p.pulseWatchMillis DESC, p.pulseShares DESC, p.pulseViews DESC, p.createdAt DESC")
     Page<Post> findExplorePostsVisibleTo(boolean isShortVideo, UUID viewerId, Pageable pageable);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
