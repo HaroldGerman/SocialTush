@@ -1,5 +1,6 @@
 package com.socialtush.modules.posts.controller;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.socialtush.modules.posts.entity.Post;
 import com.socialtush.modules.posts.entity.SavedPost;
 import com.socialtush.modules.posts.repository.PostRepository;
@@ -23,7 +24,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -85,6 +85,29 @@ public class PostController {
     public ResponseEntity<?> unfeaturePost(@PathVariable UUID postId, @AuthenticationPrincipal User currentUser) {
         if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         return ResponseEntity.ok(postService.unfeaturePost(postId, currentUser));
+    }
+
+    @PostMapping("/{postId}/pulse-view")
+    public ResponseEntity<?> recordPulseView(@PathVariable UUID postId,
+                                             @RequestBody PulseViewRequest request,
+                                             @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        postService.recordPulseView(postId, request == null ? 0L : request.getWatchMillis(),
+                request != null && request.isCompleted(), currentUser);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{postId}/pulse-share")
+    public ResponseEntity<?> recordPulseShare(@PathVariable UUID postId, @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        postService.recordPulseShare(postId, currentUser);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{postId}/pulse-insights")
+    public ResponseEntity<?> pulseInsights(@PathVariable UUID postId, @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
+        return ResponseEntity.ok(postService.pulseInsights(postId, currentUser));
     }
 
     @GetMapping("/feed")
@@ -175,6 +198,25 @@ public class PostController {
                 "totalPages", reelsPage.getTotalPages(),
                 "isLast", reelsPage.isLast()
         ));
+    }
+
+    @Data
+    public static class PulseViewRequest {
+        private long watchMillis;
+        private boolean completed;
+    }
+
+    @Data
+    @Builder
+    public static class PulseInsightsDto {
+        private UUID postId;
+        private long views;
+        private double averageWatchSeconds;
+        private double completionRate;
+        private long completions;
+        private long shares;
+        private long resonances;
+        private long echoes;
     }
 
     @Data
