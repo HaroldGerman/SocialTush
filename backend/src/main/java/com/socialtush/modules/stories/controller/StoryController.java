@@ -121,37 +121,57 @@ public class StoryController {
     }
 
     private byte[] transcodeStoryVideo(MultipartFile file, double start, double duration) throws Exception {
-        Path input = Files.createTempFile("lifonk-story-input-", ".media");
+        String originalFilename = Optional.ofNullable(file.getOriginalFilename()).orElse("");
+        String extension = ".mp4";
+        int dot = originalFilename.lastIndexOf('.');
+        if (dot >= 0 && dot < originalFilename.length() - 1) {
+            String candidate = originalFilename.substring(dot).toLowerCase(Locale.ROOT);
+            if (candidate.matches("\\.(mp4|mov|m4v|webm|mkv|avi|3gp|mpeg|mpg)")) extension = candidate;
+        } else {
+            String contentType = Optional.ofNullable(file.getContentType()).orElse("").toLowerCase(Locale.ROOT);
+            if (contentType.contains("quicktime")) extension = ".mov";
+            else if (contentType.contains("webm")) extension = ".webm";
+            else if (contentType.contains("3gpp")) extension = ".3gp";
+        }
+
+        Path input = Files.createTempFile("lifonk-story-input-", extension);
         Path output = Files.createTempFile("lifonk-story-output-", ".mp4");
         try {
-            file.transferTo(input.toFile());
+            Files.write(input, file.getBytes());
 
             Process process = new ProcessBuilder(
                     "ffmpeg",
                     "-hide_banner", "-loglevel", "error", "-y",
-                    "-ss", String.format(Locale.ROOT, "%.3f", start),
                     "-i", input.toString(),
+                    "-ss", String.format(Locale.ROOT, "%.3f", start),
                     "-t", String.format(Locale.ROOT, "%.3f", duration),
-                    "-vf", "scale='floor(min(1080,iw)/2)*2':-2",
+                    "-map", "0:v:0",
+                    "-map", "0:a:0?",
+                    "-sn", "-dn",
+                    "-vf", "scale=if(gt(iw\\,1080)\\,1080\\,iw):-2",
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-crf", "23",
                     "-pix_fmt", "yuv420p",
                     "-c:a", "aac",
                     "-b:a", "128k",
+                    "-af", "aresample=async=1:first_pts=0",
+                    "-avoid_negative_ts", "make_zero",
+                    "-max_muxing_queue_size", "1024",
                     "-movflags", "+faststart",
                     output.toString()
             ).redirectErrorStream(true).start();
 
-            boolean finished = process.waitFor(120, TimeUnit.SECONDS);
-            String ffmpegOutput = new String(process.getInputStream().readAllBytes());
+            boolean finished = process.waitFor(180, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 throw new IllegalArgumentException("El video tardó demasiado en procesarse. Intenta con un archivo más corto o liviano.");
             }
+
+            String ffmpegOutput = new String(process.getInputStream().readAllBytes());
             if (process.exitValue() != 0 || !Files.exists(output) || Files.size(output) == 0) {
-                String detail = ffmpegOutput.isBlank() ? "No se pudo convertir el video" : ffmpegOutput.trim();
-                throw new IllegalArgumentException("No pudimos preparar este video. " + detail.substring(0, Math.min(detail.length(), 300)));
+                String detail = ffmpegOutput.isBlank() ? "FFmpeg no pudo leer o convertir el archivo de video" : ffmpegOutput.trim();
+                throw new IllegalArgumentException("No pudimos preparar este video. " + detail.substring(0, Math.min(detail.length(), 500)));
             }
             return Files.readAllBytes(output);
         } finally {
