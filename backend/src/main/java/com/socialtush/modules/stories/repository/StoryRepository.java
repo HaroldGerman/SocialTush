@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -16,6 +17,8 @@ public interface StoryRepository extends JpaRepository<Story, UUID> {
     long countByUserAndExpiresAtAfter(User user, Instant now);
     List<Story> findByUserAndExpiresAtAfterOrderByCreatedAtAsc(User user, Instant now);
     List<Story> findByExpiresAtAfterOrderByCreatedAtAsc(Instant now);
+    Optional<Story> findFirstByMediaUrlAndExpiresAtAfter(String mediaUrl, Instant now);
+    Optional<Story> findFirstByTextContentAndExpiresAtAfter(String textContent, Instant now);
 
     @Query("SELECT s FROM Story s WHERE (s.user IN :users OR s.user = :currentUser) AND s.expiresAt > :now ORDER BY s.createdAt ASC")
     List<Story> findActiveStories(List<User> users, User currentUser, Instant now);

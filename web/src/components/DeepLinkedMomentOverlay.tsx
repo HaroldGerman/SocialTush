@@ -35,18 +35,21 @@ export default function DeepLinkedMomentOverlay() {
     const id = new URLSearchParams(window.location.search).get('moment');
     if (!id) return;
     setTargetId(id);
-    void api.get('/stories/active').then((response) => {
-      const source: GroupedStory[] = Array.isArray(response.data) ? response.data : [];
-      const groupIndex = source.findIndex((group) => group.stories?.some((story) => story.storyId === id));
-      if (groupIndex < 0) {
+    setUnavailable(false);
+
+    void api.get(`/stories/${encodeURIComponent(id)}/open`).then((response) => {
+      const group = response.data as GroupedStory;
+      if (!group?.stories?.length) {
         setUnavailable(true);
         return;
       }
-      const storyIndex = source[groupIndex].stories.findIndex((story) => story.storyId === id);
-      const targetGroup = source[groupIndex];
-      const reorderedStories = [targetGroup.stories[storyIndex], ...targetGroup.stories.filter((_, index) => index !== storyIndex)];
-      const reordered = source.map((group, index) => index === groupIndex ? { ...group, stories: reorderedStories } : group);
-      setGroups(reordered);
+      const storyIndex = group.stories.findIndex((story) => story.storyId === id);
+      if (storyIndex < 0) {
+        setUnavailable(true);
+        return;
+      }
+      const reorderedStories = [group.stories[storyIndex], ...group.stories.filter((_, index) => index !== storyIndex)];
+      setGroups([{ ...group, stories: reorderedStories }]);
     }).catch(() => setUnavailable(true));
   }, []);
 
