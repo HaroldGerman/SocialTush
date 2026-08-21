@@ -193,7 +193,7 @@ export default function MobileFeedPage() {
           <div className="no-scrollbar flex gap-3 overflow-x-auto px-3">
             <div className="flex w-[66px] shrink-0 flex-col items-center gap-1.5">
               <div className="relative">
-                {ownStory ? <button onClick={() => setStoryIndex(ownStoryIndex)} className="h-15 w-15 rounded-full bg-gradient-to-tr from-teal-600 via-emerald-500 to-cyan-400 p-[2px]"><UserAvatar avatarUrl={ownStory.avatarUrl || user?.avatarUrl} name={ownStory.displayName || user?.displayName || user?.username} className="h-full w-full rounded-full text-xs"/></button> : <button onClick={openStoryComposer} className="flex h-15 w-15 items-center justify-center rounded-full border-2 border-dashed border-teal-500 bg-teal-50 text-teal-700 dark:bg-teal-950/30 dark:text-teal-400"><Plus className="h-5 w-5"/></button>}
+                {ownStory ? <button onClick={() => setStoryIndex(ownStoryIndex)} className="h-[60px] w-[60px] rounded-full bg-gradient-to-tr from-teal-600 via-emerald-500 to-cyan-400 p-[2px]"><UserAvatar avatarUrl={ownStory.avatarUrl || user?.avatarUrl} name={ownStory.displayName || user?.displayName || user?.username} className="h-full w-full rounded-full text-xs"/></button> : <button onClick={openStoryComposer} className="flex h-[60px] w-[60px] items-center justify-center rounded-full border-2 border-dashed border-teal-500 bg-teal-50 text-teal-700 dark:bg-teal-950/30 dark:text-teal-400"><Plus className="h-5 w-5"/></button>}
                 {ownStory && <button onClick={openStoryComposer} className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-teal-700 text-white dark:border-[#0f172a]"><Plus className="h-3.5 w-3.5"/></button>}
               </div>
               <span className="w-full truncate text-center text-[10px] font-bold">Tú</span>
@@ -202,7 +202,7 @@ export default function MobileFeedPage() {
             {others.map(({ group, index }) => {
               const unseen = group.hasUnseenStories ?? group.stories.some(story => !story.viewedByMe);
               return <button key={group.userId || group.username} onClick={() => setStoryIndex(index)} className="relative flex w-[66px] shrink-0 flex-col items-center gap-1.5">
-                <div className={`relative h-15 w-15 rounded-full p-[2.5px] transition ${unseen ? 'bg-gradient-to-tr from-teal-600 via-emerald-400 to-cyan-400 shadow-[0_0_0_1px_rgba(20,184,166,.12)]' : 'bg-slate-300 dark:bg-slate-700 opacity-75'}`}>
+                <div className={`relative h-[60px] w-[60px] rounded-full p-[2.5px] transition ${unseen ? 'bg-gradient-to-tr from-teal-600 via-emerald-400 to-cyan-400 shadow-[0_0_0_1px_rgba(20,184,166,.12)]' : 'bg-slate-300 dark:bg-slate-700 opacity-75'}`}>
                   <UserAvatar avatarUrl={group.avatarUrl} name={group.displayName} className="h-full w-full rounded-full border-2 border-white text-xs dark:border-[#0f172a]"/>
                   {unseen && <span className="absolute -right-0.5 top-0 h-3 w-3 rounded-full border-2 border-white bg-teal-500 dark:border-[#0f172a]"/>}
                 </div>
