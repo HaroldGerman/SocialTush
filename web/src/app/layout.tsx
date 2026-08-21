@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { LanguageProvider } from "@/context/LanguageContext";
 import { CreateHubProvider } from "@/context/CreateHubContext";
 import "./globals.css";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
@@ -33,6 +34,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 var theme = localStorage.getItem('socialtush-theme') || 'light';
                 if (theme === 'dark') document.documentElement.classList.add('dark');
                 else document.documentElement.classList.remove('dark');
+                var storedLanguage = localStorage.getItem('lifonk-language');
+                var language = storedLanguage === 'en' || storedLanguage === 'es'
+                  ? storedLanguage
+                  : ((navigator.language || 'es').toLowerCase().indexOf('en') === 0 ? 'en' : 'es');
+                document.documentElement.lang = language;
               })();
             `,
           }}
@@ -42,14 +48,16 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ServiceWorkerRegistrar />
         <GlobalImageCropInterceptor />
         <ThemeProvider>
-          <AuthProvider>
-            <RealtimeActivityProvider>
-              <CreateHubProvider>
-                {children}
-                <AccountSecurityShortcut />
-              </CreateHubProvider>
-            </RealtimeActivityProvider>
-          </AuthProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <RealtimeActivityProvider>
+                <CreateHubProvider>
+                  {children}
+                  <AccountSecurityShortcut />
+                </CreateHubProvider>
+              </RealtimeActivityProvider>
+            </AuthProvider>
+          </LanguageProvider>
         </ThemeProvider>
       </body>
     </html>
