@@ -28,6 +28,9 @@ interface PostData {
   location?: string;
   musicTitle?: string;
   mediaUrls: string[];
+  mediaTypes?: string[];
+  mediaThumbnailUrls?: string[];
+  isShortVideo?: boolean;
   likesCount: number;
   commentsCount: number;
   hasLiked: boolean;
@@ -663,7 +666,11 @@ export default function FeedPage() {
 
           {/* Feed Posts List */}
           <div className="space-y-4">
-            {postsList.map(post => (
+            {postsList.map(post => {
+              const firstMediaUrl = post.mediaUrls?.[0] || '';
+              const mediaType = post.mediaTypes?.[0]?.toUpperCase() || '';
+              const isVideo = Boolean(post.isShortVideo) || mediaType.includes('VIDEO') || /\.(mp4|webm|mov|m4v)(?:\?|$)/i.test(firstMediaUrl);
+              return (
               <div key={post.postId} className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 md:p-6 shadow-sm space-y-3">
                 {/* Author Header */}
                 <div className="flex items-center justify-between">
@@ -710,20 +717,32 @@ export default function FeedPage() {
                   </p>
                 ) : null}
 
-                {/* Media: RENDER ONLY IF mediaUrls EXISTS AND LENGTH > 0! ELEGANT FALLBACK ON ERROR */}
-                {post.mediaUrls && post.mediaUrls.length > 0 ? (
-                  <div className="rounded-2xl overflow-hidden max-h-96 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900">
-                    {failedWebImages[post.mediaUrls[0]] ? (
-                      <div className="w-full h-40 flex flex-col items-center justify-center gap-2 text-slate-400">
-                        <ImageIcon className="w-8 h-8 stroke-[1.5]" />
+                {/* Media */}
+                {firstMediaUrl ? (
+                  <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
+                    {isVideo ? (
+                      <>
+                        {post.isShortVideo && <span className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-sm">Pulso</span>}
+                        <video
+                          src={firstMediaUrl}
+                          poster={post.mediaThumbnailUrls?.[0] || undefined}
+                          controls
+                          playsInline
+                          preload="metadata"
+                          className="max-h-[70vh] w-full bg-black object-contain"
+                        />
+                      </>
+                    ) : failedWebImages[firstMediaUrl] ? (
+                      <div className="flex h-40 w-full flex-col items-center justify-center gap-2 text-slate-400">
+                        <ImageIcon className="h-8 w-8 stroke-[1.5]" />
                         <span className="text-xs font-semibold">No se pudo cargar el archivo multimedia</span>
                       </div>
                     ) : (
                       <img 
-                        src={post.mediaUrls[0]} 
+                        src={firstMediaUrl} 
                         alt="Media" 
-                        onError={() => setFailedWebImages(prev => ({ ...prev, [post.mediaUrls[0]]: true }))}
-                        className="w-full h-full object-cover" 
+                        onError={() => setFailedWebImages(prev => ({ ...prev, [firstMediaUrl]: true }))}
+                        className="max-h-[70vh] w-full object-contain" 
                       />
                     )}
                   </div>
@@ -799,7 +818,8 @@ export default function FeedPage() {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
 
             {postsList.length === 0 && !loadingPosts && (
               <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center text-slate-500 dark:text-slate-400 space-y-2">
