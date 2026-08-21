@@ -66,7 +66,12 @@ export default function ChatMediaOverlay() {
 
       const button = target.closest('button');
       const img = button?.querySelector('img') as HTMLImageElement | null;
-      if (!img?.src || !button?.closest('[class*="overflow-y-auto"]')) return;
+      if (!button || !img?.src) return;
+
+      const isMessageAttachment = button.className.includes('overflow-hidden') && button.className.includes('rounded-xl');
+      const isSharedMediaGridItem = img.alt === 'Archivo compartido';
+      if (!isMessageAttachment && !isSharedMediaGridItem) return;
+
       event.preventDefault();
       event.stopPropagation();
       setMedia({ src: img.src, alt: img.alt || 'Imagen del chat' });
