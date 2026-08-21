@@ -8,6 +8,7 @@ import com.socialtush.modules.likes.repository.LikeRepository;
 import com.socialtush.modules.media.service.ShortVideoProcessingService;
 import com.socialtush.modules.media.service.StorageService;
 import com.socialtush.modules.posts.controller.PostController.PostDto;
+import com.socialtush.modules.posts.controller.PostController.PulseInsightsDto;
 import com.socialtush.modules.posts.entity.Post;
 import com.socialtush.modules.posts.entity.PostMedia;
 import com.socialtush.modules.posts.repository.PostRepository;
@@ -74,18 +75,14 @@ public class PostService {
         }
 
         Post post = Post.builder()
-                .user(currentUser)
-                .circle(circle)
+                .user(currentUser).circle(circle)
                 .caption(caption != null ? caption.trim() : "")
-                .location(location)
-                .musicTitle(musicTitle)
-                .isShortVideo(isShortVideo)
+                .location(location).musicTitle(musicTitle).isShortVideo(isShortVideo)
                 .build();
         post = postRepository.save(post);
 
         List<PostMedia> mediaList = new ArrayList<>();
         List<String> uploadedFilenames = new ArrayList<>();
-
         try {
             if (isShortVideo) {
                 ShortVideoProcessingService.ProcessedShortVideo processed = shortVideoProcessingService.process(validFiles.get(0), trimStart, trimEnd, coverTime);
@@ -117,7 +114,6 @@ public class PostService {
                 catch (Exception ex) { log.error("Failed compensating deletion for [{}]: {}", uploadedFilename, ex.getMessage()); }
             }
             if (e instanceof ResponseStatusException responseStatusException) throw responseStatusException;
-            log.error("Failed processing media for post: {}", e.getMessage(), e);
             throw new RuntimeException("Error al procesar y guardar el archivo: " + e.getMessage(), e);
         }
 
@@ -133,9 +129,7 @@ public class PostService {
         if (position < 1 || position > 3) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La posición debe estar entre 1 y 3");
         Post post = postRepository.findById(postId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
         if (!post.getUser().getId().equals(currentUser.getId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo puedes destacar tus propias publicaciones");
-
-        List<Post> featured = postRepository.findByUserAndFeaturedPositionIsNotNullOrderByFeaturedPositionAsc(currentUser);
-        for (Post existing : featured) {
+        for (Post existing : postRepository.findByUserAndFeaturedPositionIsNotNullOrderByFeaturedPositionAsc(currentUser)) {
             if (existing.getFeaturedPosition() != null && existing.getFeaturedPosition() == position && !existing.getId().equals(postId)) {
                 existing.setFeaturedPosition(null);
                 postRepository.save(existing);
@@ -151,6 +145,44 @@ public class PostService {
         if (!post.getUser().getId().equals(currentUser.getId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo puedes modificar tus propias publicaciones");
         post.setFeaturedPosition(null);
         return convertToDto(postRepository.save(post), currentUser);
+    }
+
+    @Transactional
+    public void recordPulseView(UUID postId, long watchMillis, boolean completed, User viewer) {
+        Post post = postRepository.findById(postId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pulso no encontrado"));
+        if (!post.isShortVideo()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Esta publicación no es un Pulso");
+        if (!canViewPost(post, viewer)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tienes acceso a este Pulso");
+        long safeWatchMillis = Math.max(0L, Math.min(watchMillis, 120_000L));
+        if (safeWatchMillis < 800L) return;
+        postRepository.incrementPulseView(postId, safeWatchMillis, completed ? 1L : 0L);
+    }
+
+    @Transactional
+    public void recordPulseShare(UUID postId, User viewer) {
+        Post post = postRepository.findById(postId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pulso no encontrado"));
+        if (!post.isShortVideo()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Esta publicación no es un Pulso");
+        if (!canViewPost(post, viewer)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tienes acceso a este Pulso");
+        postRepository.incrementPulseShare(postId);
+    }
+
+    @Transactional(readOnly = true)
+    public PulseInsightsDto pulseInsights(UUID postId, User currentUser) {
+        Post post = postRepository.findById(postId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pulso no encontrado"));
+        if (!post.isShortVideo()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Esta publicación no es un Pulso");
+        if (!post.getUser().getId().equals(currentUser.getId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el creador puede ver estas estadísticas");
+        long views = post.getPulseViews();
+        double averageWatchSeconds = views == 0 ? 0d : (post.getPulseWatchMillis() / 1000d) / views;
+        double completionRate = views == 0 ? 0d : (post.getPulseCompletions() * 100d) / views;
+        return PulseInsightsDto.builder()
+                .postId(post.getId())
+                .views(views)
+                .averageWatchSeconds(Math.round(averageWatchSeconds * 10d) / 10d)
+                .completionRate(Math.round(completionRate * 10d) / 10d)
+                .completions(post.getPulseCompletions())
+                .shares(post.getPulseShares())
+                .resonances(likeRepository.countByTargetIdAndTargetType(post.getId(), "POST"))
+                .echoes(commentRepository.countByPostId(post.getId()))
+                .build();
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -195,12 +227,10 @@ public class PostService {
         long commentsCount = commentRepository.countByPostId(post.getId());
         boolean hasLiked = currentUser != null && likeRepository.existsByUserAndTargetIdAndTargetType(currentUser, post.getId(), "POST");
         boolean isSaved = currentUser != null && savedPostRepository.existsByUserAndPostId(currentUser, post.getId());
-
         List<String> mediaUrls = post.getMediaList() != null ? post.getMediaList().stream().map(PostMedia::getOriginalUrl).collect(Collectors.toList()) : List.of();
         List<String> mediaTypes = post.getMediaList() != null ? post.getMediaList().stream().map(PostMedia::getMediaType).toList() : List.of();
         List<String> mediaThumbnailUrls = post.getMediaList() != null ? post.getMediaList().stream()
                 .map(media -> media.getThumbnailUrl() != null ? media.getThumbnailUrl() : media.getOriginalUrl()).toList() : List.of();
-
         return PostDto.builder()
                 .postId(post.getId()).userId(post.getUser().getId()).username(post.getUser().getUsername())
                 .displayName(profile != null ? profile.getDisplayName() : post.getUser().getUsername())
