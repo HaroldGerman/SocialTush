@@ -7,7 +7,6 @@ import com.socialtush.modules.posts.repository.SavedPostRepository;
 import com.socialtush.modules.posts.service.PostService;
 import com.socialtush.modules.profiles.entity.Profile;
 import com.socialtush.modules.profiles.repository.ProfileRepository;
-import com.socialtush.modules.social.entity.Follow;
 import com.socialtush.modules.social.repository.FollowRepository;
 import com.socialtush.modules.users.entity.User;
 import com.socialtush.modules.users.repository.UserRepository;
@@ -47,6 +46,9 @@ public class PostController {
             @RequestParam(value = "location", required = false) String location,
             @RequestParam(value = "musicTitle", required = false) String musicTitle,
             @RequestParam(value = "isShortVideo", defaultValue = "false") boolean isShortVideo,
+            @RequestParam(value = "trimStart", required = false) Double trimStart,
+            @RequestParam(value = "trimEnd", required = false) Double trimEnd,
+            @RequestParam(value = "coverTime", required = false) Double coverTime,
             @RequestParam(value = "files", required = false) MultipartFile[] files,
             @RequestParam(value = "circleId", required = false) UUID circleId,
             @AuthenticationPrincipal User currentUser
@@ -55,7 +57,8 @@ public class PostController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
 
-        PostDto dto = postService.createPost(caption, location, musicTitle, isShortVideo, files, circleId, currentUser);
+        PostDto dto = postService.createPost(caption, location, musicTitle, isShortVideo,
+                trimStart, trimEnd, coverTime, files, circleId, currentUser);
         return ResponseEntity.ok(dto);
     }
 
@@ -64,7 +67,6 @@ public class PostController {
         if (currentUser == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         }
-
         try {
             postService.deletePost(postId, currentUser);
             return ResponseEntity.noContent().build();
@@ -78,109 +80,67 @@ public class PostController {
     }
 
     @GetMapping("/feed")
-    public ResponseEntity<?> getFeed(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @AuthenticationPrincipal User currentUser
-    ) {
-        if (currentUser == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
-        }
-
+    public ResponseEntity<?> getFeed(@RequestParam(defaultValue = "0") int page,
+                                     @RequestParam(defaultValue = "10") int size,
+                                     @AuthenticationPrincipal User currentUser) {
+        if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         Pageable pageable = PageRequest.of(page, size);
         Page<Post> postPage = postRepository.findFeedPostsNew(currentUser, pageable);
-
-        List<PostDto> dtos = postPage.getContent().stream()
-                .map(p -> postService.convertToDto(p, currentUser))
-                .collect(Collectors.toList());
-
+        List<PostDto> dtos = postPage.getContent().stream().map(p -> postService.convertToDto(p, currentUser)).collect(Collectors.toList());
         Map<String, Object> response = new HashMap<>();
         response.put("posts", dtos);
         response.put("currentPage", postPage.getNumber());
         response.put("totalItems", postPage.getTotalElements());
         response.put("totalPages", postPage.getTotalPages());
         response.put("isLast", postPage.isLast());
-
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/explore")
-    public ResponseEntity<?> getExplore(
-            @RequestParam(defaultValue = "false") boolean reelsOnly,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "12") int size,
-            @AuthenticationPrincipal User currentUser
-    ) {
+    public ResponseEntity<?> getExplore(@RequestParam(defaultValue = "false") boolean reelsOnly,
+                                        @RequestParam(defaultValue = "0") int page,
+                                        @RequestParam(defaultValue = "12") int size,
+                                        @AuthenticationPrincipal User currentUser) {
         Pageable pageable = PageRequest.of(page, size);
         Page<Post> postPage = currentUser == null
                 ? postRepository.findPublicExplorePosts(reelsOnly, pageable)
                 : postRepository.findExplorePostsVisibleTo(reelsOnly, currentUser.getId(), pageable);
-
-        List<PostDto> dtos = postPage.getContent().stream()
-                .map(p -> postService.convertToDto(p, currentUser))
-                .collect(Collectors.toList());
-
-        return ResponseEntity.ok(dtos);
+        return ResponseEntity.ok(postPage.getContent().stream().map(p -> postService.convertToDto(p, currentUser)).toList());
     }
 
     @GetMapping("/user/{username}")
-    public ResponseEntity<?> getUserPosts(
-            @PathVariable String username,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "12") int size,
-            @AuthenticationPrincipal User currentUser
-    ) {
+    public ResponseEntity<?> getUserPosts(@PathVariable String username,
+                                          @RequestParam(defaultValue = "0") int page,
+                                          @RequestParam(defaultValue = "12") int size,
+                                          @AuthenticationPrincipal User currentUser) {
         User targetUser = userRepository.findByUsernameIgnoreCase(username.trim()).orElse(null);
-        if (targetUser == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Usuario no encontrado"));
-        }
-
+        if (targetUser == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Usuario no encontrado"));
         Profile targetProfile = profileRepository.findById(targetUser.getId()).orElse(null);
         boolean isSelf = currentUser != null && currentUser.getId().equals(targetUser.getId());
         boolean isFollowing = currentUser != null && followRepository.existsByFollowerAndFollowing(currentUser, targetUser);
-
         if (targetProfile != null && targetProfile.isPrivate() && !isSelf && !isFollowing) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Esta cuenta es privada"));
         }
-
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<Post> postPage = currentUser == null
                 ? postRepository.findPublicProfilePosts(targetUser, pageable)
                 : postRepository.findProfilePostsVisibleTo(targetUser, currentUser.getId(), pageable);
-
-        List<PostDto> dtos = postPage.getContent().stream()
-                .map(p -> postService.convertToDto(p, currentUser))
-                .collect(Collectors.toList());
-
-        return ResponseEntity.ok(dtos);
+        return ResponseEntity.ok(postPage.getContent().stream().map(p -> postService.convertToDto(p, currentUser)).toList());
     }
 
     @PostMapping("/{postId}/save")
     public ResponseEntity<?> savePost(@PathVariable UUID postId, @AuthenticationPrincipal User currentUser) {
-        if (currentUser == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
-        }
-
+        if (currentUser == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "No autenticado"));
         Post post = postRepository.findById(postId).orElse(null);
-        if (post == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Publicación no encontrada"));
-        }
-        if (!postService.canViewPost(post, currentUser)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "No tienes acceso a esta publicación"));
-        }
-
+        if (post == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Publicación no encontrada"));
+        if (!postService.canViewPost(post, currentUser)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "No tienes acceso a esta publicación"));
         Optional<SavedPost> savedOpt = savedPostRepository.findByUserAndPostId(currentUser, postId);
         if (savedOpt.isPresent()) {
             savedPostRepository.delete(savedOpt.get());
             return ResponseEntity.ok(Map.of("saved", false, "message", "Publicación eliminada de guardados"));
-        } else {
-            SavedPost savedPost = SavedPost.builder()
-                    .user(currentUser)
-                    .post(post)
-                    .build();
-            savedPostRepository.save(savedPost);
-            return ResponseEntity.ok(Map.of("saved", true, "message", "Publicación guardada con éxito"));
         }
+        savedPostRepository.save(SavedPost.builder().user(currentUser).post(post).build());
+        return ResponseEntity.ok(Map.of("saved", true, "message", "Publicación guardada con éxito"));
     }
 
     @GetMapping("/{postId}")
@@ -192,20 +152,14 @@ public class PostController {
     }
 
     @GetMapping("/reels")
-    public ResponseEntity<?> getReels(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @AuthenticationPrincipal User currentUser
-    ) {
+    public ResponseEntity<?> getReels(@RequestParam(defaultValue = "0") int page,
+                                      @RequestParam(defaultValue = "10") int size,
+                                      @AuthenticationPrincipal User currentUser) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<Post> reelsPage = currentUser == null
                 ? postRepository.findPublicExplorePosts(true, pageable)
                 : postRepository.findExplorePostsVisibleTo(true, currentUser.getId(), pageable);
-
-        List<PostDto> dtos = reelsPage.getContent().stream()
-                .map(post -> postService.convertToDto(post, currentUser))
-                .collect(Collectors.toList());
-
+        List<PostDto> dtos = reelsPage.getContent().stream().map(post -> postService.convertToDto(post, currentUser)).toList();
         return ResponseEntity.ok(Map.of(
                 "posts", dtos,
                 "currentPage", reelsPage.getNumber(),
@@ -228,6 +182,9 @@ public class PostController {
         private String musicTitle;
         private List<String> mediaUrls;
         private List<String> mediaTypes;
+        private List<String> mediaThumbnailUrls;
+        @JsonProperty("isShortVideo")
+        private boolean shortVideo;
         private UUID circleId;
         private long likesCount;
         private long commentsCount;
