@@ -5,6 +5,7 @@ import { CreateHubProvider } from "@/context/CreateHubContext";
 import "./globals.css";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import AccountSecurityShortcut from "@/components/AccountSecurityShortcut";
+import GlobalImageCropInterceptor from "@/components/GlobalImageCropInterceptor";
 import { RealtimeActivityProvider } from "@/context/RealtimeActivityContext";
 
 export const metadata: Metadata = {
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] transition-colors duration-200">
         <ServiceWorkerRegistrar />
+        <GlobalImageCropInterceptor />
         <ThemeProvider>
           <AuthProvider>
             <RealtimeActivityProvider>

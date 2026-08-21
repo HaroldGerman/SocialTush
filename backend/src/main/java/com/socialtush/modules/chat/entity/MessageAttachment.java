@@ -39,7 +39,40 @@ public class MessageAttachment {
     @Column(name = "duration_seconds")
     private Integer durationSeconds;
 
+    @Builder.Default
+    @Column(name = "view_once", nullable = false)
+    private boolean viewOnce = false;
+
+    @Column(name = "viewed_at")
+    private Instant viewedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    /**
+     * Regular chat DTOs call this getter. Never leak the backing object URL for
+     * one-time media through history, search, websocket replay or media lists.
+     */
+    public String getFileUrl() {
+        return viewOnce ? "" : fileUrl;
+    }
+
+    /** Internal-only accessor used by the consume endpoint after authorization. */
+    public String getStoredFileUrl() {
+        return fileUrl;
+    }
+
+    /**
+     * Existing DTOs can distinguish unopened and consumed one-time photos
+     * without adding the storage URL or requiring a breaking response change.
+     */
+    public String getFileType() {
+        if (!viewOnce) return fileType;
+        return viewedAt == null ? "VIEW_ONCE_IMAGE" : "VIEW_ONCE_IMAGE_VIEWED";
+    }
+
+    public String getStoredFileType() {
+        return fileType;
+    }
 }
