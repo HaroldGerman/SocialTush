@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { X, Sparkles, Film, Compass, Zap } from 'lucide-react';
+import Link from 'next/link';
+import { BarChart3, X, Sparkles, Film, Compass, Zap } from 'lucide-react';
 
 interface CreateHubProps {
   isOpen: boolean;
@@ -51,6 +52,10 @@ export default function CreateHub({
             <div className="p-3 rounded-xl bg-teal-50 dark:bg-teal-950/80 text-teal-700 dark:text-teal-400"><Compass className="w-5 h-5" /></div>
             <div><h4 className="font-bold text-sm text-slate-900 dark:text-white">◎ Círculo</h4><p className="text-[11px] text-slate-500">Crea un nuevo círculo de interés</p></div>
           </button>
+        </div>
+
+        <div className="mt-5 border-t border-slate-100 pt-4 dark:border-slate-800">
+          <Link href="/pulse/studio" onClick={onClose} className="flex items-center justify-between rounded-2xl px-3 py-2.5 text-xs font-black text-slate-600 transition hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"><span className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-teal-500"/>Estudio Pulso</span><span className="text-[9px] font-bold text-slate-400">Tus métricas privadas</span></Link>
         </div>
       </div>
     </div>
