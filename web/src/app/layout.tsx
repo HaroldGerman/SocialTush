@@ -8,7 +8,6 @@ import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import AccountSecurityShortcut from "@/components/AccountSecurityShortcut";
 import AccountSettingsShortcut from "@/components/AccountSettingsShortcut";
 import GlobalImageCropInterceptor from "@/components/GlobalImageCropInterceptor";
-import ChatMediaOverlay from "@/components/ChatMediaOverlay";
 import DeepLinkedMomentOverlay from "@/components/DeepLinkedMomentOverlay";
 import { RealtimeActivityProvider } from "@/context/RealtimeActivityContext";
 
@@ -53,7 +52,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
-              <ChatMediaOverlay />
               <DeepLinkedMomentOverlay />
               <RealtimeActivityProvider>
                 <CreateHubProvider>
