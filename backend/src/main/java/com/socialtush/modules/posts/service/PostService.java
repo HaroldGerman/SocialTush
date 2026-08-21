@@ -5,8 +5,10 @@ import com.socialtush.modules.circles.entity.Circle;
 import com.socialtush.modules.circles.repository.CircleMemberRepository;
 import com.socialtush.modules.circles.repository.CircleRepository;
 import com.socialtush.modules.likes.repository.LikeRepository;
+import com.socialtush.modules.media.service.ShortVideoProcessingService;
 import com.socialtush.modules.media.service.StorageService;
 import com.socialtush.modules.posts.controller.PostController.PostDto;
+import com.socialtush.modules.posts.controller.PostController.PulseInsightsDto;
 import com.socialtush.modules.posts.entity.Post;
 import com.socialtush.modules.posts.entity.PostMedia;
 import com.socialtush.modules.posts.repository.PostRepository;
@@ -17,9 +19,9 @@ import com.socialtush.modules.social.repository.FollowRepository;
 import com.socialtush.modules.users.entity.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -43,24 +45,23 @@ public class PostService {
     private final StorageService storageService;
     private final CircleRepository circleRepository;
     private final CircleMemberRepository circleMemberRepository;
+    private final ShortVideoProcessingService shortVideoProcessingService;
 
     @Transactional(rollbackFor = Exception.class)
     public PostDto createPost(String caption, String location, String musicTitle, boolean isShortVideo,
+                              Double trimStart, Double trimEnd, Double coverTime,
                               MultipartFile[] files, UUID circleId, User currentUser) {
         if ((caption == null || caption.isBlank()) && (files == null || files.length == 0)) {
             throw new IllegalArgumentException("Se requiere al menos texto o archivo multimedia");
         }
+
+        List<MultipartFile> validFiles = files == null ? List.of() : java.util.Arrays.stream(files)
+                .filter(java.util.Objects::nonNull).filter(file -> !file.isEmpty()).toList();
         if (isShortVideo) {
-            boolean hasVideo = files != null && java.util.Arrays.stream(files)
-                    .filter(java.util.Objects::nonNull).filter(file -> !file.isEmpty())
-                    .anyMatch(file -> file.getContentType() != null
-                            && file.getContentType().toLowerCase(java.util.Locale.ROOT).startsWith("video/"));
-            boolean hasNonVideo = files != null && java.util.Arrays.stream(files)
-                    .filter(java.util.Objects::nonNull).filter(file -> !file.isEmpty())
-                    .anyMatch(file -> file.getContentType() == null
-                            || !file.getContentType().toLowerCase(java.util.Locale.ROOT).startsWith("video/"));
-            if (!hasVideo || hasNonVideo) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Un Reel debe contener un archivo de video válido");
+            if (validFiles.size() != 1) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pulso requiere un solo video");
+            MultipartFile file = validFiles.get(0);
+            if (file.getContentType() == null || !file.getContentType().toLowerCase(java.util.Locale.ROOT).startsWith("video/")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pulso requiere un archivo de video válido");
             }
         }
 
@@ -73,101 +74,141 @@ public class PostService {
             }
         }
 
-        // 1. Build initial Post
         Post post = Post.builder()
-                .user(currentUser)
-                .circle(circle)
+                .user(currentUser).circle(circle)
                 .caption(caption != null ? caption.trim() : "")
-                .location(location)
-                .musicTitle(musicTitle)
-                .isShortVideo(isShortVideo)
+                .location(location).musicTitle(musicTitle).isShortVideo(isShortVideo)
                 .build();
         post = postRepository.save(post);
 
-        // 2. Upload files and create PostMedia inside the same transaction
         List<PostMedia> mediaList = new ArrayList<>();
         List<String> uploadedFilenames = new ArrayList<>();
-
-        if (files != null && files.length > 0) {
-            for (int i = 0; i < files.length; i++) {
-                MultipartFile file = files[i];
-                if (file == null || file.isEmpty()) continue;
-
-                String originalFilename = file.getOriginalFilename();
-                String ext = originalFilename != null && originalFilename.contains(".")
-                        ? originalFilename.substring(originalFilename.lastIndexOf("."))
-                        : ".jpg";
-                String randomFilename = UUID.randomUUID().toString() + ext;
-
-                try {
-                    // Upload file to S3/MinIO
+        try {
+            if (isShortVideo) {
+                ShortVideoProcessingService.ProcessedShortVideo processed = shortVideoProcessingService.process(validFiles.get(0), trimStart, trimEnd, coverTime);
+                String videoFilename = UUID.randomUUID() + ".mp4";
+                String coverFilename = UUID.randomUUID() + ".jpg";
+                String videoUrl = storageService.uploadFile(videoFilename, processed.videoBytes(), "video/mp4");
+                uploadedFilenames.add(videoFilename);
+                String coverUrl = storageService.uploadFile(coverFilename, processed.coverBytes(), "image/jpeg");
+                uploadedFilenames.add(coverFilename);
+                mediaList.add(PostMedia.builder().post(post).mediaType("VIDEO").originalUrl(videoUrl).mediumUrl(videoUrl)
+                        .thumbnailUrl(coverUrl).displayOrder(0).build());
+            } else {
+                for (int i = 0; i < validFiles.size(); i++) {
+                    MultipartFile file = validFiles.get(i);
+                    String originalFilename = file.getOriginalFilename();
+                    String ext = originalFilename != null && originalFilename.contains(".")
+                            ? originalFilename.substring(originalFilename.lastIndexOf(".")) : ".jpg";
+                    String randomFilename = UUID.randomUUID() + ext;
                     String fileUrl = storageService.uploadFile(randomFilename, file.getBytes(), file.getContentType());
                     uploadedFilenames.add(randomFilename);
-
-                    PostMedia media = PostMedia.builder()
-                            .post(post)
+                    mediaList.add(PostMedia.builder().post(post)
                             .mediaType(file.getContentType() != null && file.getContentType().startsWith("video") ? "VIDEO" : "IMAGE")
-                            .originalUrl(fileUrl)
-                            .mediumUrl(fileUrl)
-                            .thumbnailUrl(fileUrl)
-                            .displayOrder(i)
-                            .build();
-
-                    mediaList.add(media);
-                } catch (Exception e) {
-                    // Compensating action: clean up any files already uploaded to S3 in this batch
-                    for (String uploadedFilename : uploadedFilenames) {
-                        try {
-                            storageService.deleteFile(uploadedFilename);
-                        } catch (Exception ex) {
-                            log.error("Failed compensating deletion for file [{}]: {}", uploadedFilename, ex.getMessage());
-                        }
-                    }
-                    log.error("Failed uploading media file [{}] for post. Triggering transaction rollback: {}", originalFilename, e.getMessage());
-                    throw new RuntimeException("Error al procesar y guardar la imagen: " + e.getMessage(), e);
+                            .originalUrl(fileUrl).mediumUrl(fileUrl).thumbnailUrl(fileUrl).displayOrder(i).build());
                 }
             }
+        } catch (Exception e) {
+            for (String uploadedFilename : uploadedFilenames) {
+                try { storageService.deleteFile(uploadedFilename); }
+                catch (Exception ex) { log.error("Failed compensating deletion for [{}]: {}", uploadedFilename, ex.getMessage()); }
+            }
+            if (e instanceof ResponseStatusException responseStatusException) throw responseStatusException;
+            throw new RuntimeException("Error al procesar y guardar el archivo: " + e.getMessage(), e);
         }
 
         if (!mediaList.isEmpty()) {
             post.setMediaList(mediaList);
             post = postRepository.save(post);
         }
-
         return convertToDto(post, currentUser);
+    }
+
+    @Transactional
+    public PostDto featurePost(UUID postId, int position, User currentUser) {
+        if (position < 1 || position > 3) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La posición debe estar entre 1 y 3");
+        Post post = postRepository.findById(postId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
+        if (!post.getUser().getId().equals(currentUser.getId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo puedes destacar tus propias publicaciones");
+        for (Post existing : postRepository.findByUserAndFeaturedPositionIsNotNullOrderByFeaturedPositionAsc(currentUser)) {
+            if (existing.getFeaturedPosition() != null && existing.getFeaturedPosition() == position && !existing.getId().equals(postId)) {
+                existing.setFeaturedPosition(null);
+                postRepository.save(existing);
+            }
+        }
+        post.setFeaturedPosition(position);
+        return convertToDto(postRepository.save(post), currentUser);
+    }
+
+    @Transactional
+    public PostDto unfeaturePost(UUID postId, User currentUser) {
+        Post post = postRepository.findById(postId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Publicación no encontrada"));
+        if (!post.getUser().getId().equals(currentUser.getId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo puedes modificar tus propias publicaciones");
+        post.setFeaturedPosition(null);
+        return convertToDto(postRepository.save(post), currentUser);
+    }
+
+    @Transactional
+    public void recordPulseView(UUID postId, long watchMillis, boolean completed, User viewer) {
+        Post post = postRepository.findById(postId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pulso no encontrado"));
+        if (!post.isShortVideo()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Esta publicación no es un Pulso");
+        if (!canViewPost(post, viewer)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tienes acceso a este Pulso");
+        long safeWatchMillis = Math.max(0L, Math.min(watchMillis, 120_000L));
+        if (safeWatchMillis < 800L) return;
+        postRepository.incrementPulseView(postId, safeWatchMillis, completed ? 1L : 0L);
+    }
+
+    @Transactional
+    public void recordPulseShare(UUID postId, User viewer) {
+        Post post = postRepository.findById(postId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pulso no encontrado"));
+        if (!post.isShortVideo()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Esta publicación no es un Pulso");
+        if (!canViewPost(post, viewer)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tienes acceso a este Pulso");
+        postRepository.incrementPulseShare(postId);
+    }
+
+    @Transactional(readOnly = true)
+    public PulseInsightsDto pulseInsights(UUID postId, User currentUser) {
+        Post post = postRepository.findById(postId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pulso no encontrado"));
+        if (!post.isShortVideo()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Esta publicación no es un Pulso");
+        if (!post.getUser().getId().equals(currentUser.getId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el creador puede ver estas estadísticas");
+        long views = post.getPulseViews();
+        double averageWatchSeconds = views == 0 ? 0d : (post.getPulseWatchMillis() / 1000d) / views;
+        double completionRate = views == 0 ? 0d : (post.getPulseCompletions() * 100d) / views;
+        return PulseInsightsDto.builder()
+                .postId(post.getId())
+                .views(views)
+                .averageWatchSeconds(Math.round(averageWatchSeconds * 10d) / 10d)
+                .completionRate(Math.round(completionRate * 10d) / 10d)
+                .completions(post.getPulseCompletions())
+                .shares(post.getPulseShares())
+                .resonances(likeRepository.countByTargetIdAndTargetType(post.getId(), "POST"))
+                .echoes(commentRepository.countByPostId(post.getId()))
+                .build();
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void deletePost(UUID postId, User currentUser) {
-        Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new NoSuchElementException("Publicación no encontrada"));
-
-        if (!post.getUser().getId().equals(currentUser.getId())) {
-            throw new SecurityException("No tienes permiso para eliminar esta publicación");
-        }
-
-        // Delete physical R2/S3 files for all associated media items
-        if (post.getMediaList() != null && !post.getMediaList().isEmpty()) {
+        Post post = postRepository.findById(postId).orElseThrow(() -> new NoSuchElementException("Publicación no encontrada"));
+        if (!post.getUser().getId().equals(currentUser.getId())) throw new SecurityException("No tienes permiso para eliminar esta publicación");
+        if (post.getMediaList() != null) {
             for (PostMedia media : post.getMediaList()) {
-                String key = extractFileKey(media.getOriginalUrl());
-                if (key != null && !key.isBlank()) {
-                    storageService.deleteFile(key);
-                    log.info("Deleted media file [{}] from R2 for post [{}]", key, postId);
-                }
+                deleteStoredUrl(media.getOriginalUrl());
+                if (media.getThumbnailUrl() != null && !media.getThumbnailUrl().equals(media.getOriginalUrl())) deleteStoredUrl(media.getThumbnailUrl());
             }
         }
-
         postRepository.delete(post);
-        log.info("Post [{}] deleted successfully by user [{}]", postId, currentUser.getUsername());
+    }
+
+    private void deleteStoredUrl(String url) {
+        String key = extractFileKey(url);
+        if (key == null || key.isBlank()) return;
+        try { storageService.deleteFile(key); }
+        catch (Exception ex) { log.warn("Could not delete media key [{}]: {}", key, ex.getMessage()); }
     }
 
     public static String extractFileKey(String url) {
         if (url == null || url.isBlank()) return null;
         int lastSlash = url.lastIndexOf('/');
-        if (lastSlash >= 0 && lastSlash < url.length() - 1) {
-            return url.substring(lastSlash + 1);
-        }
-        return url;
+        return lastSlash >= 0 && lastSlash < url.length() - 1 ? url.substring(lastSlash + 1) : url;
     }
 
     public boolean canViewPost(Post post, User viewer) {
@@ -182,33 +223,23 @@ public class PostService {
 
     public PostDto convertToDto(Post post, User currentUser) {
         Profile profile = profileRepository.findById(post.getUser().getId()).orElse(null);
-
         long likesCount = likeRepository.countByTargetIdAndTargetType(post.getId(), "POST");
         long commentsCount = commentRepository.countByPostId(post.getId());
-
         boolean hasLiked = currentUser != null && likeRepository.existsByUserAndTargetIdAndTargetType(currentUser, post.getId(), "POST");
         boolean isSaved = currentUser != null && savedPostRepository.existsByUserAndPostId(currentUser, post.getId());
-
-        List<String> mediaUrls = post.getMediaList() != null ? post.getMediaList().stream()
-                .map(PostMedia::getOriginalUrl)
-                .collect(Collectors.toList()) : List.of();
-
+        List<String> mediaUrls = post.getMediaList() != null ? post.getMediaList().stream().map(PostMedia::getOriginalUrl).collect(Collectors.toList()) : List.of();
+        List<String> mediaTypes = post.getMediaList() != null ? post.getMediaList().stream().map(PostMedia::getMediaType).toList() : List.of();
+        List<String> mediaThumbnailUrls = post.getMediaList() != null ? post.getMediaList().stream()
+                .map(media -> media.getThumbnailUrl() != null ? media.getThumbnailUrl() : media.getOriginalUrl()).toList() : List.of();
         return PostDto.builder()
-                .postId(post.getId())
-                .userId(post.getUser().getId())
-                .username(post.getUser().getUsername())
+                .postId(post.getId()).userId(post.getUser().getId()).username(post.getUser().getUsername())
                 .displayName(profile != null ? profile.getDisplayName() : post.getUser().getUsername())
                 .avatarUrl(profile != null ? profile.getAvatarUrl() : "")
-                .caption(post.getCaption())
-                .location(post.getLocation())
-                .musicTitle(post.getMusicTitle())
-                .mediaUrls(mediaUrls)
-                .mediaTypes(post.getMediaList() != null ? post.getMediaList().stream().map(PostMedia::getMediaType).toList() : List.of())
+                .caption(post.getCaption()).location(post.getLocation()).musicTitle(post.getMusicTitle())
+                .mediaUrls(mediaUrls).mediaTypes(mediaTypes).mediaThumbnailUrls(mediaThumbnailUrls)
+                .shortVideo(post.isShortVideo()).featuredPosition(post.getFeaturedPosition())
                 .circleId(post.getCircle() != null ? post.getCircle().getId() : null)
-                .likesCount(likesCount)
-                .commentsCount(commentsCount)
-                .hasLiked(hasLiked)
-                .isSaved(isSaved)
+                .likesCount(likesCount).commentsCount(commentsCount).hasLiked(hasLiked).isSaved(isSaved)
                 .createdAt(post.getCreatedAt() != null ? post.getCreatedAt().toString() : java.time.Instant.now().toString())
                 .build();
     }
