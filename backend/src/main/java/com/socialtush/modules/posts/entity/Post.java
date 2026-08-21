@@ -53,6 +53,9 @@ public class Post {
     @Builder.Default
     private boolean isShortVideo = false;
 
+    @Column(name = "featured_position")
+    private Integer featuredPosition;
+
     @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     @OrderBy("displayOrder ASC")
