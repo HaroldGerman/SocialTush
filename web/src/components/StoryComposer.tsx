@@ -12,15 +12,13 @@ interface StoryComposerProps {
 
 interface OverlayItem {
   id: string;
-  type: 'TEXT' | 'EMOJI' | 'GIF' | 'VIDEO_TRIM';
+  type: 'TEXT' | 'EMOJI' | 'GIF';
   value: string;
   x: number;
   y: number;
   scale: number;
   color?: string;
   bg?: boolean;
-  start?: number;
-  end?: number;
 }
 
 const PRESET_BACKGROUNDS = [
@@ -191,24 +189,37 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
       const formData = new FormData();
       formData.append('mediaType', mediaType);
       formData.append('isBestFriends', String(isBestFriends));
-      if (mediaType === 'TEXT') { formData.append('textContent', textContent); formData.append('backgroundColor', bgColor); }
-      else if (selectedFile) formData.append('file', selectedFile);
-      const payload = [...overlays];
-      if (mediaType === 'VIDEO' && videoDuration > 0) payload.push({ id:'__video_trim__', type:'VIDEO_TRIM', value:'', x:0, y:0, scale:1, start:trimStart, end:trimEnd || Math.min(videoDuration, MAX_STORY_VIDEO_SECONDS) });
-      if (payload.length) formData.append('overlayData', JSON.stringify(payload));
+      if (mediaType === 'TEXT') {
+        formData.append('textContent', textContent);
+        formData.append('backgroundColor', bgColor);
+      } else if (selectedFile) {
+        formData.append('file', selectedFile);
+      }
+      if (mediaType === 'VIDEO' && videoDuration > 0) {
+        formData.append('trimStart', String(trimStart));
+        formData.append('trimEnd', String(trimEnd || Math.min(videoDuration, MAX_STORY_VIDEO_SECONDS)));
+      }
+      if (overlays.length) formData.append('overlayData', JSON.stringify(overlays));
       const response = await api.post('/stories', formData, { headers:{'Content-Type':'multipart/form-data'} });
       onCloseClean(); onPublished?.(response.data);
-    } catch (err:any) { console.error(err); setCameraError(err.response?.data?.message || 'Error al publicar momento'); }
-    finally { setIsPublishing(false); }
+    } catch (err:any) {
+      console.error(err);
+      setCameraError(err.response?.data?.message || 'Error al preparar el momento');
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   const onCloseClean = () => {
+    if (isPublishing) return;
     stopCamera(); setSelectedFile(null); if (mediaUrl) URL.revokeObjectURL(mediaUrl); setMediaUrl(null);
     setOverlays([]); setTextContent(''); setCameraError(null); setComposerMode('SELECT'); setVideoDuration(0); setTrimStart(0); setTrimEnd(0); onClose();
   };
 
   return <div className="fixed inset-0 z-[110] bg-black flex items-center justify-center h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] md:p-4">
     <div className="w-full h-full md:max-w-md bg-[#090d16] md:rounded-3xl border border-slate-800 shadow-2xl relative overflow-hidden flex flex-col">
+      {isPublishing && <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-[#071016]/95 px-8 text-center backdrop-blur-md"><div className="h-14 w-14 animate-pulse rounded-2xl bg-gradient-to-br from-teal-500 to-teal-800 flex items-center justify-center text-2xl font-black text-white shadow-xl shadow-teal-950/40">L</div><div><p className="text-base font-extrabold text-white">{mediaType === 'VIDEO' ? 'Preparando tu momento…' : 'Publicando tu momento…'}</p><p className="mt-1 text-xs leading-relaxed text-slate-400">{mediaType === 'VIDEO' ? 'Estamos recortando y optimizando el video. Solo se guardará el fragmento que elegiste.' : 'Un momento, ya casi está listo.'}</p></div><div className="h-1.5 w-48 overflow-hidden rounded-full bg-slate-800"><div className="h-full w-2/3 animate-pulse rounded-full bg-teal-500"/></div></div>}
+
       {composerMode === 'SELECT' && <div className="flex-1 flex flex-col justify-center p-6 space-y-6 text-center">
         <div className="absolute top-4 left-4 right-4 flex justify-between"><span className="text-sm font-extrabold text-teal-400">Crear momento</span><button onClick={onCloseClean} className="p-2 rounded-full bg-slate-800 text-white"><X className="w-5 h-5"/></button></div>
         <div><Sparkles className="w-12 h-12 text-teal-500 mx-auto"/><h2 className="text-lg font-black text-white mt-2">¿Cómo quieres contar tu momento?</h2><p className="text-xs text-slate-400 mt-1">Foto, video o texto.</p></div>
@@ -230,16 +241,16 @@ export default function StoryComposer({ isOpen, onClose, onPublished }: StoryCom
           {mediaType==='IMAGE'&&mediaUrl&&<img src={mediaUrl} alt="Momento" className="w-full h-full object-cover pointer-events-none"/>}
           {mediaType==='VIDEO'&&mediaUrl&&<video ref={editorVideoRef} src={mediaUrl} controls playsInline preload="metadata" onLoadedMetadata={e=>onVideoMetadata(e.currentTarget)} onTimeUpdate={e=>handlePreviewTime(e.currentTarget)} className="w-full h-full object-contain"/>}
           {mediaType==='TEXT'&&<p className="text-white font-extrabold text-2xl text-center px-6 whitespace-pre-wrap">{textContent}</p>}
-          {overlays.filter(o=>o.type!=='VIDEO_TRIM').map(o=><div key={o.id} onMouseDown={e=>handleOverlayDrag(o.id,e)} onTouchStart={e=>handleOverlayDrag(o.id,e)} className="absolute cursor-move z-20" style={{left:`${o.x*100}%`,top:`${o.y*100}%`,transform:`translate(-50%,-50%) scale(${o.scale})`,color:o.color||'#fff'}}><div className={`px-3 py-1.5 rounded-xl font-bold ${o.bg?'bg-black/75':''}`}>{o.value}<button onClick={()=>setOverlays(p=>p.filter(x=>x.id!==o.id))} className="ml-2 text-rose-300">×</button></div></div>)}
+          {overlays.map(o=><div key={o.id} onMouseDown={e=>handleOverlayDrag(o.id,e)} onTouchStart={e=>handleOverlayDrag(o.id,e)} className="absolute cursor-move z-20" style={{left:`${o.x*100}%`,top:`${o.y*100}%`,transform:`translate(-50%,-50%) scale(${o.scale})`,color:o.color||'#fff'}}><div className={`px-3 py-1.5 rounded-xl font-bold ${o.bg?'bg-black/75':''}`}>{o.value}<button onClick={()=>setOverlays(p=>p.filter(x=>x.id!==o.id))} className="ml-2 text-rose-300">×</button></div></div>)}
         </div>
 
-        {mediaType==='VIDEO'&&videoDuration>0&&<div className="border-t border-slate-800 bg-[#0b111b] px-4 py-3 space-y-2 z-30"><div className="flex items-center justify-between"><div className="flex items-center gap-2 text-xs font-bold text-white"><Scissors className="h-4 w-4 text-teal-400"/>Recortar video</div><span className="text-[11px] text-teal-300">{formatSeconds(trimStart)} — {formatSeconds(trimEnd)} · {Math.max(0,trimEnd-trimStart).toFixed(1)} s</span></div><p className="text-[10px] text-slate-400">Elige el fragmento que se mostrará. Máximo {MAX_STORY_VIDEO_SECONDS} segundos.</p><label className="block text-[10px] text-slate-400">Inicio<input type="range" min={0} max={Math.max(0,videoDuration-1)} step="0.1" value={trimStart} onChange={e=>updateTrimStart(Number(e.target.value))} className="w-full accent-teal-500"/></label><label className="block text-[10px] text-slate-400">Final<input type="range" min={Math.min(videoDuration,trimStart+1)} max={Math.min(videoDuration,trimStart+MAX_STORY_VIDEO_SECONDS)} step="0.1" value={trimEnd} onChange={e=>updateTrimEnd(Number(e.target.value))} className="w-full accent-teal-500"/></label><button type="button" onClick={()=>{if(editorVideoRef.current){editorVideoRef.current.currentTime=trimStart;editorVideoRef.current.play().catch(()=>{})}}} className="w-full rounded-xl border border-teal-800 bg-teal-950/40 py-2 text-xs font-bold text-teal-200">Previsualizar recorte</button></div>}
+        {mediaType==='VIDEO'&&videoDuration>0&&<div className="border-t border-slate-800 bg-[#0b111b] px-4 py-3 space-y-2 z-30"><div className="flex items-center justify-between"><div className="flex items-center gap-2 text-xs font-bold text-white"><Scissors className="h-4 w-4 text-teal-400"/>Recortar video</div><span className="text-[11px] text-teal-300">{formatSeconds(trimStart)} — {formatSeconds(trimEnd)} · {Math.max(0,trimEnd-trimStart).toFixed(1)} s</span></div><p className="text-[10px] text-slate-400">Elige el fragmento final. Lifonk guardará solo este clip, máximo {MAX_STORY_VIDEO_SECONDS} segundos.</p><label className="block text-[10px] text-slate-400">Inicio<input type="range" min={0} max={Math.max(0,videoDuration-1)} step="0.1" value={trimStart} onChange={e=>updateTrimStart(Number(e.target.value))} className="w-full accent-teal-500"/></label><label className="block text-[10px] text-slate-400">Final<input type="range" min={Math.min(videoDuration,trimStart+1)} max={Math.min(videoDuration,trimStart+MAX_STORY_VIDEO_SECONDS)} step="0.1" value={trimEnd} onChange={e=>updateTrimEnd(Number(e.target.value))} className="w-full accent-teal-500"/></label><button type="button" onClick={()=>{if(editorVideoRef.current){editorVideoRef.current.currentTime=trimStart;editorVideoRef.current.play().catch(()=>{})}}} className="w-full rounded-xl border border-teal-800 bg-teal-950/40 py-2 text-xs font-bold text-teal-200">Previsualizar recorte</button></div>}
 
         {activePanel==='TEXT'&&<div className="absolute bottom-20 left-4 right-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 z-40"><div className="flex gap-2"><input value={newText} onChange={e=>setNewText(e.target.value)} placeholder="Escribe texto…" className="flex-1 rounded-xl bg-slate-800 px-3 py-2 text-xs text-white"/><button onClick={addTextOverlay} className="rounded-xl bg-teal-700 px-4 text-xs font-bold text-white">Añadir</button></div><div className="mt-2 flex items-center justify-between"><input type="color" value={newTextColor} onChange={e=>setNewTextColor(e.target.value)}/><label className="text-xs text-slate-300"><input type="checkbox" checked={newTextBg} onChange={e=>setNewTextBg(e.target.checked)} className="mr-2"/>Fondo</label></div></div>}
         {activePanel==='EMOJI'&&<div className="absolute bottom-20 left-4 right-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 z-40 grid grid-cols-6 gap-2">{['🔥','🚀','😂','❤️','😍','😎','👍','✨','🎉','🤔','👀','💯'].map(x=><button key={x} onClick={()=>addEmojiOverlay(x)} className="text-xl p-2">{x}</button>)}</div>}
         {activePanel==='MUSIC'&&<div className="absolute bottom-20 left-4 right-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 z-40 text-xs text-slate-400">Música conectada al audio original del video. Biblioteca externa: próximamente.</div>}
         {cameraError&&<div className="mx-4 mb-2 rounded-xl bg-rose-950 p-3 text-xs text-rose-200">{cameraError}</div>}
-        <div className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between z-30"><label className="text-xs text-slate-300"><input type="checkbox" checked={isBestFriends} onChange={e=>setIsBestFriends(e.target.checked)} className="mr-2"/>Mejores conexiones</label><button onClick={handlePublishStory} disabled={isPublishing||mediaType==='VIDEO'&&(trimEnd-trimStart<1)} className="px-6 py-2.5 bg-teal-700 hover:bg-teal-600 text-white font-bold text-xs rounded-xl disabled:opacity-50">{isPublishing?'Publicando…':'Publicar momento'}</button></div>
+        <div className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between z-30"><label className="text-xs text-slate-300"><input type="checkbox" checked={isBestFriends} onChange={e=>setIsBestFriends(e.target.checked)} className="mr-2"/>Mejores conexiones</label><button onClick={handlePublishStory} disabled={isPublishing||mediaType==='VIDEO'&&(trimEnd-trimStart<1)} className="px-6 py-2.5 bg-teal-700 hover:bg-teal-600 text-white font-bold text-xs rounded-xl disabled:opacity-50">{isPublishing?'Preparando…':'Publicar momento'}</button></div>
       </div>}
     </div>
   </div>;
