@@ -56,6 +56,22 @@ public class Post {
     @Column(name = "featured_position")
     private Integer featuredPosition;
 
+    @Column(name = "pulse_views", nullable = false)
+    @Builder.Default
+    private long pulseViews = 0;
+
+    @Column(name = "pulse_watch_millis", nullable = false)
+    @Builder.Default
+    private long pulseWatchMillis = 0;
+
+    @Column(name = "pulse_completions", nullable = false)
+    @Builder.Default
+    private long pulseCompletions = 0;
+
+    @Column(name = "pulse_shares", nullable = false)
+    @Builder.Default
+    private long pulseShares = 0;
+
     @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     @OrderBy("displayOrder ASC")
