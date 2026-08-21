@@ -4,9 +4,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  Activity, Award, Camera, Check, ChevronLeft, Compass, Edit2, Grid, Heart, Lock,
-  LogOut, MessageSquare, Moon, MoreVertical, Pin, Plus, ShieldAlert, Sparkles, Sun,
-  Trash2, User, Users, Video
+  Award, Camera, Check, Compass, Edit2, Grid, Heart, Image as ImageIcon, Lock,
+  LogOut, MessageSquare, Moon, MoreVertical, Pin, ShieldAlert, Sparkles, Sun,
+  Trash2, Video
 } from 'lucide-react';
 import { api, useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -21,6 +21,7 @@ interface ProfileData {
   displayName: string;
   bio: string;
   avatarUrl: string;
+  coverUrl?: string;
   isPrivate: boolean;
   isSelf: boolean;
   isFollowing: boolean;
@@ -68,19 +69,14 @@ interface ProfileCircle {
 
 function PostMedia({ post, showcase = false }: { post: PostData; showcase?: boolean }) {
   if (!post.mediaUrls?.length) return null;
-  const type = post.mediaTypes?.[0] || '';
-  const video = type === 'VIDEO' || post.isShortVideo;
+  const video = post.mediaTypes?.[0] === 'VIDEO' || post.isShortVideo;
   const thumbnail = post.mediaThumbnailUrls?.[0];
-
   if (showcase) {
     if (video && thumbnail) return <img src={thumbnail} alt="Portada" loading="lazy" className="h-full w-full object-cover" />;
     if (video) return <video src={post.mediaUrls[0]} muted playsInline preload="metadata" className="h-full w-full object-cover" />;
     return <img src={post.mediaUrls[0]} alt="Publicación destacada" loading="lazy" className="h-full w-full object-cover" />;
   }
-
-  if (video) {
-    return <video src={post.mediaUrls[0]} poster={thumbnail} controls playsInline preload="metadata" className="max-h-[70dvh] w-full bg-black object-contain" />;
-  }
+  if (video) return <video src={post.mediaUrls[0]} poster={thumbnail} controls playsInline preload="metadata" className="max-h-[70dvh] w-full bg-black object-contain" />;
   return <img src={post.mediaUrls[0]} alt="Media" loading="lazy" className="max-h-[70dvh] w-full object-contain" />;
 }
 
@@ -116,7 +112,10 @@ export default function ProfilePage() {
   const [updating, setUpdating] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const isSelf = Boolean(profile && (profile.isSelf || currentUser?.username?.toLowerCase() === profile.username.toLowerCase()));
   const interests = useMemo(() => profile?.interests?.split(',').map(value => value.trim()).filter(Boolean) || [], [profile?.interests]);
@@ -134,8 +133,7 @@ export default function ProfilePage() {
       setUserPosts(response.data?.content || response.data || []);
     } catch (requestError: any) {
       setUserPosts([]);
-      if (requestError.response?.status === 403) return;
-      setPostsLoadError(true);
+      if (requestError.response?.status !== 403) setPostsLoadError(true);
     }
   }, [username]);
 
@@ -214,11 +212,7 @@ export default function ProfilePage() {
     setUpdatingFeaturedId(postId);
     try {
       await api.put(`/posts/${postId}/feature`, null, { params: { position } });
-      setUserPosts(previous => previous.map(post => {
-        if (post.postId === postId) return { ...post, featuredPosition: position };
-        if (post.featuredPosition === position) return { ...post, featuredPosition: null };
-        return post;
-      }));
+      setUserPosts(previous => previous.map(post => post.postId === postId ? { ...post, featuredPosition: position } : post.featuredPosition === position ? { ...post, featuredPosition: null } : post));
       setPostMenuOpenId(null);
     } catch (requestError: any) { alert(requestError.response?.data?.message || 'No se pudo destacar la publicación.'); }
     finally { setUpdatingFeaturedId(null); }
@@ -244,44 +238,80 @@ export default function ProfilePage() {
     finally { setIsDeletingPost(false); }
   };
 
+  const validateLocalImage = (file: File, maxBytes: number) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { alert('Formato no soportado. Usa JPEG, PNG o WEBP.'); return false; }
+    if (file.size > maxBytes) { alert(`La imagen supera el límite de ${Math.round(maxBytes / 1024 / 1024)} MB.`); return false; }
+    return true;
+  };
+
   const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return alert('Formato no soportado. Usa JPEG, PNG o WEBP.');
+    if (!file || !validateLocalImage(file, 10 * 1024 * 1024)) return;
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
     setAvatarFile(file); setAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const handleCoverChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !validateLocalImage(file, 16 * 1024 * 1024)) return;
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+    setCoverFile(file); setCoverPreview(URL.createObjectURL(file));
+  };
+
+  const deleteCover = async () => {
+    if (coverPreview) {
+      URL.revokeObjectURL(coverPreview);
+      setCoverPreview(null); setCoverFile(null);
+      return;
+    }
+    if (!profile?.coverUrl || !confirm('¿Quitar la portada actual de tu Espacio?')) return;
+    try {
+      await api.delete('/profiles/me/cover');
+      setProfile(previous => previous ? { ...previous, coverUrl: '' } : previous);
+    } catch (requestError: any) { alert(requestError.response?.data?.message || 'No se pudo quitar la portada.'); }
   };
 
   const handleSaveProfile = async (event: React.FormEvent) => {
     event.preventDefault(); setUpdating(true);
     try {
       let response;
-      if (avatarFile) {
+      if (avatarFile || coverFile) {
         const formData = new FormData();
         formData.append('displayName', editDisplayName);
         formData.append('bio', editBio);
         formData.append('isPrivate', String(editIsPrivate));
-        formData.append('avatar', avatarFile);
+        if (avatarFile) formData.append('avatar', avatarFile);
+        if (coverFile) formData.append('cover', coverFile);
         response = await api.patch('/profiles/me', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       } else {
         response = await api.put('/profiles/me', { displayName: editDisplayName, bio: editBio, isPrivate: editIsPrivate });
       }
       updateUserProfile({ displayName: response.data.displayName, avatarUrl: response.data.avatarUrl || currentUser?.avatarUrl });
-      setProfile(previous => previous ? { ...previous, displayName: response.data.displayName, bio: response.data.bio, avatarUrl: response.data.avatarUrl, isPrivate: response.data.isPrivate } : previous);
+      setProfile(previous => previous ? {
+        ...previous,
+        displayName: response.data.displayName,
+        bio: response.data.bio,
+        avatarUrl: response.data.avatarUrl,
+        coverUrl: response.data.coverUrl ?? previous.coverUrl,
+        isPrivate: response.data.isPrivate,
+      } : previous);
       if (avatarPreview) URL.revokeObjectURL(avatarPreview);
-      setAvatarPreview(null); setAvatarFile(null); setIsEditing(false);
+      if (coverPreview) URL.revokeObjectURL(coverPreview);
+      setAvatarPreview(null); setAvatarFile(null); setCoverPreview(null); setCoverFile(null); setIsEditing(false);
     } catch (requestError: any) { alert(requestError.response?.data?.message || 'No se pudo actualizar el espacio.'); }
     finally { setUpdating(false); }
   };
 
   const cancelEdit = () => {
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
-    setAvatarPreview(null); setAvatarFile(null); setIsEditing(false);
+    if (coverPreview) URL.revokeObjectURL(coverPreview);
+    setAvatarPreview(null); setAvatarFile(null); setCoverPreview(null); setCoverFile(null); setIsEditing(false);
   };
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#f4f6f9] dark:bg-[#090d16]"><div className="text-center"><div className="mx-auto h-11 w-11 animate-pulse rounded-2xl bg-teal-700"/><p className="mt-3 text-xs font-bold text-slate-500">Preparando el espacio…</p></div></div>;
-
   if (!profile) return <div className="flex min-h-screen items-center justify-center bg-[#f4f6f9] px-4 dark:bg-[#090d16]"><div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-[#0f172a]"><ShieldAlert className="mx-auto h-8 w-8 text-slate-400"/><h1 className="mt-4 font-black dark:text-white">{error}</h1>{error !== 'Usuario no encontrado' && <button onClick={() => void fetchProfile()} className="mt-4 rounded-xl bg-teal-700 px-5 py-2.5 text-xs font-bold text-white">Reintentar</button>}</div></div>;
+
+  const liveCover = coverPreview || profile.coverUrl;
 
   return <div className="min-h-screen bg-[#f4f6f9] pb-20 text-slate-800 dark:bg-[#090d16] dark:text-slate-100 md:pb-6">
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-[#0f172a]/95">
@@ -295,8 +325,10 @@ export default function ProfilePage() {
     <main className="mx-auto w-full max-w-[900px] space-y-5 px-3 py-4 sm:px-4 md:px-6 md:py-7">
       <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f171f]">
         <div className="relative h-40 overflow-hidden bg-[radial-gradient(circle_at_18%_15%,rgba(94,234,212,.55),transparent_24%),radial-gradient(circle_at_84%_80%,rgba(34,197,94,.27),transparent_28%),linear-gradient(135deg,#134e4a,#0f766e_55%,#164e63)] md:h-52">
-          <div className="absolute -right-10 -top-14 h-52 w-52 rounded-full border-[34px] border-white/10"/><div className="absolute -left-14 bottom-0 h-28 w-56 rotate-6 rounded-[60%] border border-white/15 bg-white/5"/>
-          <div className="absolute right-3 top-3 flex gap-2">{isSelf ? <><button onClick={() => setIsEditing(true)} className="rounded-xl bg-white/15 px-3 py-2 text-xs font-black text-white backdrop-blur"><Edit2 className="mr-1 inline h-3.5 w-3.5"/>Editar</button><button onClick={logout} className="rounded-xl bg-rose-500/20 p-2 text-white backdrop-blur"><LogOut className="h-4 w-4"/></button></> : <><button disabled={profile.relationshipStatus === 'PENDING'} onClick={() => void handleFollowToggle()} className={`rounded-xl px-4 py-2 text-xs font-black ${profile.relationshipStatus === 'FOLLOWING' ? 'bg-white text-slate-800' : profile.relationshipStatus === 'PENDING' ? 'bg-white/30 text-white' : 'bg-teal-950 text-white'}`}>{profile.relationshipStatus === 'FOLLOWING' ? <><Check className="mr-1 inline h-3.5 w-3.5"/>Conectado</> : profile.relationshipStatus === 'PENDING' ? 'Solicitud enviada' : 'Conectar'}</button><Link href={`/chat?username=${encodeURIComponent(profile.username)}`} className="rounded-xl bg-white/15 p-2.5 text-white backdrop-blur"><MessageSquare className="h-4 w-4"/></Link></>}</div>
+          {profile.coverUrl && <img src={profile.coverUrl} alt="Portada del espacio" className="absolute inset-0 h-full w-full object-cover"/>}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-black/15"/>
+          {!profile.coverUrl && <><div className="absolute -right-10 -top-14 h-52 w-52 rounded-full border-[34px] border-white/10"/><div className="absolute -left-14 bottom-0 h-28 w-56 rotate-6 rounded-[60%] border border-white/15 bg-white/5"/></>}
+          <div className="absolute right-3 top-3 flex gap-2">{isSelf ? <><button onClick={() => setIsEditing(true)} className="rounded-xl bg-black/25 px-3 py-2 text-xs font-black text-white backdrop-blur"><Edit2 className="mr-1 inline h-3.5 w-3.5"/>Editar</button><button onClick={logout} className="rounded-xl bg-rose-500/30 p-2 text-white backdrop-blur"><LogOut className="h-4 w-4"/></button></> : <><button disabled={profile.relationshipStatus === 'PENDING'} onClick={() => void handleFollowToggle()} className={`rounded-xl px-4 py-2 text-xs font-black ${profile.relationshipStatus === 'FOLLOWING' ? 'bg-white text-slate-800' : profile.relationshipStatus === 'PENDING' ? 'bg-white/30 text-white' : 'bg-teal-950 text-white'}`}>{profile.relationshipStatus === 'FOLLOWING' ? <><Check className="mr-1 inline h-3.5 w-3.5"/>Conectado</> : profile.relationshipStatus === 'PENDING' ? 'Solicitud enviada' : 'Conectar'}</button><Link href={`/chat?username=${encodeURIComponent(profile.username)}`} className="rounded-xl bg-black/25 p-2.5 text-white backdrop-blur"><MessageSquare className="h-4 w-4"/></Link></>}</div>
           <div className="absolute bottom-4 left-32 right-4 md:left-44"><h1 className="truncate text-xl font-black text-white md:text-3xl">{profile.displayName}</h1><p className="mt-1 text-xs font-bold text-white/75">@{profile.username}</p></div>
         </div>
         <div className="relative px-4 pb-6 pt-4 md:px-7">
@@ -327,7 +359,13 @@ export default function ProfilePage() {
       </article>)}{userPosts.length === 0 && <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center dark:border-slate-800 dark:bg-[#0f171f]"><Grid className="mx-auto h-8 w-8 text-slate-300"/><p className="mt-2 text-xs font-bold text-slate-500">Aún no hay contribuciones.</p></div>}</div>}
     </main>
 
-    {isEditing && <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 backdrop-blur-sm md:items-center md:p-4"><button aria-label="Cerrar" className="absolute inset-0" onClick={cancelEdit}/><section className="relative z-10 max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#0f172a] md:max-w-md md:rounded-3xl"><div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800"><h2 className="font-black"><Edit2 className="mr-2 inline h-4 w-4 text-teal-600"/>Editar espacio</h2><button onClick={cancelEdit} className="text-xs font-bold text-slate-400">Cancelar</button></div><form onSubmit={event => void handleSaveProfile(event)}><div className="space-y-4 p-5"><div className="text-center"><div className="relative mx-auto h-24 w-24"><UserAvatar avatarUrl={avatarPreview || profile.avatarUrl} name={profile.displayName} className="h-24 w-24 rounded-full text-2xl"/><button type="button" onClick={() => fileInputRef.current?.click()} className="absolute bottom-0 right-0 rounded-full bg-teal-700 p-2 text-white"><Camera className="h-4 w-4"/></button></div><button type="button" onClick={() => fileInputRef.current?.click()} className="mt-2 text-xs font-bold text-teal-700">Cambiar imagen</button><input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleAvatarChange} className="hidden"/></div><label className="block"><span className="mb-1 block text-xs font-bold">Nombre</span><input value={editDisplayName} onChange={event => setEditDisplayName(event.target.value)} required className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-teal-600 dark:border-slate-700 dark:bg-[#0b1516]"/></label><label className="block"><span className="mb-1 block text-xs font-bold">Presentación</span><textarea value={editBio} onChange={event => setEditBio(event.target.value)} rows={4} className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-teal-600 dark:border-slate-700 dark:bg-[#0b1516]"/></label><label className="flex items-center justify-between rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><span><strong className="block text-xs">Espacio privado</strong><span className="text-[10px] text-slate-400">Aprueba quién puede ver tu contenido.</span></span><input type="checkbox" checked={editIsPrivate} onChange={event => setEditIsPrivate(event.target.checked)} className="h-5 w-5 accent-teal-700"/></label></div><div className="border-t border-slate-100 p-5 dark:border-slate-800" style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}><button disabled={updating} className="w-full rounded-2xl bg-teal-700 py-3 text-sm font-black text-white disabled:opacity-50">{updating ? 'Guardando…' : 'Guardar cambios'}</button></div></form></section></div>}
+    {isEditing && <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 backdrop-blur-sm md:items-center md:p-4"><button aria-label="Cerrar" className="absolute inset-0" onClick={cancelEdit}/><section className="relative z-10 max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#0f172a] md:max-w-md md:rounded-3xl"><div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800"><h2 className="font-black"><Edit2 className="mr-2 inline h-4 w-4 text-teal-600"/>Editar espacio</h2><button onClick={cancelEdit} className="text-xs font-bold text-slate-400">Cancelar</button></div><form onSubmit={event => void handleSaveProfile(event)}><div className="space-y-4 p-5">
+      <div><div className="mb-2 flex items-center justify-between"><span className="text-xs font-black">Portada</span>{(coverPreview || profile.coverUrl) && <button type="button" onClick={() => void deleteCover()} className="text-[10px] font-bold text-rose-500">Quitar</button>}</div><button type="button" onClick={() => coverInputRef.current?.click()} className="relative h-32 w-full overflow-hidden rounded-2xl border border-slate-200 bg-[linear-gradient(135deg,#134e4a,#0f766e,#164e63)] dark:border-slate-700">{liveCover ? <img src={liveCover} alt="Vista previa de portada" className="h-full w-full object-cover"/> : <div className="flex h-full flex-col items-center justify-center text-white"><ImageIcon className="h-6 w-6"/><span className="mt-2 text-xs font-black">Añadir portada</span></div>}<span className="absolute bottom-2 right-2 rounded-xl bg-black/45 px-3 py-2 text-[10px] font-black text-white backdrop-blur"><Camera className="mr-1 inline h-3.5 w-3.5"/>Cambiar</span></button><input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleCoverChange} className="hidden"/><p className="mt-1 text-[9px] text-slate-400">JPEG, PNG o WebP · máximo 16 MB. Se verá como cabecera de tu Espacio.</p></div>
+      <div className="text-center"><div className="relative mx-auto h-24 w-24"><UserAvatar avatarUrl={avatarPreview || profile.avatarUrl} name={profile.displayName} className="h-24 w-24 rounded-full text-2xl"/><button type="button" onClick={() => avatarInputRef.current?.click()} className="absolute bottom-0 right-0 rounded-full bg-teal-700 p-2 text-white"><Camera className="h-4 w-4"/></button></div><button type="button" onClick={() => avatarInputRef.current?.click()} className="mt-2 text-xs font-bold text-teal-700">Cambiar imagen</button><input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleAvatarChange} className="hidden"/></div>
+      <label className="block"><span className="mb-1 block text-xs font-bold">Nombre</span><input value={editDisplayName} onChange={event => setEditDisplayName(event.target.value)} required className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-teal-600 dark:border-slate-700 dark:bg-[#0b1516]"/></label>
+      <label className="block"><span className="mb-1 block text-xs font-bold">Presentación</span><textarea value={editBio} onChange={event => setEditBio(event.target.value)} rows={4} className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-teal-600 dark:border-slate-700 dark:bg-[#0b1516]"/></label>
+      <label className="flex items-center justify-between rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><span><strong className="block text-xs">Espacio privado</strong><span className="text-[10px] text-slate-400">Aprueba quién puede ver tu contenido.</span></span><input type="checkbox" checked={editIsPrivate} onChange={event => setEditIsPrivate(event.target.checked)} className="h-5 w-5 accent-teal-700"/></label>
+    </div><div className="border-t border-slate-100 p-5 dark:border-slate-800" style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}><button disabled={updating} className="w-full rounded-2xl bg-teal-700 py-3 text-sm font-black text-white disabled:opacity-50">{updating ? 'Guardando…' : 'Guardar cambios'}</button></div></form></section></div>}
 
     {deleteConfirmPostId && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" onClick={() => !isDeletingPost && setDeleteConfirmPostId(null)}><section className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl dark:bg-[#0f172a]" onClick={event => event.stopPropagation()}><h2 className="font-black">Eliminar contribución</h2><p className="mt-2 text-sm text-slate-500">Esta acción no se puede deshacer.</p><div className="mt-5 flex gap-3"><button disabled={isDeletingPost} onClick={() => setDeleteConfirmPostId(null)} className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold dark:border-slate-700">Cancelar</button><button disabled={isDeletingPost} onClick={() => void handleDeletePost(deleteConfirmPostId)} className="flex-1 rounded-xl bg-rose-600 py-2.5 text-xs font-black text-white">{isDeletingPost ? 'Eliminando…' : 'Eliminar'}</button></div></section></div>}
 
