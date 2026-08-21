@@ -8,19 +8,37 @@ const POSTS = [
   {
     image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=82',
     title: 'Hay lugares que parecen inventados',
-    caption: 'Montañas, niebla y silencio. A veces descubrir también es detenerse un momento y mirar.'
+    caption: 'Montañas, niebla y silencio. A veces descubrir también es detenerse un momento y mirar.',
+    publishedAt: '2026-08-20T18:10:00-05:00'
   },
   {
     image: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=82',
     title: 'El desierto también guarda ritmo',
-    caption: 'Las dunas cambian lentamente con el viento: un paisaje puede estar vivo aunque parezca inmóvil.'
+    caption: 'Las dunas cambian lentamente con el viento: un paisaje puede estar vivo aunque parezca inmóvil.',
+    publishedAt: '2026-08-20T15:40:00-05:00'
   },
   {
     image: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=82',
     title: 'Un minuto de bosque',
-    caption: 'Los ecosistemas forestales conectan raíces, hongos, agua y nutrientes en redes mucho más complejas de lo que vemos.'
+    caption: 'Los ecosistemas forestales conectan raíces, hongos, agua y nutrientes en redes mucho más complejas de lo que vemos.',
+    publishedAt: '2026-08-19T21:15:00-05:00'
   }
 ];
+
+function relativeTime(value: string) {
+  const diffMs = Date.now() - new Date(value).getTime();
+  const diffSeconds = Math.max(0, Math.floor(diffMs / 1000));
+  if (diffSeconds < 45) return 'Ahora';
+  if (diffSeconds < 3600) return `hace ${Math.max(1, Math.floor(diffSeconds / 60))} min`;
+  if (diffSeconds < 86400) return `hace ${Math.floor(diffSeconds / 3600)} h`;
+  const days = Math.floor(diffSeconds / 86400);
+  if (days === 1) return 'ayer';
+  if (days < 7) return `hace ${days} d`;
+  if (days < 30) return `hace ${Math.floor(days / 7)} sem`;
+  if (days < 365) return `hace ${Math.floor(days / 30)} mes${Math.floor(days / 30) === 1 ? '' : 'es'}`;
+  const years = Math.floor(days / 365);
+  return `hace ${years} año${years === 1 ? '' : 's'}`;
+}
 
 export default function LifonkDescubreProfile() {
   return (
@@ -50,6 +68,13 @@ export default function LifonkDescubreProfile() {
 
         {POSTS.map(post => (
           <article key={post.title} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
+            <div className="flex items-center justify-between px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-600 to-cyan-600 text-sm font-black text-white">L</div>
+                <div><div className="flex items-center gap-1"><span className="text-sm font-black">Lifonk Descubre</span><BadgeCheck className="h-3.5 w-3.5 text-teal-500"/></div><span className="text-[10px] text-slate-400">@lifonk-descubre</span></div>
+              </div>
+              <time dateTime={post.publishedAt} className="text-[10px] font-semibold text-slate-400">{relativeTime(post.publishedAt)}</time>
+            </div>
             <img src={post.image} alt={post.title} className="max-h-[68dvh] w-full object-cover" loading="lazy" />
             <div className="p-4"><h4 className="text-base font-black">{post.title}</h4><p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{post.caption}</p></div>
           </article>
