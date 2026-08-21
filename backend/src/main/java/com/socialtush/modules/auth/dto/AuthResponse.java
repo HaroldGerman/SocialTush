@@ -13,11 +13,12 @@ import java.util.UUID;
 @AllArgsConstructor
 public class AuthResponse {
     private String accessToken;
-    private String refreshToken; // Para la app móvil
+    private String refreshToken;
     private UUID userId;
     private String username;
     private String email;
     private String displayName;
     private String avatarUrl;
     private String role;
+    private String preferredLanguage;
 }
