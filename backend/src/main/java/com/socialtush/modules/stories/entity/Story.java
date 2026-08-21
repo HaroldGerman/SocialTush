@@ -45,6 +45,12 @@ public class Story {
     @Column(name = "music_title", length = 255)
     private String musicTitle;
 
+    @Column(name = "video_trim_start")
+    private Double videoTrimStart;
+
+    @Column(name = "video_trim_end")
+    private Double videoTrimEnd;
+
     @Column(name = "is_best_friends", nullable = false)
     @Builder.Default
     private boolean isBestFriends = false;
