@@ -1,0 +1,2 @@
+ALTER TABLE profiles
+    ADD COLUMN cover_url VARCHAR(512) NULL;
