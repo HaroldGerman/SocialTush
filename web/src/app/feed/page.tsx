@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import NotificationBell from '@/components/NotificationBell';
 import StoryViewer from '@/components/StoryViewer';
-import { 
-  Home, Activity, Bookmark, Calendar, Compass, Plus, Search, Bell, 
-  User, MessageSquare, Image as ImageIcon, Mic, HelpCircle, Smile, 
+import {
+  Home, Activity, Bookmark, Calendar, Compass, Plus, Search, Bell,
+  User, MessageSquare, Image as ImageIcon, Mic, HelpCircle, Smile,
   MapPin, Play, Pause, ChevronRight, Settings, Users, Sparkles, Check, Share2, Layers, Heart, X, Upload, Sun, Moon
 } from 'lucide-react';
 import { formatLocalTimestamp } from '@/lib/dateUtils';
@@ -16,6 +16,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useCreateHub } from '@/context/CreateHubContext';
 import MobileBottomBar from '@/components/MobileBottomBar';
 import UserAvatar from '@/components/UserAvatar';
+import EcoThread from '@/components/EcoThread';
 import { useRealtimeActivity } from '@/context/RealtimeActivityContext';
 
 interface PostData {
@@ -67,7 +68,6 @@ export default function FeedPage() {
   const { openCreateHub, openStoryComposer } = useCreateHub();
   const { totalUnreadMessages } = useRealtimeActivity();
 
-  // State
   const [postsList, setPostsList] = useState<PostData[]>([]);
   const [newMomentText, setNewMomentText] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -77,7 +77,6 @@ export default function FeedPage() {
   const [failedWebImages, setFailedWebImages] = useState<Record<string, boolean>>({});
   const [failedWebVideos, setFailedWebVideos] = useState<Record<string, boolean>>({});
 
-  // Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResults | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -85,7 +84,6 @@ export default function FeedPage() {
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const searchDebounceTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Stories State
   const [groupedStories, setGroupedStories] = useState<GroupedStory[]>([]);
   const [activeStoryViewerIndex, setActiveStoryViewerIndex] = useState<number | null>(null);
   const ownStoryIndex = groupedStories.findIndex((group) =>
@@ -101,18 +99,12 @@ export default function FeedPage() {
     .map((group, originalIndex) => ({ group, originalIndex }))
     .filter(({ originalIndex }) => originalIndex !== ownStoryIndex);
 
-  // Comments State
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
-  const [postCommentsMap, setPostCommentsMap] = useState<Record<string, any[]>>({});
-  const [commentInputMap, setCommentInputMap] = useState<Record<string, string>>({});
-  const [loadingCommentsMap, setLoadingCommentsMap] = useState<Record<string, boolean>>({});
 
-  // Delete Post State
   const [deleteConfirmPostId, setDeleteConfirmPostId] = useState<string | null>(null);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
   const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null);
 
-  // Fetch Feed & Stories on Mount
   useEffect(() => {
     fetchFeedPosts();
     fetchActiveStories();
@@ -243,34 +235,14 @@ export default function FeedPage() {
     }
   };
 
-  const toggleComments = async (postId: string) => {
-    const isExpanded = !expandedComments[postId];
-    setExpandedComments(prev => ({ ...prev, [postId]: isExpanded }));
-    if (isExpanded && !postCommentsMap[postId]) {
-      setLoadingCommentsMap(prev => ({ ...prev, [postId]: true }));
-      try {
-        const res = await api.get(`/comments/${postId}`);
-        setPostCommentsMap(prev => ({ ...prev, [postId]: res.data || [] }));
-      } catch (err) {
-        setPostCommentsMap(prev => ({ ...prev, [postId]: [] }));
-      } finally {
-        setLoadingCommentsMap(prev => ({ ...prev, [postId]: false }));
-      }
-    }
+  const toggleComments = (postId: string) => {
+    setExpandedComments(prev => ({ ...prev, [postId]: !prev[postId] }));
   };
 
-  const handleAddComment = async (postId: string, e: React.FormEvent) => {
-    e.preventDefault();
-    const text = commentInputMap[postId]?.trim();
-    if (!text) return;
-    try {
-      const res = await api.post(`/comments/${postId}`, { content: text });
-      setPostCommentsMap(prev => ({ ...prev, [postId]: [...(prev[postId] || []), res.data] }));
-      setPostsList(prev => prev.map(p => p.postId === postId ? { ...p, commentsCount: (p.commentsCount || 0) + 1 } : p));
-      setCommentInputMap(prev => ({ ...prev, [postId]: '' }));
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Error al publicar comentario');
-    }
+  const incrementCommentCount = (postId: string) => {
+    setPostsList(prev => prev.map(post => post.postId === postId
+      ? { ...post, commentsCount: (post.commentsCount || 0) + 1 }
+      : post));
   };
 
   return (
@@ -305,7 +277,7 @@ export default function FeedPage() {
       <div className="max-w-[1600px] mx-auto w-full px-4 md:px-6 py-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6">
         <aside className="hidden lg:block lg:col-span-3 space-y-6">
           <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm space-y-1">
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-teal-800/30 text-teal-400 font-bold text-xs border border-teal-700/50"><Home className="w-4 h-4 text-teal-400" /><span>Ritmo</span></button>
+            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-teal-800/30 text-teal-400 font-bold text-xs border border-teal-200 dark:border-teal-700/50"><Home className="w-4 h-4 text-teal-400" /><span>Ritmo</span></button>
             <Link href="/circles" className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800/50 font-semibold text-xs transition-all"><Compass className="w-4 h-4 text-slate-500" /><span>Descubrir círculos</span></Link>
             <Link href="/chat" className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800/50 font-semibold text-xs transition-all"><MessageSquare className="w-4 h-4 text-slate-500" /><span>Conversaciones</span></Link>
             <Link href={user ? `/profile/${user.username}` : '/login'} className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-800/50 font-semibold text-xs transition-all"><User className="w-4 h-4 text-slate-500" /><span>Tu espacio</span></Link>
@@ -379,7 +351,7 @@ export default function FeedPage() {
                     <div className="flex items-center gap-6"><button onClick={() => handleToggleLike(post.postId)} className={`flex items-center gap-1.5 hover:text-rose-500 transition-colors ${post.hasLiked ? 'text-rose-500 font-bold' : ''}`}><Heart className={`w-4 h-4 ${post.hasLiked ? 'fill-current text-rose-500' : ''}`} /><span>{post.likesCount}</span></button><button onClick={() => toggleComments(post.postId)} className="flex items-center gap-1.5 hover:text-teal-400 transition-colors cursor-pointer"><MessageSquare className="w-4 h-4" /><span>{post.commentsCount}</span></button><button onClick={() => handleSharePost(post)} className="flex items-center gap-1.5 hover:text-teal-400 transition-colors cursor-pointer"><Share2 className="w-4 h-4" /></button></div>
                     <button onClick={() => handleSavePost(post.postId)} className="hover:text-teal-400 transition-colors" aria-label={post.isSaved ? 'Retirar de colección' : 'Coleccionar contribución'}><Bookmark className={`w-4 h-4 ${post.isSaved ? 'fill-current text-teal-400' : ''}`} /></button>
                   </div>
-                  {expandedComments[post.postId] && <div className="pt-3 border-t border-slate-200 dark:border-slate-800/80 space-y-3"><form onSubmit={(e) => handleAddComment(post.postId, e)} className="flex items-center gap-2"><input type="text" placeholder="Escribe un eco..." value={commentInputMap[post.postId] || ''} onChange={(e) => setCommentInputMap(prev => ({ ...prev, [post.postId]: e.target.value }))} className="flex-1 px-3 py-2 bg-slate-50 dark:bg-[#090d16] border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-teal-600" /><button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-xl text-xs font-bold hover:bg-teal-600 transition-all">Responder</button></form>{loadingCommentsMap[post.postId] ? <p className="text-[11px] text-slate-500 italic">Cargando ecos...</p> : <div className="space-y-2 max-h-48 overflow-y-auto">{(postCommentsMap[post.postId] || []).map((c: any, i: number) => <div key={c.commentId || i} className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/60 rounded-xl p-2.5 text-xs"><span className="font-bold text-teal-400 block text-[11px]">@{c.authorUsername || c.username || 'usuario'}</span><span className="text-slate-700 dark:text-slate-300">{c.content || c.text}</span></div>)}{(!postCommentsMap[post.postId] || postCommentsMap[post.postId].length === 0) && <p className="text-[11px] text-slate-500">Sé el primero en responder.</p>}</div>}</div>}
+                  {expandedComments[post.postId] && <div className="pt-3 border-t border-slate-200 dark:border-slate-800/80"><EcoThread postId={post.postId} onCommentAdded={() => incrementCommentCount(post.postId)} /></div>}
                 </div>
               );
             })}
