@@ -1,16 +1,18 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth, api } from '@/context/AuthContext';
-import { useTheme } from '@/context/ThemeContext';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import {
+  Activity, Award, Camera, Check, ChevronLeft, Compass, Edit2, Grid, Heart, Lock,
+  LogOut, MessageSquare, Moon, MoreVertical, Pin, Plus, ShieldAlert, Sparkles, Sun,
+  Trash2, User, Users, Video
+} from 'lucide-react';
+import { api, useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 import NotificationBell from '@/components/NotificationBell';
 import MobileBottomBar from '@/components/MobileBottomBar';
 import UserAvatar from '@/components/UserAvatar';
-import { 
-  User, Lock, Settings, LogOut, Grid, Bookmark, Users, ChevronLeft, Check, Plus, Edit2, ShieldAlert, Sparkles, MessageSquare, MapPin, Radio, Calendar, Home, Compass, Search, Bell, Heart, Activity, Award, X, Camera, Sun, Moon
-} from 'lucide-react';
 import { formatLocalTimestamp } from '@/lib/dateUtils';
 
 interface ProfileData {
@@ -43,6 +45,10 @@ interface PostData {
   location?: string;
   musicTitle?: string;
   mediaUrls: string[];
+  mediaTypes?: string[];
+  mediaThumbnailUrls?: string[];
+  isShortVideo?: boolean;
+  featuredPosition?: number | null;
   likesCount: number;
   commentsCount: number;
   hasLiked: boolean;
@@ -60,6 +66,24 @@ interface ProfileCircle {
   visibility: string;
 }
 
+function PostMedia({ post, showcase = false }: { post: PostData; showcase?: boolean }) {
+  if (!post.mediaUrls?.length) return null;
+  const type = post.mediaTypes?.[0] || '';
+  const video = type === 'VIDEO' || post.isShortVideo;
+  const thumbnail = post.mediaThumbnailUrls?.[0];
+
+  if (showcase) {
+    if (video && thumbnail) return <img src={thumbnail} alt="Portada" loading="lazy" className="h-full w-full object-cover" />;
+    if (video) return <video src={post.mediaUrls[0]} muted playsInline preload="metadata" className="h-full w-full object-cover" />;
+    return <img src={post.mediaUrls[0]} alt="Publicación destacada" loading="lazy" className="h-full w-full object-cover" />;
+  }
+
+  if (video) {
+    return <video src={post.mediaUrls[0]} poster={thumbnail} controls playsInline preload="metadata" className="max-h-[70dvh] w-full bg-black object-contain" />;
+  }
+  return <img src={post.mediaUrls[0]} alt="Media" loading="lazy" className="max-h-[70dvh] w-full object-contain" />;
+}
+
 export default function ProfilePage() {
   const { username } = useParams() as { username: string };
   const { user: currentUser, logout, updateUserProfile, isLoading: authLoading } = useAuth();
@@ -69,858 +93,244 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [userPosts, setUserPosts] = useState<PostData[]>([]);
   const [profileCircles, setProfileCircles] = useState<ProfileCircle[]>([]);
-  const [circlesError, setCirclesError] = useState('');
-  const [postsLoadError, setPostsLoadError] = useState(false);
+  const [activeTab, setActiveTab] = useState<'POSTS' | 'CIRCLES'>('POSTS');
   const [loading, setLoading] = useState(true);
+  const [postsLoadError, setPostsLoadError] = useState(false);
+  const [circlesError, setCirclesError] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'MOMENTOS' | 'RESPUESTAS' | 'CIRCULOS' | 'GUARDADOS'>('MOMENTOS');
-  const [isEditing, setIsEditing] = useState(false);
 
-  // Edit fields
+  const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null);
+  const [deleteConfirmPostId, setDeleteConfirmPostId] = useState<string | null>(null);
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
+  const [updatingFeaturedId, setUpdatingFeaturedId] = useState<string | null>(null);
+
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [postCommentsMap, setPostCommentsMap] = useState<Record<string, any[]>>({});
+  const [commentInputMap, setCommentInputMap] = useState<Record<string, string>>({});
+  const [loadingCommentsMap, setLoadingCommentsMap] = useState<Record<string, boolean>>({});
+
+  const [isEditing, setIsEditing] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editBio, setEditBio] = useState('');
   const [editIsPrivate, setEditIsPrivate] = useState(false);
   const [updating, setUpdating] = useState(false);
-
-  // Avatar Upload State
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Delete Post State
-  const [deleteConfirmPostId, setDeleteConfirmPostId] = useState<string | null>(null);
-  const [isDeletingPost, setIsDeletingPost] = useState(false);
-  const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null);
-
-  const isSelf = profile ? (profile.isSelf || (currentUser && currentUser.username.toLowerCase() === username.toLowerCase())) : false;
-  const interests = profile?.interests?.split(',').map(value => value.trim()).filter(Boolean) || [];
-  const totalResonances = userPosts.reduce((total, post) => total + (post.likesCount || 0), 0);
-  const totalEchoes = userPosts.reduce((total, post) => total + (post.commentsCount || 0), 0);
+  const isSelf = Boolean(profile && (profile.isSelf || currentUser?.username?.toLowerCase() === profile.username.toLowerCase()));
+  const interests = useMemo(() => profile?.interests?.split(',').map(value => value.trim()).filter(Boolean) || [], [profile?.interests]);
+  const totalResonances = useMemo(() => userPosts.reduce((total, post) => total + (post.likesCount || 0), 0), [userPosts]);
+  const totalEchoes = useMemo(() => userPosts.reduce((total, post) => total + (post.commentsCount || 0), 0), [userPosts]);
+  const pulseCount = useMemo(() => userPosts.filter(post => post.isShortVideo).length, [userPosts]);
+  const featuredPosts = useMemo(() => userPosts.filter(post => post.featuredPosition != null)
+    .sort((a, b) => (a.featuredPosition || 99) - (b.featuredPosition || 99)).slice(0, 3), [userPosts]);
 
   const fetchPosts = useCallback(async (knownProfile: ProfileData) => {
     setPostsLoadError(false);
-    if (!knownProfile.canViewContent) {
-      setUserPosts([]);
-      return;
-    }
-
+    if (!knownProfile.canViewContent) { setUserPosts([]); return; }
     try {
-      const postsRes = await api.get(`/posts/user/${username}`);
-      setUserPosts(postsRes.data.content || postsRes.data || []);
-    } catch (postsError: any) {
+      const response = await api.get(`/posts/user/${encodeURIComponent(username)}`);
+      setUserPosts(response.data?.content || response.data || []);
+    } catch (requestError: any) {
       setUserPosts([]);
-      if (postsError.response?.status === 404) {
-        setProfile(null);
-        setError('Usuario no encontrado');
-        return;
-      }
-      if (postsError.response?.status === 403) {
-        try {
-          const refreshedProfile = await api.get(`/profiles/${username}`);
-          setProfile(refreshedProfile.data);
-          if (!refreshedProfile.data.canViewContent) return;
-        } catch (profileRefreshError) {
-          console.error('No se pudo reconciliar la privacidad del perfil', profileRefreshError);
-        }
-      }
+      if (requestError.response?.status === 403) return;
       setPostsLoadError(true);
     }
   }, [username]);
 
   const fetchProfile = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      const res = await api.get(`/profiles/${username}`);
-      setProfile(res.data);
-      setEditDisplayName(res.data.displayName);
-      setEditBio(res.data.bio || '');
-      setEditIsPrivate(res.data.isPrivate);
-
-      await fetchPosts(res.data);
+      const response = await api.get(`/profiles/${encodeURIComponent(username)}`);
+      const loadedProfile: ProfileData = response.data;
+      setProfile(loadedProfile);
+      setEditDisplayName(loadedProfile.displayName || '');
+      setEditBio(loadedProfile.bio || '');
+      setEditIsPrivate(Boolean(loadedProfile.isPrivate));
+      await fetchPosts(loadedProfile);
       try {
-        const circlesRes = await api.get(`/circles/user/${username}`);
-        setProfileCircles(circlesRes.data || []);
-        setCirclesError('');
+        const circles = await api.get(`/circles/user/${encodeURIComponent(username)}`);
+        setProfileCircles(circles.data || []); setCirclesError('');
       } catch (circleError: any) {
-        setProfileCircles([]);
-        setCirclesError(circleError.response?.data?.message || 'No se pudieron cargar los círculos.');
+        setProfileCircles([]); setCirclesError(circleError.response?.data?.message || 'No se pudieron cargar los círculos.');
       }
-    } catch (err: any) {
-      setProfile(null);
-      setUserPosts([]);
-      setPostsLoadError(false);
-      setProfileCircles([]);
-      setError(err.response?.status === 404 ? 'Usuario no encontrado' : 'No se pudo cargar el perfil.');
-    } finally {
-      setLoading(false);
-    }
-  }, [username, currentUser, fetchPosts]);
+    } catch (requestError: any) {
+      setProfile(null); setUserPosts([]); setProfileCircles([]);
+      setError(requestError.response?.status === 404 ? 'Usuario no encontrado' : 'No se pudo cargar este espacio.');
+    } finally { setLoading(false); }
+  }, [username, fetchPosts]);
 
-  useEffect(() => {
-    if (!authLoading) {
-      fetchProfile();
-    }
-  }, [authLoading, fetchProfile]);
+  useEffect(() => { if (!authLoading) void fetchProfile(); }, [authLoading, fetchProfile]);
 
   const handleFollowToggle = async () => {
     if (!profile || profile.relationshipStatus === 'PENDING') return;
     try {
       if (profile.isFollowing) {
         await api.post(`/social/unfollow/${profile.username}`);
-        setProfile(prev => prev ? {
-          ...prev,
-          isFollowing: false,
-          canViewContent: !prev.isPrivate,
-          relationshipStatus: 'NONE',
-          followersCount: Math.max(0, prev.followersCount - 1)
-        } : null);
+        setProfile(previous => previous ? { ...previous, isFollowing: false, canViewContent: !previous.isPrivate, relationshipStatus: 'NONE', followersCount: Math.max(0, previous.followersCount - 1) } : previous);
+        if (profile.isPrivate) setUserPosts([]);
       } else {
-        const res = await api.post(`/social/follow/${profile.username}`);
-        const isRequestPending = res.data.status === 'PENDING';
-        setProfile(prev => prev ? {
-          ...prev,
-          isFollowing: !isRequestPending,
-          canViewContent: !isRequestPending || !prev.isPrivate,
-          relationshipStatus: isRequestPending ? 'PENDING' : 'FOLLOWING',
-          followersCount: !isRequestPending ? prev.followersCount + 1 : prev.followersCount
-        } : null);
+        const response = await api.post(`/social/follow/${profile.username}`);
+        const pending = response.data.status === 'PENDING';
+        setProfile(previous => previous ? { ...previous, isFollowing: !pending, canViewContent: !pending || !previous.isPrivate, relationshipStatus: pending ? 'PENDING' : 'FOLLOWING', followersCount: pending ? previous.followersCount : previous.followersCount + 1 } : previous);
+        if (!pending) await fetchProfile();
       }
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Error al cambiar estado de seguimiento.');
-    }
+    } catch (requestError: any) { alert(requestError.response?.data?.message || 'No se pudo cambiar la conexión.'); }
   };
-
-  // Comments State
-  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
-  const [postCommentsMap, setPostCommentsMap] = useState<Record<string, any[]>>({});
-  const [commentInputMap, setCommentInputMap] = useState<Record<string, string>>({});
-  const [loadingCommentsMap, setLoadingCommentsMap] = useState<Record<string, boolean>>({});
 
   const handleLikeToggle = async (postId: string) => {
     try {
-      const res = await api.post(`/likes/${postId}`);
-      setUserPosts(prev => prev.map(p => p.postId === postId ? {
-        ...p,
-        hasLiked: res.data.liked,
-        likesCount: res.data.count
-      } : p));
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'No se pudo actualizar la resonancia.');
-    }
+      const response = await api.post(`/likes/${postId}`);
+      setUserPosts(previous => previous.map(post => post.postId === postId ? { ...post, hasLiked: response.data.liked, likesCount: response.data.count } : post));
+    } catch (requestError: any) { alert(requestError.response?.data?.message || 'No se pudo actualizar la resonancia.'); }
   };
 
   const toggleComments = async (postId: string) => {
-    const isExpanded = !expandedComments[postId];
-    setExpandedComments(prev => ({ ...prev, [postId]: isExpanded }));
-
-    if (isExpanded && !postCommentsMap[postId]) {
-      setLoadingCommentsMap(prev => ({ ...prev, [postId]: true }));
-      try {
-        const res = await api.get(`/comments/${postId}`);
-        setPostCommentsMap(prev => ({ ...prev, [postId]: res.data || [] }));
-      } catch (err) {
-        setPostCommentsMap(prev => ({ ...prev, [postId]: [] }));
-      } finally {
-        setLoadingCommentsMap(prev => ({ ...prev, [postId]: false }));
-      }
-    }
-  };
-
-  const handleAddComment = async (postId: string, e: React.FormEvent) => {
-    e.preventDefault();
-    const text = commentInputMap[postId]?.trim();
-    if (!text) return;
-
+    const next = !expandedComments[postId];
+    setExpandedComments(previous => ({ ...previous, [postId]: next }));
+    if (!next || postCommentsMap[postId]) return;
+    setLoadingCommentsMap(previous => ({ ...previous, [postId]: true }));
     try {
-      const res = await api.post(`/comments/${postId}`, { content: text });
-      const newComment = res.data;
-      setPostCommentsMap(prev => ({
-        ...prev,
-        [postId]: [...(prev[postId] || []), newComment]
-      }));
-      setUserPosts(prev => prev.map(p => p.postId === postId ? { ...p, commentsCount: (p.commentsCount || 0) + 1 } : p));
-      setCommentInputMap(prev => ({ ...prev, [postId]: '' }));
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'No se pudo publicar el comentario.');
-    }
+      const response = await api.get(`/comments/${postId}`);
+      setPostCommentsMap(previous => ({ ...previous, [postId]: response.data || [] }));
+    } catch { setPostCommentsMap(previous => ({ ...previous, [postId]: [] })); }
+    finally { setLoadingCommentsMap(previous => ({ ...previous, [postId]: false })); }
   };
 
-  // Handle Delete Post (own posts only)
+  const handleAddComment = async (postId: string, event: React.FormEvent) => {
+    event.preventDefault();
+    const content = commentInputMap[postId]?.trim();
+    if (!content) return;
+    try {
+      const response = await api.post(`/comments/${postId}`, { content });
+      setPostCommentsMap(previous => ({ ...previous, [postId]: [...(previous[postId] || []), response.data] }));
+      setUserPosts(previous => previous.map(post => post.postId === postId ? { ...post, commentsCount: (post.commentsCount || 0) + 1 } : post));
+      setCommentInputMap(previous => ({ ...previous, [postId]: '' }));
+    } catch (requestError: any) { alert(requestError.response?.data?.message || 'No se pudo publicar el eco.'); }
+  };
+
+  const featurePost = async (postId: string, position: number) => {
+    setUpdatingFeaturedId(postId);
+    try {
+      await api.put(`/posts/${postId}/feature`, null, { params: { position } });
+      setUserPosts(previous => previous.map(post => {
+        if (post.postId === postId) return { ...post, featuredPosition: position };
+        if (post.featuredPosition === position) return { ...post, featuredPosition: null };
+        return post;
+      }));
+      setPostMenuOpenId(null);
+    } catch (requestError: any) { alert(requestError.response?.data?.message || 'No se pudo destacar la publicación.'); }
+    finally { setUpdatingFeaturedId(null); }
+  };
+
+  const unfeaturePost = async (postId: string) => {
+    setUpdatingFeaturedId(postId);
+    try {
+      await api.delete(`/posts/${postId}/feature`);
+      setUserPosts(previous => previous.map(post => post.postId === postId ? { ...post, featuredPosition: null } : post));
+      setPostMenuOpenId(null);
+    } catch (requestError: any) { alert(requestError.response?.data?.message || 'No se pudo quitar de la Vitrina.'); }
+    finally { setUpdatingFeaturedId(null); }
+  };
+
   const handleDeletePost = async (postId: string) => {
     setIsDeletingPost(true);
     try {
       await api.delete(`/posts/${postId}`);
-      setUserPosts(prev => prev.filter(p => p.postId !== postId));
+      setUserPosts(previous => previous.filter(post => post.postId !== postId));
       setDeleteConfirmPostId(null);
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'No se pudo eliminar la contribución.');
-    } finally {
-      setIsDeletingPost(false);
-    }
+    } catch (requestError: any) { alert(requestError.response?.data?.message || 'No se pudo eliminar la contribución.'); }
+    finally { setIsDeletingPost(false); }
   };
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Validate MIME type
-      const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-      if (!validTypes.includes(file.type)) {
-        alert('Formato no soportado. Usa JPEG, PNG o WEBP.');
-        return;
-      }
-      setAvatarFile(file);
-      const url = URL.createObjectURL(file);
-      setAvatarPreview(url);
-    }
+  const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return alert('Formato no soportado. Usa JPEG, PNG o WEBP.');
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    setAvatarFile(file); setAvatarPreview(URL.createObjectURL(file));
   };
 
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setUpdating(true);
+  const handleSaveProfile = async (event: React.FormEvent) => {
+    event.preventDefault(); setUpdating(true);
     try {
-      let res;
+      let response;
       if (avatarFile) {
-        // Multipart payload
         const formData = new FormData();
         formData.append('displayName', editDisplayName);
         formData.append('bio', editBio);
         formData.append('isPrivate', String(editIsPrivate));
         formData.append('avatar', avatarFile);
-
-        res = await api.patch('/profiles/me', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        
-        // Revoke preview blob URL
-        if (avatarPreview) {
-          URL.revokeObjectURL(avatarPreview);
-        }
-        setAvatarPreview(null);
-        setAvatarFile(null);
-
+        response = await api.patch('/profiles/me', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       } else {
-        // Normal JSON payload
-        res = await api.put('/profiles/me', {
-          displayName: editDisplayName,
-          bio: editBio,
-          isPrivate: editIsPrivate
-        });
+        response = await api.put('/profiles/me', { displayName: editDisplayName, bio: editBio, isPrivate: editIsPrivate });
       }
-
-      updateUserProfile({ displayName: res.data.displayName, avatarUrl: res.data.avatarUrl || currentUser?.avatarUrl });
-      setProfile(previous => previous ? {
-        ...previous,
-        displayName: res.data.displayName,
-        bio: res.data.bio,
-        avatarUrl: res.data.avatarUrl,
-        isPrivate: res.data.isPrivate,
-      } : previous);
-      setEditIsPrivate(res.data.isPrivate);
-      setIsEditing(false);
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'No se pudo actualizar el espacio.');
-    } finally {
-      setUpdating(false);
-    }
+      updateUserProfile({ displayName: response.data.displayName, avatarUrl: response.data.avatarUrl || currentUser?.avatarUrl });
+      setProfile(previous => previous ? { ...previous, displayName: response.data.displayName, bio: response.data.bio, avatarUrl: response.data.avatarUrl, isPrivate: response.data.isPrivate } : previous);
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+      setAvatarPreview(null); setAvatarFile(null); setIsEditing(false);
+    } catch (requestError: any) { alert(requestError.response?.data?.message || 'No se pudo actualizar el espacio.'); }
+    finally { setUpdating(false); }
   };
 
-  const handleCancelEdit = () => {
-    if (avatarPreview) {
-      URL.revokeObjectURL(avatarPreview);
-    }
-    setAvatarPreview(null);
-    setAvatarFile(null);
-    setIsEditing(false);
+  const cancelEdit = () => {
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    setAvatarPreview(null); setAvatarFile(null); setIsEditing(false);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#f4f6f9] dark:bg-[#090d16] flex items-center justify-center">
-        <div className="animate-pulse flex flex-col items-center gap-3">
-          <div className="h-10 w-10 bg-teal-800 rounded-2xl" />
-          <span className="text-slate-500 text-xs font-semibold">Preparando el espacio...</span>
-        </div>
+  if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#f4f6f9] dark:bg-[#090d16]"><div className="text-center"><div className="mx-auto h-11 w-11 animate-pulse rounded-2xl bg-teal-700"/><p className="mt-3 text-xs font-bold text-slate-500">Preparando el espacio…</p></div></div>;
+
+  if (!profile) return <div className="flex min-h-screen items-center justify-center bg-[#f4f6f9] px-4 dark:bg-[#090d16]"><div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-[#0f172a]"><ShieldAlert className="mx-auto h-8 w-8 text-slate-400"/><h1 className="mt-4 font-black dark:text-white">{error}</h1>{error !== 'Usuario no encontrado' && <button onClick={() => void fetchProfile()} className="mt-4 rounded-xl bg-teal-700 px-5 py-2.5 text-xs font-bold text-white">Reintentar</button>}</div></div>;
+
+  return <div className="min-h-screen bg-[#f4f6f9] pb-20 text-slate-800 dark:bg-[#090d16] dark:text-slate-100 md:pb-6">
+    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-[#0f172a]/95">
+      <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-4 md:px-6">
+        <button onClick={() => router.push('/feed')} className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-700 font-black text-white">L</span><span className="text-xl font-black">Lifonk</span></button>
+        <nav className="hidden items-center gap-2 md:flex"><Link href="/feed" className="rounded-xl px-4 py-2 text-xs font-bold text-slate-500">Ritmo</Link><Link href="/pulse" className="rounded-xl px-4 py-2 text-xs font-bold text-slate-500">Pulso</Link><Link href="/circles" className="rounded-xl px-4 py-2 text-xs font-bold text-slate-500">Círculos</Link><Link href="/chat" className="rounded-xl px-4 py-2 text-xs font-bold text-slate-500">Conversaciones</Link><span className="rounded-xl bg-teal-50 px-4 py-2 text-xs font-black text-teal-700 dark:bg-teal-950/30 dark:text-teal-300">Espacio</span></nav>
+        <div className="flex items-center gap-2"><button onClick={toggleTheme} className="rounded-xl bg-slate-100 p-2.5 dark:bg-slate-800">{theme === 'light' ? <Moon className="h-4 w-4"/> : <Sun className="h-4 w-4"/>}</button><NotificationBell/></div>
       </div>
-    );
-  }
+    </header>
 
-  if (!profile) {
-    return (
-      <div className="min-h-screen bg-[#f4f6f9] dark:bg-[#090d16] flex items-center justify-center px-4">
-        <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center space-y-4 max-w-sm w-full">
-          <p className="font-bold text-slate-900 dark:text-white">{error}</p>
-          {error !== 'Usuario no encontrado' && (
-            <button onClick={fetchProfile} className="px-4 py-2 rounded-xl bg-teal-700 text-white text-sm font-bold">Reintentar</button>
-          )}
+    <main className="mx-auto w-full max-w-[900px] space-y-5 px-3 py-4 sm:px-4 md:px-6 md:py-7">
+      <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f171f]">
+        <div className="relative h-40 overflow-hidden bg-[radial-gradient(circle_at_18%_15%,rgba(94,234,212,.55),transparent_24%),radial-gradient(circle_at_84%_80%,rgba(34,197,94,.27),transparent_28%),linear-gradient(135deg,#134e4a,#0f766e_55%,#164e63)] md:h-52">
+          <div className="absolute -right-10 -top-14 h-52 w-52 rounded-full border-[34px] border-white/10"/><div className="absolute -left-14 bottom-0 h-28 w-56 rotate-6 rounded-[60%] border border-white/15 bg-white/5"/>
+          <div className="absolute right-3 top-3 flex gap-2">{isSelf ? <><button onClick={() => setIsEditing(true)} className="rounded-xl bg-white/15 px-3 py-2 text-xs font-black text-white backdrop-blur"><Edit2 className="mr-1 inline h-3.5 w-3.5"/>Editar</button><button onClick={logout} className="rounded-xl bg-rose-500/20 p-2 text-white backdrop-blur"><LogOut className="h-4 w-4"/></button></> : <><button disabled={profile.relationshipStatus === 'PENDING'} onClick={() => void handleFollowToggle()} className={`rounded-xl px-4 py-2 text-xs font-black ${profile.relationshipStatus === 'FOLLOWING' ? 'bg-white text-slate-800' : profile.relationshipStatus === 'PENDING' ? 'bg-white/30 text-white' : 'bg-teal-950 text-white'}`}>{profile.relationshipStatus === 'FOLLOWING' ? <><Check className="mr-1 inline h-3.5 w-3.5"/>Conectado</> : profile.relationshipStatus === 'PENDING' ? 'Solicitud enviada' : 'Conectar'}</button><Link href={`/chat?username=${encodeURIComponent(profile.username)}`} className="rounded-xl bg-white/15 p-2.5 text-white backdrop-blur"><MessageSquare className="h-4 w-4"/></Link></>}</div>
+          <div className="absolute bottom-4 left-32 right-4 md:left-44"><h1 className="truncate text-xl font-black text-white md:text-3xl">{profile.displayName}</h1><p className="mt-1 text-xs font-bold text-white/75">@{profile.username}</p></div>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-[#f4f6f9] dark:bg-[#090d16] text-[#1e293b] dark:text-slate-100 flex flex-col font-sans pb-16 md:pb-0 transition-colors duration-200">
-      {/* Top Navigation Header */}
-      <header className="bg-white dark:bg-[#0f172a] border-b border-slate-200 dark:border-slate-800 sticky top-0 z-45 shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/feed')}>
-            <div className="h-9 w-9 rounded-xl bg-teal-800 flex items-center justify-center text-white font-black shadow-md shadow-teal-900/20">
-              L
-            </div>
-            <span className="font-extrabold text-xl tracking-tight text-slate-800 dark:text-white">
-              Lifonk
-            </span>
-          </div>
-
-          <nav className="hidden md:flex items-center gap-1">
-            <Link href="/feed" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
-              <Home className="w-4 h-4" />
-              <span>Ritmo</span>
-            </Link>
-            <Link href="/circles" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
-              <Compass className="w-4 h-4" />
-              <span>Círculos</span>
-            </Link>
-            <Link href="/chat" className="flex items-center gap-2 px-5 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-sm transition-all">
-              <MessageSquare className="w-4 h-4" />
-              <span>Conversaciones</span>
-            </Link>
-            <button className="flex items-center gap-2 px-5 py-2 rounded-xl bg-teal-50 dark:bg-teal-800/30 text-teal-800 dark:text-teal-400 font-bold text-sm">
-              <User className="w-4 h-4 text-teal-800 dark:text-teal-400" />
-              <span>Espacio</span>
-            </button>
-          </nav>
-
-          <div className="flex items-center gap-3">
-            {/* Theme Toggle Button */}
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
-              title={theme === 'light' ? 'Usar tema oscuro' : 'Usar tema claro'}
-              aria-label="Cambiar tema"
-            >
-              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-            </button>
-
-            <NotificationBell />
-            <button onClick={() => router.push('/feed')} className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-teal-800 dark:text-teal-400 hover:underline">
-              <ChevronLeft className="w-4 h-4" />
-              Volver al Ritmo
-            </button>
-          </div>
+        <div className="relative px-4 pb-6 pt-4 md:px-7">
+          <div className="absolute -top-14 left-4 h-28 w-28 rounded-full bg-gradient-to-tr from-teal-500 to-emerald-300 p-[3px] shadow-xl md:-top-16 md:left-7 md:h-32 md:w-32"><UserAvatar avatarUrl={profile.avatarUrl} name={profile.displayName} className="h-full w-full rounded-full border-[3px] border-white text-3xl dark:border-[#0f171f]"/></div>
+          <div className="ml-28 min-h-12 md:ml-36"/>
+          <p className="mt-3 max-w-2xl whitespace-pre-wrap text-sm font-medium leading-relaxed text-slate-600 dark:text-slate-300">{profile.bio || (isSelf ? 'Haz que tu Espacio diga algo de ti. Añade una presentación.' : '')}</p>
+          {interests.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{interests.slice(0, 8).map(interest => <span key={interest} className="rounded-full border border-teal-100 bg-teal-50 px-3 py-1.5 text-[10px] font-black text-teal-700 dark:border-teal-900 dark:bg-teal-950/30 dark:text-teal-300">{interest}</span>)}</div>}
+          <div className="mt-5 grid grid-cols-4 gap-2 rounded-2xl bg-[#f4f7f6] p-2 dark:bg-[#0b1516]">{[[profile.postCount,'Contribuciones'],[profile.followersCount,'Conexiones'],[pulseCount,'Pulsos'],[profileCircles.length,'Círculos']].map(([value,label]) => <div key={String(label)} className="rounded-xl py-2 text-center"><strong className="block text-base">{value}</strong><span className="block truncate text-[8px] font-black uppercase text-slate-400 sm:text-[9px]">{label}</span></div>)}</div>
         </div>
-      </header>
+      </section>
 
-      {/* Main Container */}
-      <main className="max-w-[880px] mx-auto w-full px-3 sm:px-4 md:px-6 py-4 md:py-8 flex-1 space-y-5">
-        
-        {/* Profile Card Header */}
-        <div className="bg-white dark:bg-[#0f1c1d] border border-slate-200/80 dark:border-slate-800 rounded-[28px] overflow-hidden shadow-[0_18px_50px_-32px_rgba(15,118,110,.55)]">
-          {/* Top Banner Gradient */}
-          <div className="h-36 md:h-48 bg-[radial-gradient(circle_at_20%_20%,rgba(94,234,212,.5),transparent_28%),radial-gradient(circle_at_85%_75%,rgba(52,211,153,.35),transparent_30%),linear-gradient(135deg,#134e4a,#0f766e_55%,#115e59)] relative flex items-end overflow-hidden">
-            <div className="absolute -left-8 top-16 h-28 w-44 rounded-[50%] border border-white/15 bg-white/5 rotate-12" />
-            <div className="absolute -right-12 -top-8 h-40 w-40 rounded-full border-[28px] border-white/10" />
-            <div className="absolute top-3 right-3 md:top-4 md:right-4 flex items-center gap-2">
-              {isSelf ? (
-                <>
-                  <button 
-                    onClick={() => setIsEditing(true)}
-                    className="px-3 py-1.5 md:px-4 md:py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold backdrop-blur-md flex items-center gap-1.5 transition-all"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                    <span className="hidden md:inline">Editar espacio</span>
-                  </button>
-                  <button 
-                    onClick={logout}
-                    className="p-1.5 md:p-2 bg-rose-500/20 hover:bg-rose-500/40 text-white rounded-xl backdrop-blur-md transition-all"
-                    title="Cerrar sesión"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button 
-                    onClick={handleFollowToggle}
-                    disabled={profile.relationshipStatus === 'PENDING'}
-                    className={`px-4 py-1.5 md:px-6 md:py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 ${
-                      profile.relationshipStatus === 'FOLLOWING'
-                        ? 'bg-white text-slate-800' 
-                        : profile.relationshipStatus === 'PENDING'
-                          ? 'bg-white/40 text-white cursor-default'
-                        : 'bg-teal-700 hover:bg-teal-600 text-white'
-                    }`}
-                  >
-                    {profile.relationshipStatus === 'FOLLOWING' ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-teal-700" />
-                        Conectado
-                      </>
-                    ) : profile.relationshipStatus === 'PENDING' ? (
-                      <>Solicitud enviada</>
-                    ) : (
-                      <>
-                        <Plus className="w-3.5 h-3.5" />
-                        Conectar
-                      </>
-                    )}
-                  </button>
-                  <Link 
-                    href={`/chat?username=${encodeURIComponent(profile.username)}`}
-                    className="px-3 py-1.5 md:px-4 md:py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold backdrop-blur-md flex items-center gap-1.5 transition-all"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span className="hidden md:inline">Conversación</span>
-                  </Link>
-                </>
-              )}
-            </div>
+      {profile.canViewContent && (featuredPosts.length > 0 || isSelf) && <section className="rounded-[28px] border border-amber-200/70 bg-gradient-to-br from-white via-white to-amber-50 p-4 shadow-sm dark:border-amber-900/40 dark:from-[#0f171f] dark:via-[#0f171f] dark:to-[#241d10] md:p-5">
+        <div className="flex items-center justify-between"><div><p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[.18em] text-amber-600"><Award className="h-4 w-4"/>Vitrina</p><h2 className="mt-1 text-base font-black">{isSelf ? 'Lo que quieres que vean primero' : `Destacado por ${profile.displayName}`}</h2></div>{isSelf && <span className="rounded-full bg-amber-100 px-3 py-1 text-[9px] font-black text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">Hasta 3</span>}</div>
+        {featuredPosts.length ? <div className="mt-4 grid grid-cols-3 gap-2 md:gap-3">{featuredPosts.map(post => <button key={post.postId} onClick={() => document.getElementById(`post-${post.postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className="group relative aspect-[4/5] overflow-hidden rounded-2xl bg-slate-900 text-left shadow-md"><PostMedia post={post} showcase/><div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/10"/><span className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-[10px] font-black text-slate-900">{post.featuredPosition}</span>{post.isShortVideo && <span className="absolute right-2 top-2 rounded-full bg-black/45 p-1.5 text-white"><Video className="h-3.5 w-3.5"/></span>}<div className="absolute bottom-2 left-2 right-2"><p className="line-clamp-2 text-[10px] font-bold leading-snug text-white md:text-xs">{post.caption || 'Una parte de mi espacio'}</p></div></button>)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-amber-300 bg-white/60 p-5 text-center dark:bg-black/10"><Sparkles className="mx-auto h-5 w-5 text-amber-500"/><p className="mt-2 text-xs font-bold">Destaca tus mejores fotos, logros o Pulsos desde el menú ··· de una publicación.</p></div>}
+      </section>}
 
-            {/* DisplayName inside the banner at the bottom left */}
-            <div className="pl-28 md:pl-40 pb-3 text-left">
-              <h1 className="text-lg md:text-2xl font-black text-white tracking-tight flex items-center gap-1.5 drop-shadow-md">
-                {profile.displayName}
-                {profile.isPrivate && <Lock className="w-4 h-4 text-white/85" />}
-              </h1>
-            </div>
-          </div>
+      {profile.canViewContent && !postsLoadError && <section className="grid grid-cols-3 gap-3 rounded-[24px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#0f171f]">{[['Resonancias',totalResonances],['Ecos',totalEchoes],['Pulsos',pulseCount]].map(([label,value]) => <div key={String(label)} className="rounded-2xl bg-slate-50 p-3 text-center dark:bg-[#0b1516]"><strong className="block text-lg">{value}</strong><span className="text-[9px] font-black uppercase text-slate-400">{label}</span></div>)}</section>}
 
-          {/* Profile Header Details */}
-          <div className="px-4 md:px-8 pb-6 md:pb-8 pt-0 relative">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4 md:mb-6">
-              
-              {/* Avatar & @username */}
-              <div className="flex items-start gap-3 md:gap-5">
-                <div className="w-24 h-24 md:w-28 md:h-28 rounded-full bg-gradient-to-tr from-teal-700 to-emerald-400 p-[3px] shadow-xl relative z-10 -mt-12 md:-mt-16">
-                  <UserAvatar avatarUrl={profile.avatarUrl} name={profile.displayName} className="w-full h-full rounded-full text-3xl border-2 border-white" />
-                </div>
-                <div className="pt-1 md:pt-1.5 relative z-10">
-                  <span className="text-xs md:text-sm font-semibold text-slate-500 block">@{profile.username}</span>
-                </div>
-              </div>
+      <div className="flex rounded-2xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-[#0f171f]"><button onClick={() => setActiveTab('POSTS')} className={`flex-1 rounded-xl py-2.5 text-xs font-black ${activeTab === 'POSTS' ? 'bg-teal-700 text-white' : 'text-slate-500'}`}><Grid className="mr-1 inline h-4 w-4"/>Contribuciones</button><button onClick={() => setActiveTab('CIRCLES')} className={`flex-1 rounded-xl py-2.5 text-xs font-black ${activeTab === 'CIRCLES' ? 'bg-teal-700 text-white' : 'text-slate-500'}`}><Compass className="mr-1 inline h-4 w-4"/>Círculos</button></div>
 
-              {/* Stats Bar */}
-              <div className="grid grid-cols-2 gap-2 bg-[#f4f7f6] dark:bg-[#0b1516] border border-slate-200/80 dark:border-slate-800 p-2 rounded-[20px] w-full md:grid-cols-4 md:w-auto md:min-w-[540px] shadow-sm">
-                <div className="min-w-0 rounded-xl px-1 py-2 text-center md:flex-none">
-                  <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profile.postCount}</span>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-normal sm:tracking-wide">Contribuciones</span>
-                </div>
-                <div className="min-w-0 rounded-xl px-1 py-2 text-center md:flex-none">
-                  <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profile.followersCount}</span>
-                  <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-normal sm:tracking-wide">Conexiones</span>
-                </div>
-                <div className="min-w-0 rounded-xl px-1 py-2 text-center md:flex-none">
-                  <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profile.followingCount}</span>
-                  <span className="block text-[9px] font-bold leading-tight text-slate-400 uppercase tracking-normal sm:tracking-wide">{currentUser?.username?.toLowerCase() === profile.username.toLowerCase() ? 'Tus conexiones' : 'Conectados'}</span>
-                </div>
-                <div className="min-w-0 rounded-xl px-1 py-2 text-center md:flex-none">
-                  <span className="block text-base font-black text-slate-800 dark:text-slate-200">{profileCircles.length}</span>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Círculos</span>
-                </div>
-              </div>
-            </div>
+      {activeTab === 'CIRCLES' ? <section>{circlesError ? <div className="rounded-3xl border border-rose-200 bg-white p-8 text-center text-sm text-rose-600 dark:border-rose-900 dark:bg-[#0f171f]">{circlesError}</div> : profileCircles.length === 0 ? <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-[#0f171f]">No hay círculos visibles.</div> : <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">{profileCircles.map(circle => <Link key={circle.id} href={`/circles/${circle.slug}`} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-[#0f171f]"><div className="flex items-center gap-3"><UserAvatar avatarUrl={circle.avatarUrl} name={circle.name} className="h-11 w-11 rounded-2xl text-xs"/><div className="min-w-0"><h3 className="truncate text-sm font-black">{circle.name}</h3><p className="text-[10px] text-slate-400">{circle.membersCount} integrantes</p></div></div><p className="mt-3 line-clamp-3 text-xs text-slate-500">{circle.description || 'Sin descripción.'}</p></Link>)}</div>}</section> : profile.isPrivate && !profile.canViewContent ? <section className="rounded-3xl border border-slate-200 bg-white p-10 text-center dark:border-slate-800 dark:bg-[#0f171f]"><Lock className="mx-auto h-7 w-7 text-slate-400"/><h2 className="mt-3 font-black">Este espacio es privado</h2><p className="mt-1 text-xs text-slate-500">Conecta con @{profile.username} para ver sus contribuciones.</p></section> : postsLoadError ? <section className="rounded-3xl border border-rose-200 bg-white p-8 text-center dark:border-rose-900 dark:bg-[#0f171f]"><ShieldAlert className="mx-auto h-7 w-7 text-rose-400"/><p className="mt-2 text-xs font-bold">No se pudieron cargar las contribuciones.</p><button onClick={() => void fetchPosts(profile)} className="mt-3 rounded-xl bg-teal-700 px-4 py-2 text-xs font-bold text-white">Reintentar</button></section> : <div className="space-y-4">{userPosts.map(post => <article id={`post-${post.postId}`} key={post.postId} className={`scroll-mt-24 rounded-3xl border bg-white p-4 shadow-sm dark:bg-[#0f171f] md:p-5 ${post.featuredPosition ? 'border-amber-300 dark:border-amber-800/70' : 'border-slate-200 dark:border-slate-800'}`}>
+        <div className="flex items-center justify-between"><div className="flex items-center gap-3"><UserAvatar avatarUrl={post.avatarUrl} name={post.displayName || post.username} className="h-10 w-10 rounded-full border border-teal-600/40 text-xs"/><div><div className="flex items-center gap-2"><h3 className="text-sm font-black">{post.displayName || post.username}</h3>{post.featuredPosition && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-black uppercase text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"><Pin className="mr-0.5 inline h-2.5 w-2.5"/>Vitrina {post.featuredPosition}</span>}</div><p className="text-[10px] text-slate-400">@{post.username} · {formatLocalTimestamp(post.createdAt)}</p></div></div>{isSelf && <div className="relative"><button onClick={() => setPostMenuOpenId(postMenuOpenId === post.postId ? null : post.postId)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><MoreVertical className="h-4 w-4"/></button>{postMenuOpenId === post.postId && <><button aria-label="Cerrar menú" className="fixed inset-0 z-40" onClick={() => setPostMenuOpenId(null)}/><div className="absolute right-0 top-10 z-50 min-w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white py-1 text-xs font-bold shadow-xl dark:border-slate-700 dark:bg-[#172130]">{post.featuredPosition ? <button disabled={updatingFeaturedId === post.postId} onClick={() => void unfeaturePost(post.postId)} className="block w-full px-4 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800"><Pin className="mr-2 inline h-3.5 w-3.5"/>Quitar de Vitrina</button> : <div className="border-b border-slate-100 px-3 py-2 dark:border-slate-700"><p className="mb-2 text-[9px] uppercase tracking-wider text-slate-400">Destacar en Vitrina</p><div className="grid grid-cols-3 gap-1">{[1,2,3].map(position => <button key={position} disabled={updatingFeaturedId === post.postId} onClick={() => void featurePost(post.postId, position)} className="rounded-lg bg-amber-50 py-2 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-300">#{position}</button>)}</div></div>}<button onClick={() => { setDeleteConfirmPostId(post.postId); setPostMenuOpenId(null); }} className="block w-full px-4 py-2.5 text-left text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20"><Trash2 className="mr-2 inline h-3.5 w-3.5"/>Eliminar contribución</button></div></>}</div>}</div>
+        {post.caption && <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">{post.caption}</p>}
+        {post.musicTitle && <p className="mt-2 text-[10px] font-bold text-teal-600">♫ {post.musicTitle}</p>}
+        {post.mediaUrls?.length > 0 && <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-black"><PostMedia post={post}/></div>}
+        <div className="mt-4 flex items-center gap-6 border-t border-slate-100 pt-3 text-xs font-bold text-slate-500 dark:border-slate-800"><button onClick={() => void handleLikeToggle(post.postId)} className={`flex items-center gap-1.5 ${post.hasLiked ? 'text-rose-500' : ''}`}><Heart className={`h-4 w-4 ${post.hasLiked ? 'fill-current' : ''}`}/>{post.likesCount} {post.likesCount === 1 ? 'resonancia' : 'resonancias'}</button><button onClick={() => void toggleComments(post.postId)} className="flex items-center gap-1.5 text-teal-700 dark:text-teal-400"><MessageSquare className="h-4 w-4"/>{post.commentsCount} {post.commentsCount === 1 ? 'eco' : 'ecos'}</button></div>
+        {expandedComments[post.postId] && <div className="mt-3 space-y-3 border-t border-slate-100 pt-3 dark:border-slate-800"><form onSubmit={event => void handleAddComment(post.postId, event)} className="flex gap-2"><input value={commentInputMap[post.postId] || ''} onChange={event => setCommentInputMap(previous => ({ ...previous, [post.postId]: event.target.value }))} placeholder="Escribe un eco…" className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none focus:border-teal-600 dark:border-slate-700 dark:bg-[#0b1516]"/><button className="rounded-xl bg-teal-700 px-4 text-xs font-bold text-white">Responder</button></form>{loadingCommentsMap[post.postId] ? <p className="text-[10px] text-slate-400">Cargando ecos…</p> : <div className="max-h-52 space-y-2 overflow-y-auto">{(postCommentsMap[post.postId] || []).map((comment:any,index:number) => <div key={comment.commentId || index} className="rounded-xl bg-slate-50 p-2.5 text-xs dark:bg-[#0b1516]"><strong className="block text-[10px]">@{comment.authorUsername || comment.username || 'usuario'}</strong><span className="text-slate-600 dark:text-slate-300">{comment.content || comment.text}</span></div>)}</div>}</div>}
+      </article>)}{userPosts.length === 0 && <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center dark:border-slate-800 dark:bg-[#0f171f]"><Grid className="mx-auto h-8 w-8 text-slate-300"/><p className="mt-2 text-xs font-bold text-slate-500">Aún no hay contribuciones.</p></div>}</div>}
+    </main>
 
-            {/* Biography */}
-            <p className="text-xs md:text-sm text-slate-600 dark:text-slate-300 font-medium max-w-2xl leading-relaxed whitespace-pre-wrap">
-              {profile.bio || (isSelf ? <button onClick={() => setIsEditing(true)} className="font-bold text-teal-700 dark:text-teal-400">Cuenta algo sobre ti</button> : '')}
-            </p>
+    {isEditing && <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 backdrop-blur-sm md:items-center md:p-4"><button aria-label="Cerrar" className="absolute inset-0" onClick={cancelEdit}/><section className="relative z-10 max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#0f172a] md:max-w-md md:rounded-3xl"><div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800"><h2 className="font-black"><Edit2 className="mr-2 inline h-4 w-4 text-teal-600"/>Editar espacio</h2><button onClick={cancelEdit} className="text-xs font-bold text-slate-400">Cancelar</button></div><form onSubmit={event => void handleSaveProfile(event)}><div className="space-y-4 p-5"><div className="text-center"><div className="relative mx-auto h-24 w-24"><UserAvatar avatarUrl={avatarPreview || profile.avatarUrl} name={profile.displayName} className="h-24 w-24 rounded-full text-2xl"/><button type="button" onClick={() => fileInputRef.current?.click()} className="absolute bottom-0 right-0 rounded-full bg-teal-700 p-2 text-white"><Camera className="h-4 w-4"/></button></div><button type="button" onClick={() => fileInputRef.current?.click()} className="mt-2 text-xs font-bold text-teal-700">Cambiar imagen</button><input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleAvatarChange} className="hidden"/></div><label className="block"><span className="mb-1 block text-xs font-bold">Nombre</span><input value={editDisplayName} onChange={event => setEditDisplayName(event.target.value)} required className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-teal-600 dark:border-slate-700 dark:bg-[#0b1516]"/></label><label className="block"><span className="mb-1 block text-xs font-bold">Presentación</span><textarea value={editBio} onChange={event => setEditBio(event.target.value)} rows={4} className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-teal-600 dark:border-slate-700 dark:bg-[#0b1516]"/></label><label className="flex items-center justify-between rounded-2xl border border-slate-200 p-4 dark:border-slate-700"><span><strong className="block text-xs">Espacio privado</strong><span className="text-[10px] text-slate-400">Aprueba quién puede ver tu contenido.</span></span><input type="checkbox" checked={editIsPrivate} onChange={event => setEditIsPrivate(event.target.checked)} className="h-5 w-5 accent-teal-700"/></label></div><div className="border-t border-slate-100 p-5 dark:border-slate-800" style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}><button disabled={updating} className="w-full rounded-2xl bg-teal-700 py-3 text-sm font-black text-white disabled:opacity-50">{updating ? 'Guardando…' : 'Guardar cambios'}</button></div></form></section></div>}
 
-            {/* Mobile Edit Profile Button Call-to-action */}
-            {isSelf && (
-              <div className="md:hidden mt-4">
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="w-full py-2.5 bg-teal-800 hover:bg-teal-900 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  Editar espacio
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+    {deleteConfirmPostId && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" onClick={() => !isDeletingPost && setDeleteConfirmPostId(null)}><section className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl dark:bg-[#0f172a]" onClick={event => event.stopPropagation()}><h2 className="font-black">Eliminar contribución</h2><p className="mt-2 text-sm text-slate-500">Esta acción no se puede deshacer.</p><div className="mt-5 flex gap-3"><button disabled={isDeletingPost} onClick={() => setDeleteConfirmPostId(null)} className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-bold dark:border-slate-700">Cancelar</button><button disabled={isDeletingPost} onClick={() => void handleDeletePost(deleteConfirmPostId)} className="flex-1 rounded-xl bg-rose-600 py-2.5 text-xs font-black text-white">{isDeletingPost ? 'Eliminando…' : 'Eliminar'}</button></div></section></div>}
 
-        {(isSelf || interests.length > 0) && (
-          <section className="rounded-[24px] border border-teal-100 bg-gradient-to-br from-white to-teal-50 p-5 shadow-sm dark:border-teal-900/50 dark:from-[#0f1c1d] dark:to-[#102827]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[11px] font-black uppercase tracking-[.18em] text-teal-700 dark:text-teal-400">{isSelf ? 'Tu movimiento' : 'Su movimiento'}</p>
-                <h2 className="mt-1 text-base font-extrabold text-slate-900 dark:text-white">{interests.length ? interests.slice(0, 3).join(' · ') : 'Personaliza tu espacio'}</h2>
-                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{interests.length ? 'Temas que forman parte de este espacio.' : 'Añade una presentación para que tus conexiones te conozcan mejor.'}</p>
-              </div>
-              {isSelf && <button onClick={() => setIsEditing(true)} className="shrink-0 rounded-xl border border-teal-200 bg-white px-3 py-2 text-xs font-bold text-teal-800 dark:border-teal-800 dark:bg-[#0b1516] dark:text-teal-300">Editar espacio</button>}
-            </div>
-          </section>
-        )}
-
-        {!profile.isPrivate || profile.canViewContent ? (
-          <section className="rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0f1c1d]">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-black text-slate-900 dark:text-white">{isSelf ? 'Tus Círculos' : 'Círculos'}</h2>
-              <button onClick={() => setActiveTab('CIRCULOS')} className="text-xs font-bold text-teal-700 dark:text-teal-400">Ver todos</button>
-            </div>
-            <div className="flex gap-4 overflow-x-auto pb-1 [scrollbar-width:none]">
-              {profileCircles.slice(0, 6).map(circle => (
-                <Link key={circle.id} href={`/circles/${circle.slug}`} className="w-20 shrink-0 text-center">
-                  <UserAvatar avatarUrl={circle.avatarUrl} name={circle.name} className="mx-auto h-14 w-14 rounded-2xl border border-teal-100 text-xs shadow-sm dark:border-teal-900" />
-                  <span className="mt-2 block truncate text-[11px] font-bold text-slate-700 dark:text-slate-200">{circle.name}</span>
-                  <span className="block text-[9px] text-slate-400">{circle.membersCount} {circle.membersCount === 1 ? 'integrante' : 'integrantes'}</span>
-                </Link>
-              ))}
-              {isSelf && <Link href="/circles?create=1" className="w-20 shrink-0 text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-dashed border-teal-400 text-teal-700 dark:text-teal-300"><Plus className="h-5 w-5" /></span><span className="mt-2 block text-[11px] font-bold text-slate-600 dark:text-slate-300">Crear círculo</span></Link>}
-              {!isSelf && profileCircles.length === 0 && <p className="text-xs text-slate-500">No hay círculos visibles.</p>}
-            </div>
-          </section>
-        ) : null}
-
-        {profile.canViewContent && !postsLoadError && (
-          <section className="rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0f1c1d]">
-            <div className="flex items-center gap-2"><Activity className="h-4 w-4 text-teal-600"/><h2 className="text-sm font-black text-slate-900 dark:text-white">Resonancia de {isSelf ? 'tu' : 'este'} espacio</h2></div>
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              {[['Resonancias', totalResonances], ['Ecos', totalEchoes], ['Conexiones', profile.followersCount]].map(([label, value]) => <div key={String(label)} className="rounded-2xl bg-[#f4f7f6] p-3 text-center dark:bg-[#0b1516]"><strong className="block text-lg text-slate-900 dark:text-white">{value}</strong><span className="text-[10px] font-bold text-slate-500">{label}</span></div>)}
-            </div>
-            <p className="mt-3 text-[10px] text-slate-400">Acumulados reales de las contribuciones disponibles.</p>
-          </section>
-        )}
-
-        {/* Tab Navigation */}
-        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            {[
-              { id: 'MOMENTOS', label: 'Contribuciones', icon: Grid },
-              { id: 'CIRCULOS', label: 'Círculos', icon: Compass },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all ${
-                  activeTab === tab.id
-                    ? 'bg-teal-800 text-white shadow-sm'
-                    : 'text-slate-500 hover:bg-white dark:hover:bg-slate-900 hover:text-slate-800 dark:hover:text-white'
-                }`}
-              >
-                <tab.icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Tab Content Display */}
-        {activeTab === 'CIRCULOS' ? (
-          circlesError ? (
-            <div className="rounded-3xl border border-rose-200 bg-white p-8 text-center dark:border-rose-900 dark:bg-[#0f172a]"><p className="text-sm text-rose-600">{circlesError}</p><button onClick={fetchProfile} className="mt-3 rounded-xl bg-teal-700 px-4 py-2 text-xs font-bold text-white">Reintentar</button></div>
-          ) : profileCircles.length === 0 ? (
-            <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-[#0f172a]">No hay círculos públicos para mostrar.</div>
-          ) : <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {profileCircles.map((circle) => (
-              <div key={circle.id} className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-3">
-                <div className="flex items-center gap-3">
-                  <UserAvatar avatarUrl={circle.avatarUrl} name={circle.name} className="w-10 h-10 rounded-2xl text-xs shadow-sm" />
-                  <div>
-                    <h4 className="font-bold text-sm text-slate-800 dark:text-white">{circle.name}</h4>
-                    <span className="text-[10px] text-slate-400 font-semibold">{circle.membersCount} {circle.membersCount === 1 ? 'integrante' : 'integrantes'}</span>
-                  </div>
-                </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-relaxed">{circle.description || 'Sin descripción.'}</p>
-                <Link href={`/circles/${circle.slug}`} className="block w-full py-2 text-center bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all">
-                  Ver círculo
-                </Link>
-              </div>
-            ))}
-          </div>
-        ) : profile.isPrivate && !profile.canViewContent ? (
-          <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center dark:border-slate-800 dark:bg-[#0f172a]">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-              <Lock className="h-6 w-6" />
-            </div>
-            <h3 className="mt-4 text-sm font-extrabold text-slate-800 dark:text-white">Este espacio es privado</h3>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Conecta con @{profile.username} para ver sus contribuciones, momentos y círculos.</p>
-            {!isSelf && (
-              <button
-                onClick={handleFollowToggle}
-                disabled={profile.relationshipStatus !== 'NONE'}
-                className="mt-5 rounded-xl bg-teal-700 px-5 py-2.5 text-xs font-bold text-white transition-colors hover:bg-teal-800 disabled:cursor-default disabled:bg-slate-300 dark:disabled:bg-slate-700"
-              >
-                {profile.relationshipStatus === 'PENDING'
-                  ? 'Solicitud enviada'
-                  : profile.relationshipStatus === 'FOLLOWING'
-                    ? 'Conectado'
-                    : 'Conectar'}
-              </button>
-            )}
-          </div>
-        ) : postsLoadError ? (
-          <div className="rounded-3xl border border-rose-200 bg-white p-10 text-center dark:border-rose-900 dark:bg-[#0f172a]">
-            <ShieldAlert className="mx-auto h-8 w-8 text-rose-400" />
-            <p className="mt-3 text-xs font-bold text-slate-700 dark:text-slate-200">No se pudieron cargar las contribuciones.</p>
-            <button onClick={() => fetchPosts(profile)} className="mt-4 rounded-xl bg-teal-700 px-4 py-2 text-xs font-bold text-white hover:bg-teal-800">Reintentar</button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {userPosts.map(post => (
-              <div key={post.postId} className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 md:p-6 shadow-sm space-y-3 mx-1 md:mx-0">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <UserAvatar avatarUrl={post.avatarUrl} name={post.displayName || post.username} className="w-10 h-10 rounded-full text-xs shadow-sm border border-teal-600/40" />
-                    <div>
-                      <h5 className="font-bold text-sm text-slate-800 dark:text-white">{post.displayName || post.username}</h5>
-                      <span className="text-[10px] text-slate-400 font-medium">@{post.username}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-slate-400 dark:text-slate-400 font-semibold">{formatLocalTimestamp(post.createdAt)}</span>
-                    {currentUser && post.userId && currentUser.userId === post.userId && (
-                      <div className="relative">
-                        <button
-                          onClick={() => setPostMenuOpenId(postMenuOpenId === post.postId ? null : post.postId)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-base leading-none"
-                          aria-label="Opciones"
-                        >
-                          ···
-                        </button>
-                        {postMenuOpenId === post.postId && (
-                          <>
-                            <div className="fixed inset-0 z-40" onClick={() => setPostMenuOpenId(null)} />
-                            <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden">
-                              <button
-                                onClick={() => { setDeleteConfirmPostId(post.postId); setPostMenuOpenId(null); }}
-                                className="w-full flex items-center gap-2 px-4 py-2.5 text-rose-600 hover:bg-rose-50/10 text-sm font-semibold transition-colors"
-                              >
-                                Eliminar contribución
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <p className="text-sm text-slate-700 dark:text-slate-200 font-medium leading-relaxed whitespace-pre-wrap">
-                  {post.caption}
-                </p>
-
-                {post.mediaUrls && post.mediaUrls.length > 0 && (
-                  <div className="rounded-2xl overflow-hidden max-h-96 border border-slate-100 dark:border-slate-800">
-                    <img src={post.mediaUrls[0]} alt="Media" className="w-full h-full object-cover" />
-                  </div>
-                )}
-
-                <div className="flex items-center gap-6 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 font-bold">
-                  <button 
-                    onClick={() => handleLikeToggle(post.postId)}
-                    className={`flex items-center gap-1.5 hover:text-rose-600 transition-colors ${post.hasLiked ? 'text-rose-600 font-extrabold' : ''}`}
-                  >
-                    <Heart className={`w-4 h-4 ${post.hasLiked ? 'fill-current text-rose-600' : ''}`} />
-                    <span>{post.likesCount} {post.likesCount === 1 ? 'resonancia' : 'resonancias'}</span>
-                  </button>
-                  <button 
-                    onClick={() => toggleComments(post.postId)}
-                    className="flex items-center gap-1.5 text-teal-800 dark:text-teal-400 hover:text-teal-900 transition-colors cursor-pointer"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    <span>{post.commentsCount} {post.commentsCount === 1 ? 'eco' : 'ecos'}</span>
-                  </button>
-                </div>
-
-                {/* Inline Comments Section */}
-                {expandedComments[post.postId] && (
-                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
-                    <form onSubmit={(e) => handleAddComment(post.postId, e)} className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="Escribe un eco…"
-                        value={commentInputMap[post.postId] || ''}
-                        onChange={(e) => setCommentInputMap(prev => ({ ...prev, [post.postId]: e.target.value }))}
-                        className="flex-1 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:border-teal-700 text-slate-800 dark:text-slate-100"
-                      />
-                      <button type="submit" className="px-3 py-1.5 bg-teal-800 text-white rounded-xl text-xs font-bold hover:bg-teal-900 transition-all">
-                        Responder
-                      </button>
-                    </form>
-
-                    {loadingCommentsMap[post.postId] ? (
-                      <p className="text-[11px] text-slate-400 italic">Cargando ecos...</p>
-                    ) : (
-                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {(postCommentsMap[post.postId] || []).map((c: any, i: number) => (
-                          <div key={c.commentId || i} className="bg-slate-50 dark:bg-slate-900 rounded-xl p-2.5 text-xs border border-slate-100 dark:border-slate-800">
-                            <span className="font-bold text-slate-800 dark:text-slate-200 block text-[11px]">@{c.authorUsername || c.username || 'usuario'}</span>
-                            <span className="text-slate-700 dark:text-slate-300">{c.content || c.text}</span>
-                          </div>
-                        ))}
-                        {(!postCommentsMap[post.postId] || postCommentsMap[post.postId].length === 0) && (
-                          <p className="text-[11px] text-slate-400">Sé el primero en dejar un eco.</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {userPosts.length === 0 && (
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center text-slate-400 space-y-2">
-                <Grid className="w-8 h-8 mx-auto text-slate-300" />
-                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Aún no hay contribuciones.</p>
-                <p className="text-[11px] text-slate-400">{isSelf ? 'Comparte tu primera contribución.' : 'Este espacio todavía no tiene contribuciones.'}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-      </main>
-
-      {/* Edit Profile Modal / Mobile Bottom Sheet */}
-      {isEditing && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4">
-          {/* Overlay click to close */}
-          <div className="absolute inset-0" onClick={handleCancelEdit} />
-
-          <div className="relative w-full md:max-w-md bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] md:max-h-none overflow-hidden z-10 animate-in slide-in-from-bottom duration-200">
-            {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-base font-extrabold text-slate-800 dark:text-white flex items-center gap-2">
-                <Edit2 className="w-4 h-4 text-teal-800" />
-                Editar espacio
-              </h3>
-              <button onClick={handleCancelEdit} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs font-bold p-1">
-                Cancelar
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveProfile} className="flex-1 flex flex-col min-h-0">
-              {/* Fields Area - Scrollable */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                
-                {/* Avatar Selector Area */}
-                <div className="flex flex-col items-center justify-center py-2 space-y-2">
-                  <div className="relative group">
-                    <div className="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-900 overflow-hidden border-2 border-slate-200 dark:border-slate-800 flex items-center justify-center shadow-inner">
-                      {avatarPreview ? (
-                        <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
-                      ) : profile.avatarUrl ? (
-                        <img src={profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-                      ) : (
-                        <User className="w-8 h-8 text-slate-400" />
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="absolute bottom-0 right-0 p-1.5 bg-teal-800 hover:bg-teal-900 text-white rounded-full shadow-md transition-colors"
-                    >
-                      <Camera className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-xs font-bold text-teal-800 dark:text-teal-400 hover:underline"
-                  >
-                    Cambiar imagen de espacio
-                  </button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleAvatarChange}
-                    accept="image/jpeg,image/png,image/webp"
-                    className="hidden"
-                  />
-                </div>
-
-                {/* Name field */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nombre</label>
-                  <input 
-                    type="text" 
-                    value={editDisplayName}
-                    onChange={(e) => setEditDisplayName(e.target.value)}
-                    className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-semibold focus:outline-none focus:border-teal-700 text-slate-800 dark:text-slate-100"
-                    required
-                  />
-                </div>
-
-                {/* Bio field */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Presentación</label>
-                  <textarea 
-                    rows={3}
-                    value={editBio}
-                    onChange={(e) => setEditBio(e.target.value)}
-                    className="w-full min-h-[80px] px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-medium focus:outline-none focus:border-teal-700 resize-none text-slate-800 dark:text-slate-100 placeholder-slate-400"
-                    placeholder="Cuenta algo sobre ti…"
-                  />
-                </div>
-
-                {/* Privacy settings */}
-                <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
-                  <div>
-                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Espacio privado</span>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-400">Requiere aprobación para seguirte</span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox"
-                      checked={editIsPrivate}
-                      onChange={(e) => setEditIsPrivate(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-800"></div>
-                  </label>
-                </div>
-              </div>
-
-              {/* Action Buttons - Sticky Footer */}
-              <div 
-                className="p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end"
-                style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
-              >
-                <button
-                  type="submit"
-                  disabled={updating}
-                  className="w-full py-3 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50"
-                >
-                  {updating ? 'Guardando...' : 'Guardar cambios'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Post Confirmation Modal */}
-      {deleteConfirmPostId && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center p-4" onClick={() => !isDeletingPost && setDeleteConfirmPostId(null)}>
-          <div
-            className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-sm p-6 space-y-4"
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 className="font-bold text-slate-800 dark:text-white text-base">Eliminar contribución</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">¿Seguro que quieres eliminar esta contribución? Esta acción no se puede deshacer.</p>
-            <div className="flex gap-3 pt-1">
-              <button
-                onClick={() => setDeleteConfirmPostId(null)}
-                disabled={isDeletingPost}
-                className="flex-1 py-2.5 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => handleDeletePost(deleteConfirmPostId)}
-                disabled={isDeletingPost}
-                className="flex-1 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-500 disabled:opacity-60 transition-colors"
-              >
-                {isDeletingPost ? 'Eliminando...' : 'Eliminar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Mobile Bottom Navigation Bar (Hidden while editing) */}
-      {!isEditing && <MobileBottomBar />}
-    </div>
-  );
+    {!isEditing && <MobileBottomBar/>}
+  </div>;
 }
