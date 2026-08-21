@@ -36,6 +36,9 @@ public class Profile implements Persistable<UUID> {
     @Column(name = "avatar_url", length = 512)
     private String avatarUrl;
 
+    @Column(name = "cover_url", length = 512)
+    private String coverUrl;
+
     @Column(name = "interests", columnDefinition = "TEXT")
     private String interests;
 
