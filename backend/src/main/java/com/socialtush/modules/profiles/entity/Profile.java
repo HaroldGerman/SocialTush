@@ -42,6 +42,10 @@ public class Profile implements Persistable<UUID> {
     @Column(name = "interests", columnDefinition = "TEXT")
     private String interests;
 
+    @Column(name = "preferred_language", nullable = false, length = 5)
+    @Builder.Default
+    private String preferredLanguage = "es";
+
     @Column(name = "onboarding_completed", nullable = false)
     @Builder.Default
     private boolean onboardingCompleted = false;
