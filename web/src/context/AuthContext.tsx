@@ -11,6 +11,7 @@ interface UserSession {
   displayName: string;
   role: string;
   avatarUrl?: string;
+  preferredLanguage?: 'es' | 'en';
 }
 
 interface AuthContextType {
@@ -18,7 +19,7 @@ interface AuthContextType {
   accessToken: string | null;
   isLoading: boolean;
   login: (usernameOrEmail: string, password: string) => Promise<void>;
-  register: (email: string, username: string, displayName: string, password: string) => Promise<void>;
+  register: (email: string, username: string, displayName: string, password: string, preferredLanguage?: 'es' | 'en') => Promise<void>;
   logout: () => Promise<void>;
   updateUserProfile: (profile: Pick<UserSession, 'displayName' | 'avatarUrl'>) => void;
   axiosInstance: AxiosInstance;
@@ -26,6 +27,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const DEVICE_ID_STORAGE_KEY = 'lifonk-device-id';
+const LANGUAGE_STORAGE_KEY = 'lifonk-language';
 
 function getOrCreateDeviceId(): string | null {
   if (typeof window === 'undefined') return null;
@@ -40,6 +42,14 @@ function getOrCreateDeviceId(): string | null {
   } catch {
     return null;
   }
+}
+
+function syncLanguage(language?: string) {
+  if (typeof window === 'undefined') return;
+  const normalized = language === 'en' ? 'en' : 'es';
+  window.localStorage.setItem(LANGUAGE_STORAGE_KEY, normalized);
+  document.documentElement.lang = normalized;
+  window.dispatchEvent(new CustomEvent('lifonk:language-changed', { detail: normalized }));
 }
 
 function deviceHeaders(): Record<string, string> {
@@ -58,14 +68,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const accessTokenRef = React.useRef<string | null>(null);
 
-  const sessionFromResponse = (data: any): UserSession => ({
-    userId: data.userId,
-    username: data.username,
-    email: data.email,
-    displayName: data.displayName,
-    avatarUrl: data.avatarUrl ?? undefined,
-    role: data.role,
-  });
+  const sessionFromResponse = (data: any): UserSession => {
+    const session: UserSession = {
+      userId: data.userId,
+      username: data.username,
+      email: data.email,
+      displayName: data.displayName,
+      avatarUrl: data.avatarUrl ?? undefined,
+      role: data.role,
+      preferredLanguage: data.preferredLanguage === 'en' ? 'en' : 'es',
+    };
+    syncLanguage(session.preferredLanguage);
+    return session;
+  };
 
   const setToken = (token: string | null) => {
     accessTokenRef.current = token;
@@ -146,10 +161,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const register = async (email: string, username: string, displayName: string, password: string) => {
+  const register = async (email: string, username: string, displayName: string, password: string, preferredLanguage: 'es' | 'en' = 'es') => {
     setIsLoading(true);
     try {
-      await api.post('/auth/register', { email, username, displayName, password });
+      await api.post('/auth/register', { email, username, displayName, password, preferredLanguage });
+      syncLanguage(preferredLanguage);
       setToken(null);
       setUser(null);
     } catch (err: any) {
