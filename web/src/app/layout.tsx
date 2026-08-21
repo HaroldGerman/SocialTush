@@ -9,6 +9,7 @@ import AccountSecurityShortcut from "@/components/AccountSecurityShortcut";
 import AccountSettingsShortcut from "@/components/AccountSettingsShortcut";
 import GlobalImageCropInterceptor from "@/components/GlobalImageCropInterceptor";
 import ChatMediaOverlay from "@/components/ChatMediaOverlay";
+import DeepLinkedMomentOverlay from "@/components/DeepLinkedMomentOverlay";
 import { RealtimeActivityProvider } from "@/context/RealtimeActivityContext";
 
 export const metadata: Metadata = {
@@ -49,10 +50,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] transition-colors duration-200">
         <ServiceWorkerRegistrar />
         <GlobalImageCropInterceptor />
-        <ChatMediaOverlay />
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
+              <ChatMediaOverlay />
+              <DeepLinkedMomentOverlay />
               <RealtimeActivityProvider>
                 <CreateHubProvider>
                   {children}
