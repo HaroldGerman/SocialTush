@@ -114,14 +114,31 @@ body {
   --tw-gradient-to: #f43f5e var(--tw-gradient-to-position) !important;
 }
 
-/* Old hard-coded chat receipt colors. */
-[class*="border-[#18877e]"] { border-color: #7e22ce !important; }
-[class*="bg-[#18877e]"] { background-color: #7e22ce !important; }
+/* Legacy chat colors were hard-coded as arbitrary Tailwind values. */
+[class*="text-[#177f76]"], [class*="text-[#1b8a80]"], [class*="text-[#136c65]"], [class*="text-[#48b8ad]"], [class*="text-[#55c7bb]"], [class*="text-[#2a968b]"] {
+  color: #6d28d9 !important;
+}
+[class*="bg-[#177f76]"], [class*="bg-[#1b8a80]"], [class*="bg-[#18877e]"], [class*="bg-[#2a968b]"] {
+  background-color: #6d28d9 !important;
+}
+[class*="border-[#177f76]"], [class*="border-[#1b8a80]"], [class*="border-[#18877e]"], [class*="border-[#2a968b]"] {
+  border-color: #7c3aed !important;
+}
+[class*="shadow-[#177f76]"], [class*="shadow-[#1b8a80]"] {
+  --tw-shadow-color: rgba(109,40,217,.24) !important;
+}
+[class*="focus:border-[#1b8a80]"]:focus { border-color: #7c3aed !important; }
+[class*="fill-[#1b8a80]"] { fill: #6d28d9 !important; }
 [class*="bg-[#62d0c4]"] { background-color: #f43f5e !important; }
+
+/* Chat quote/reply surfaces use violet, never the old WhatsApp-like green. */
+[data-lifonk-reply-quote] { border-left-color: #8b5cf6 !important; }
+[data-lifonk-reply-action]:hover { color: #6d28d9 !important; }
 
 .dark [class*="text-teal-"] { color: #d8b4fe !important; }
 .dark [class*="bg-teal-950"] { background-color: #2e1065 !important; }
 .dark [class*="border-teal-900"] { border-color: #581c87 !important; }
+.dark [class*="text-[#55c7bb]"], .dark [class*="text-[#48b8ad]"] { color: #c4b5fd !important; }
 
 .lifonk-primary {
   background: linear-gradient(135deg, var(--brand-primary), #7c3aed);
