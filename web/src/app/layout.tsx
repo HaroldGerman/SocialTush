@@ -15,6 +15,7 @@ import ChatReplyEnhancer from "@/components/ChatReplyEnhancer";
 import BuzzPersistenceBridge from "@/components/BuzzPersistenceBridge";
 import WebPushAutoSync from "@/components/WebPushAutoSync";
 import MobileEcoEnhancer from "@/components/MobileEcoEnhancer";
+import PulseInteractiveEcos from "@/components/PulseInteractiveEcos";
 import { RealtimeActivityProvider } from "@/context/RealtimeActivityContext";
 
 export const metadata: Metadata = {
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <ChatReliableInteractions />
           <ChatScopedEnhancements />
           <ChatReplyEnhancer />
+          <PulseInteractiveEcos />
           <MobileEcoEnhancer />
           <DeepLinkedMomentOverlay />
           <RealtimeActivityProvider><CreateHubProvider>{children}<AccountSettingsShortcut /><AccountSecurityShortcut /></CreateHubProvider></RealtimeActivityProvider>
