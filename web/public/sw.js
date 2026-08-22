@@ -1,6 +1,10 @@
 const IMAGE_CACHE = 'lifonk-images-v1';
 const SHARE_CACHE = 'lifonk-share-v1';
 
+self.addEventListener('install', event => {
+  event.waitUntil(self.skipWaiting());
+});
+
 async function trimImageCache(cache, maxEntries = 120) {
   const keys = await cache.keys();
   if (keys.length <= maxEntries) return;
