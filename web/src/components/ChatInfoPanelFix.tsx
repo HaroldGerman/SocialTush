@@ -37,7 +37,7 @@ const LIBRARY_LABEL = 'multimedia, enlaces y archivos';
 const SEARCH_LABEL = 'buscar mensajes';
 const URL_RE = /https?:\/\/[^\s]+/gi;
 
-function text(node: Element | null) {
+function text(node: Element | null | undefined) {
   return node?.textContent?.trim() || '';
 }
 
