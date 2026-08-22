@@ -50,6 +50,21 @@ function previewText(message: ChatMessage | ReplyPreview) {
   }
 }
 
+function setTextIfChanged(node: HTMLElement | null, value: string) {
+  if (node && node.textContent !== value) node.textContent = value;
+}
+
+function isEnhancerMutation(mutation: MutationRecord) {
+  const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+  if (target?.closest('[data-lifonk-reply-action],[data-lifonk-reply-quote]')) return true;
+
+  return Array.from(mutation.addedNodes).every((node) => {
+    if (!(node instanceof Element)) return false;
+    return node.matches('[data-lifonk-reply-action],[data-lifonk-reply-quote]') ||
+      Boolean(node.closest('[data-lifonk-reply-action],[data-lifonk-reply-quote]'));
+  });
+}
+
 export default function ChatReplyEnhancer() {
   const { user, accessToken } = useAuth();
   const [replying, setReplying] = useState<ChatMessage | null>(null);
@@ -59,6 +74,7 @@ export default function ChatReplyEnhancer() {
   const messagesRef = useRef<ChatMessage[]>([]);
   const contextsRef = useRef<Map<string, ReplyPreview>>(new Map());
   const refreshBusy = useRef(false);
+  const decorateFrame = useRef<number | null>(null);
 
   const decorate = useCallback(() => {
     if (!window.location.pathname.startsWith('/chat')) return;
@@ -70,7 +86,9 @@ export default function ChatReplyEnhancer() {
     wrappers.forEach((wrapper, index) => {
       const message = messages[offset + index];
       if (!message) return;
-      wrapper.dataset.lifonkMessageId = message.messageId;
+      if (wrapper.dataset.lifonkMessageId !== message.messageId) {
+        wrapper.dataset.lifonkMessageId = message.messageId;
+      }
 
       let action = wrapper.querySelector<HTMLButtonElement>('[data-lifonk-reply-action]');
       if (!action) {
@@ -81,7 +99,9 @@ export default function ChatReplyEnhancer() {
         action.textContent = '↩ Responder';
         wrapper.appendChild(action);
       }
-      action.dataset.messageId = message.messageId;
+      if (action.dataset.messageId !== message.messageId) {
+        action.dataset.messageId = message.messageId;
+      }
 
       const context = contextsRef.current.get(message.messageId);
       const bubble = wrapper.firstElementChild as HTMLElement | null;
@@ -100,11 +120,21 @@ export default function ChatReplyEnhancer() {
         quote.innerHTML = '<strong class="block text-[10px] opacity-95"></strong><span class="mt-0.5 block max-w-[250px] truncate opacity-75"></span>';
         bubble.insertBefore(quote, bubble.firstChild);
       }
-      quote.dataset.parentId = context.messageId;
-      (quote.querySelector('strong') as HTMLElement).textContent = context.senderDisplayName || `@${context.senderUsername}`;
-      (quote.querySelector('span') as HTMLElement).textContent = previewText(context);
+      if (quote.dataset.parentId !== context.messageId) {
+        quote.dataset.parentId = context.messageId;
+      }
+      setTextIfChanged(quote.querySelector('strong'), context.senderDisplayName || `@${context.senderUsername}`);
+      setTextIfChanged(quote.querySelector('span'), previewText(context));
     });
   }, []);
+
+  const scheduleDecorate = useCallback(() => {
+    if (decorateFrame.current !== null) return;
+    decorateFrame.current = window.requestAnimationFrame(() => {
+      decorateFrame.current = null;
+      decorate();
+    });
+  }, [decorate]);
 
   const refresh = useCallback(async () => {
     if (refreshBusy.current || !window.location.pathname.startsWith('/chat')) return;
@@ -116,7 +146,7 @@ export default function ChatReplyEnhancer() {
       const conversations = (Array.isArray(conversationsResponse.data) ? conversationsResponse.data : []) as Conversation[];
       const conversation = conversations.find((item) => item.otherUsername?.toLowerCase() === username.toLowerCase());
       if (!conversation?.conversationId) return;
-      setConversationId(conversation.conversationId);
+      setConversationId((current) => current === conversation.conversationId ? current : conversation.conversationId!);
       const [messagesResponse, contextResponse] = await Promise.all([
         api.get(`/chat/conversations/${conversation.conversationId}/messages?size=50`),
         api.get(`/chat/conversations/${conversation.conversationId}/reply-context`),
@@ -127,13 +157,13 @@ export default function ChatReplyEnhancer() {
         if (item.messageId && item.replyTo) map.set(item.messageId, item.replyTo);
       });
       contextsRef.current = map;
-      window.setTimeout(decorate, 20);
+      scheduleDecorate();
     } catch (error) {
       console.error('Chat reply enhancer:', error);
     } finally {
       refreshBusy.current = false;
     }
-  }, [decorate]);
+  }, [scheduleDecorate]);
 
   const clearComposer = () => {
     const textarea = composerTextarea();
@@ -178,14 +208,21 @@ export default function ChatReplyEnhancer() {
   useEffect(() => {
     if (!user || !accessToken) return;
     void refresh();
-    const observer = new MutationObserver(() => decorate());
+    const observer = new MutationObserver((mutations) => {
+      if (mutations.length && mutations.every(isEnhancerMutation)) return;
+      scheduleDecorate();
+    });
     observer.observe(document.body, { childList: true, subtree: true });
-    const timer = window.setInterval(() => void refresh(), 5000);
+    const timer = window.setInterval(() => void refresh(), 10000);
     return () => {
       observer.disconnect();
       window.clearInterval(timer);
+      if (decorateFrame.current !== null) {
+        window.cancelAnimationFrame(decorateFrame.current);
+        decorateFrame.current = null;
+      }
     };
-  }, [user, accessToken, refresh, decorate]);
+  }, [user, accessToken, refresh, scheduleDecorate]);
 
   useEffect(() => {
     const click = (event: MouseEvent) => {
