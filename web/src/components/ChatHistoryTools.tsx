@@ -5,10 +5,35 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, ExternalLink, FileText, Link2, Search, Video, X } from 'lucide-react';
 import { api } from '@/context/AuthContext';
 
-type Attachment = { id: string; fileUrl: string; fileType: string; fileName?: string };
-type Message = { messageId: string; senderUsername?: string; senderDisplayName?: string; content?: string; createdAt?: string; attachments?: Attachment[] };
-type Conversation = { conversationId: string | null; name?: string; otherUsername?: string; isGroup?: boolean };
-type LibraryItem = { key: string; kind: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'LINK' | 'OTHER'; url: string; label: string };
+type Attachment = {
+  id: string;
+  fileUrl: string;
+  fileType: string;
+  fileName?: string;
+};
+
+type Message = {
+  messageId: string;
+  senderUsername?: string;
+  senderDisplayName?: string;
+  content?: string;
+  createdAt?: string;
+  attachments?: Attachment[];
+};
+
+type Conversation = {
+  conversationId: string | null;
+  name?: string;
+  otherUsername?: string;
+  isGroup?: boolean;
+};
+
+type LibraryItem = {
+  key: string;
+  kind: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'LINK' | 'OTHER';
+  url: string;
+  label: string;
+};
 
 const URL_RE = /https?:\/\/[^\s]+/gi;
 
@@ -25,11 +50,13 @@ function activeIdentity() {
     const rect = node.getBoundingClientRect();
     return rect.top >= 0 && rect.top < 260;
   })?.textContent?.trim().replace(/^@/, '');
+
   const headings = Array.from(document.querySelectorAll<HTMLElement>('h1,h2,h3')).filter(visible);
   const name = headings.find((node) => {
     const rect = node.getBoundingClientRect();
     return rect.top >= 0 && rect.top < 260 && (node.textContent?.trim()?.length || 0) > 0;
   })?.textContent?.trim();
+
   return { username: username || '', name: name || '' };
 }
 
@@ -62,12 +89,18 @@ async function loadAllMessages(conversationId: string) {
   return all;
 }
 
-function cleanUrl(value: string) { return value.replace(/[),.!?]+$/, ''); }
-function hostLabel(url: string) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return 'Enlace'; } }
+function cleanUrl(value: string) {
+  return value.replace(/[),.!?]+$/, '');
+}
 
-function findVisibleMessage(message?: Message) {
-  if (!message?.content) return null;
-  const target = message.content.trim();
+function hostLabel(url: string) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); }
+  catch { return 'Enlace'; }
+}
+
+function findVisibleMessage(content?: string) {
+  if (!content) return null;
+  const target = content.trim();
   if (!target) return null;
   const candidates = Array.from(document.querySelectorAll<HTMLElement>('div')).filter((node) => {
     const cls = typeof node.className === 'string' ? node.className : '';
@@ -78,7 +111,7 @@ function findVisibleMessage(message?: Message) {
 
 function highlightVisibleMessage(message?: Message) {
   document.querySelectorAll('.lifonk-chat-search-hit').forEach((node) => node.classList.remove('lifonk-chat-search-hit'));
-  const node = findVisibleMessage(message);
+  const node = findVisibleMessage(message?.content);
   if (!node) return false;
   node.classList.add('lifonk-chat-search-hit');
   node.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -95,7 +128,6 @@ export default function ChatHistoryTools() {
   const [resultIndex, setResultIndex] = useState(0);
   const [searching, setSearching] = useState(false);
   const [notice, setNotice] = useState('');
-  const [historyFocus, setHistoryFocus] = useState<Message | null>(null);
   const loadedConversationRef = useRef('');
   const loadedMessagesRef = useRef<Message[]>([]);
 
@@ -136,7 +168,10 @@ export default function ChatHistoryTools() {
     const scan = () => {
       const labels = Array.from(document.querySelectorAll<HTMLElement>('p,label')).filter((node) => node.textContent?.trim().toLowerCase().startsWith('multimedia, enlaces y archivos'));
       const label = labels.find(visible);
-      if (!label) { setLibraryMount(null); return; }
+      if (!label) {
+        setLibraryMount(null);
+        return;
+      }
       const container = label.parentElement;
       if (!container) return;
       let mount = container.querySelector<HTMLElement>('[data-lifonk-full-library]');
@@ -156,17 +191,12 @@ export default function ChatHistoryTools() {
     return () => observer.disconnect();
   }, [buildLibrary]);
 
-  const focusResult = useCallback((message?: Message) => {
-    if (!message) { setHistoryFocus(null); return; }
-    window.setTimeout(() => {
-      if (highlightVisibleMessage(message)) setHistoryFocus(null);
-      else setHistoryFocus(message);
-    }, 80);
-  }, []);
-
   const runSearch = useCallback(async (value: string) => {
     const trimmed = value.trim();
-    if (trimmed.length < 2) { setNotice('Escribe al menos 2 caracteres.'); return; }
+    if (trimmed.length < 2) {
+      setNotice('Escribe al menos 2 caracteres.');
+      return;
+    }
     setSearching(true);
     try {
       let conversationId = loadedConversationRef.current;
@@ -175,12 +205,14 @@ export default function ChatHistoryTools() {
         conversationId = conversation?.conversationId || '';
       }
       if (!conversationId) throw new Error('conversation-not-found');
+
       let messages = loadedMessagesRef.current;
       if (!messages.length || loadedConversationRef.current !== conversationId) {
         messages = await loadAllMessages(conversationId);
         loadedMessagesRef.current = messages;
         loadedConversationRef.current = conversationId;
       }
+
       const normalizedQuery = trimmed.toLocaleLowerCase('es');
       const found = messages.filter((message) => (message.content || '').toLocaleLowerCase('es').includes(normalizedQuery));
       setQuery(trimmed);
@@ -190,15 +222,15 @@ export default function ChatHistoryTools() {
       window.setTimeout(() => {
         const info = document.querySelector<HTMLButtonElement>('button[title="Información"]');
         if (info) info.click();
-        focusResult(found[0]);
+        window.setTimeout(() => highlightVisibleMessage(found[0]), 120);
       }, 0);
-      if (!found.length) { setHistoryFocus(null); setNotice(`No se encontraron mensajes con “${trimmed}”.`); }
+      if (!found.length) setNotice(`No se encontraron mensajes con “${trimmed}”.`);
     } catch {
       setNotice('No se pudo buscar en la conversación.');
     } finally {
       setSearching(false);
     }
-  }, [focusResult]);
+  }, []);
 
   useEffect(() => {
     if (!window.location.pathname.startsWith('/chat')) return;
@@ -219,18 +251,18 @@ export default function ChatHistoryTools() {
     return () => document.removeEventListener('click', handler, true);
   }, [runSearch]);
 
-  const goTo = useCallback((nextIndex: number) => {
+  const goTo = (nextIndex: number) => {
     if (!results.length) return;
     const normalized = ((nextIndex % results.length) + results.length) % results.length;
     setResultIndex(normalized);
-    focusResult(results[normalized]);
-  }, [focusResult, results]);
+    window.setTimeout(() => highlightVisibleMessage(results[normalized]), 20);
+  };
 
   useEffect(() => {
     if (!searchOpen) return;
     const handler = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setSearchOpen(false); setHistoryFocus(null);
+        setSearchOpen(false);
         document.querySelectorAll('.lifonk-chat-search-hit').forEach((node) => node.classList.remove('lifonk-chat-search-hit'));
       } else if (event.key === 'Enter') {
         event.preventDefault();
@@ -239,19 +271,15 @@ export default function ChatHistoryTools() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [goTo, searchOpen, resultIndex]);
+  }, [searchOpen, resultIndex, results]);
 
   const current = results[resultIndex];
   const library = useMemo(() => libraryItems, [libraryItems]);
-  const historyContext = useMemo(() => {
-    if (!historyFocus) return [];
-    const index = loadedMessagesRef.current.findIndex((message) => message.messageId === historyFocus.messageId);
-    if (index < 0) return [historyFocus];
-    return loadedMessagesRef.current.slice(Math.max(0, index - 3), Math.min(loadedMessagesRef.current.length, index + 4));
-  }, [historyFocus]);
 
   return <>
-    <style jsx global>{`.lifonk-chat-search-hit { outline: 3px solid #C97B63 !important; outline-offset: 5px; border-radius: 18px; }`}</style>
+    <style jsx global>{`
+      .lifonk-chat-search-hit { outline: 3px solid #C97B63 !important; outline-offset: 5px; border-radius: 18px; }
+    `}</style>
 
     {libraryMount && createPortal(
       <div className="mt-2">
@@ -262,14 +290,23 @@ export default function ChatHistoryTools() {
         {!libraryLoading && library.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 px-3 py-5 text-center text-[10px] text-slate-400 dark:border-slate-700">Aún no hay multimedia, enlaces o archivos.</div>}
         <div className="grid max-h-[430px] grid-cols-3 gap-2 overflow-y-auto pr-1">
           {library.map((item) => item.kind === 'IMAGE' ? (
-            <a key={item.key} href={item.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl bg-slate-100 dark:bg-[#162033]"><img src={item.url} alt={item.label} className="aspect-square h-full w-full object-cover" /></a>
+            <a key={item.key} href={item.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl bg-slate-100 dark:bg-[#162033]">
+              <img src={item.url} alt={item.label} className="aspect-square h-full w-full object-cover" />
+            </a>
           ) : item.kind === 'VIDEO' ? (
-            <a key={item.key} href={item.url} target="_blank" rel="noreferrer" className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-slate-100 dark:bg-[#162033]"><video src={item.url} muted playsInline preload="metadata" className="h-full w-full object-cover" /><span className="absolute flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white"><Video className="h-4 w-4" /></span></a>
+            <a key={item.key} href={item.url} target="_blank" rel="noreferrer" className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-slate-100 dark:bg-[#162033]">
+              <video src={item.url} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+              <span className="absolute flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white"><Video className="h-4 w-4" /></span>
+            </a>
           ) : (
-            <a key={item.key} href={item.url} target="_blank" rel="noreferrer" className="flex aspect-square min-w-0 flex-col items-center justify-center gap-1 rounded-xl bg-slate-100 p-2 text-center dark:bg-[#162033]">{item.kind === 'LINK' ? <Link2 className="h-5 w-5 text-[#8b5cf6]" /> : <FileText className="h-5 w-5 text-slate-400" />}<span className="line-clamp-2 break-all text-[8px] font-bold text-slate-500 dark:text-slate-300">{item.label}</span></a>
+            <a key={item.key} href={item.url} target="_blank" rel="noreferrer" className="flex aspect-square min-w-0 flex-col items-center justify-center gap-1 rounded-xl bg-slate-100 p-2 text-center dark:bg-[#162033]">
+              {item.kind === 'LINK' ? <Link2 className="h-5 w-5 text-[#8b5cf6]" /> : <FileText className="h-5 w-5 text-slate-400" />}
+              <span className="line-clamp-2 break-all text-[8px] font-bold text-slate-500 dark:text-slate-300">{item.label}</span>
+            </a>
           ))}
         </div>
-      </div>, libraryMount
+      </div>,
+      libraryMount
     )}
 
     {searchOpen && typeof document !== 'undefined' && createPortal(
@@ -281,36 +318,25 @@ export default function ChatHistoryTools() {
             <span className="shrink-0 text-[10px] font-bold text-slate-500">{results.length ? `${resultIndex + 1} de ${results.length}` : '0 de 0'}</span>
             <button type="button" disabled={!results.length} onClick={() => goTo(resultIndex - 1)} className="rounded-lg p-1.5 text-slate-600 disabled:opacity-30 dark:text-slate-300" title="Anterior"><ChevronUp className="h-4 w-4" /></button>
             <button type="button" disabled={!results.length} onClick={() => goTo(resultIndex + 1)} className="rounded-lg p-1.5 text-slate-600 disabled:opacity-30 dark:text-slate-300" title="Siguiente"><ChevronDown className="h-4 w-4" /></button>
-            <button type="button" onClick={() => { setSearchOpen(false); setHistoryFocus(null); document.querySelectorAll('.lifonk-chat-search-hit').forEach((node) => node.classList.remove('lifonk-chat-search-hit')); }} className="rounded-lg p-1.5 text-slate-500" title="Cerrar"><X className="h-4 w-4" /></button>
+            <button type="button" onClick={() => { setSearchOpen(false); document.querySelectorAll('.lifonk-chat-search-hit').forEach((node) => node.classList.remove('lifonk-chat-search-hit')); }} className="rounded-lg p-1.5 text-slate-500" title="Cerrar"><X className="h-4 w-4" /></button>
           </div>
           {current && <div className="mt-2 rounded-xl bg-[#EFE8E3] px-3 py-2 text-xs text-[#1A1620] dark:bg-[#1A1620] dark:text-[#EFE8E3]">
-            <div className="mb-1 flex items-center justify-between gap-2 text-[9px] font-bold opacity-70"><span>@{current.senderUsername || 'usuario'}</span><span>{current.createdAt ? new Date(current.createdAt).toLocaleString() : ''}</span></div>
+            <div className="mb-1 flex items-center justify-between gap-2 text-[9px] font-bold opacity-70">
+              <span>@{current.senderUsername || 'usuario'}</span>
+              <span>{current.createdAt ? new Date(current.createdAt).toLocaleString() : ''}</span>
+            </div>
             <p className="line-clamp-3 whitespace-pre-wrap">{current.content}</p>
-            {historyFocus?.messageId === current.messageId && <div className="mt-1 flex items-center gap-1 text-[9px] font-bold text-[#C97B63]"><ExternalLink className="h-3 w-3" /> Mostrando su ubicación en el historial</div>}
+            {!findVisibleMessage(current.content) && <div className="mt-1 flex items-center gap-1 text-[9px] font-bold text-[#C97B63]"><ExternalLink className="h-3 w-3" /> Resultado del historial completo</div>}
           </div>}
           {searching && <p className="px-1 pt-2 text-[10px] text-slate-400">Buscando en todo el historial…</p>}
         </div>
-      </div>, document.body
+      </div>,
+      document.body
     )}
 
-    {historyFocus && typeof document !== 'undefined' && createPortal(
-      <div className="fixed inset-x-0 bottom-[calc(82px+env(safe-area-inset-bottom))] top-[calc(env(safe-area-inset-top)+205px)] z-[2147481900] overflow-y-auto bg-[#f7f5f8]/98 px-4 py-5 shadow-inner backdrop-blur dark:bg-[#090713]/98">
-        <div className="mx-auto max-w-3xl">
-          <div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-black text-[#443C68] dark:text-[#c4b5fd]">Ubicación en el historial</p><p className="text-[10px] text-slate-500">Mensajes anteriores y posteriores a la coincidencia</p></div><button type="button" onClick={() => setHistoryFocus(null)} className="rounded-full border border-slate-300 p-2 text-slate-500 dark:border-slate-700"><X className="h-4 w-4" /></button></div>
-          <div className="space-y-3">
-            {historyContext.map((message) => {
-              const selected = message.messageId === historyFocus.messageId;
-              return <div key={message.messageId} className={`rounded-2xl border p-3 shadow-sm ${selected ? 'border-[#C97B63] bg-[#fff6f1] ring-2 ring-[#C97B63]/30 dark:bg-[#21151a]' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-[#12101a]'}`}>
-                <div className="mb-1 flex items-center justify-between gap-2 text-[9px] font-bold text-slate-500"><span>@{message.senderUsername || 'usuario'}</span><span>{message.createdAt ? new Date(message.createdAt).toLocaleString() : ''}</span></div>
-                <p className="whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-100">{message.content || 'Archivo o multimedia'}</p>
-                {selected && <p className="mt-2 text-[10px] font-black text-[#C97B63]">Coincidencia {resultIndex + 1} de {results.length}</p>}
-              </div>;
-            })}
-          </div>
-        </div>
-      </div>, document.body
+    {notice && typeof document !== 'undefined' && createPortal(
+      <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+1rem)] z-[2147483001] -translate-x-1/2 rounded-full bg-[#1A1620]/95 px-4 py-2 text-xs font-bold text-white shadow-xl">{notice}</div>,
+      document.body
     )}
-
-    {notice && typeof document !== 'undefined' && createPortal(<div className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+1rem)] z-[2147483001] -translate-x-1/2 rounded-full bg-[#1A1620]/95 px-4 py-2 text-xs font-bold text-white shadow-xl">{notice}</div>, document.body)}
   </>;
 }
