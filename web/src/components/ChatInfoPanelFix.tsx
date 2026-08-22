@@ -47,16 +47,8 @@ function findLabel(root: ParentNode, value: string) {
 }
 
 function findInfoRoot(): HTMLElement | null {
-  const libraryLabel = findLabel(document, LIBRARY_LABEL);
-  if (!libraryLabel) return null;
-
-  let current: HTMLElement | null = libraryLabel.parentElement;
-  while (current && current !== document.body) {
-    const content = text(current).toLocaleLowerCase('es');
-    if (content.includes(SEARCH_LABEL) && content.includes('apodo privado')) return current;
-    current = current.parentElement;
-  }
-  return libraryLabel.closest('aside') as HTMLElement | null;
+  const label = findLabel(document, LIBRARY_LABEL);
+  return label?.closest('aside') as HTMLElement | null;
 }
 
 function findUsername(root: HTMLElement) {
@@ -98,6 +90,19 @@ async function fetchAllMessages(conversationId: string) {
   return all;
 }
 
+async function fetchAllMediaMessages(conversationId: string) {
+  const all: Message[] = [];
+  const size = 50;
+  for (let page = 0; page < 100; page += 1) {
+    const response = await api.get(`/chat/conversations/${conversationId}/media`, { params: { page, size } });
+    const chunk: Message[] = response.data?.content || [];
+    all.push(...chunk);
+    const totalPages = Number(response.data?.totalPages);
+    if ((Number.isFinite(totalPages) && page + 1 >= totalPages) || chunk.length < size) break;
+  }
+  return all;
+}
+
 function cleanUrl(value: string) {
   return value.replace(/[),.!?]+$/, '');
 }
@@ -107,23 +112,42 @@ function hostLabel(url: string) {
   catch { return 'Enlace'; }
 }
 
-function buildLibrary(messages: Message[]) {
-  const items: LibraryItem[] = [];
-  [...messages].reverse().forEach(message => {
+function attachmentKind(fileType: string): LibraryItem['kind'] {
+  if (fileType === 'IMAGE') return 'IMAGE';
+  if (fileType === 'VIDEO') return 'VIDEO';
+  if (fileType === 'AUDIO') return 'AUDIO';
+  if (fileType === 'DOCUMENT') return 'DOCUMENT';
+  return 'OTHER';
+}
+
+function buildLibrary(mediaMessages: Message[], historyMessages: Message[]) {
+  const items = new Map<string, LibraryItem>();
+
+  mediaMessages.forEach(message => {
     (message.attachments || []).forEach(attachment => {
       if (!attachment.fileUrl || attachment.fileType.startsWith('VIEW_ONCE_')) return;
-      const kind: LibraryItem['kind'] = attachment.fileType === 'IMAGE' ? 'IMAGE'
-        : attachment.fileType === 'VIDEO' ? 'VIDEO'
-        : attachment.fileType === 'AUDIO' ? 'AUDIO'
-        : attachment.fileType === 'DOCUMENT' ? 'DOCUMENT' : 'OTHER';
-      items.push({ key: `a-${attachment.id}`, kind, url: attachment.fileUrl, label: attachment.fileName || attachment.fileType });
-    });
-    ((message.content || '').match(URL_RE) || []).forEach((raw, index) => {
-      const url = cleanUrl(raw);
-      items.push({ key: `l-${message.messageId}-${index}`, kind: 'LINK', url, label: hostLabel(url) });
+      items.set(`a-${attachment.id}`, {
+        key: `a-${attachment.id}`,
+        kind: attachmentKind(attachment.fileType),
+        url: attachment.fileUrl,
+        label: attachment.fileName || attachment.fileType,
+      });
     });
   });
-  return items;
+
+  [...historyMessages].reverse().forEach(message => {
+    ((message.content || '').match(URL_RE) || []).forEach((raw, index) => {
+      const url = cleanUrl(raw);
+      items.set(`l-${message.messageId}-${index}`, {
+        key: `l-${message.messageId}-${index}`,
+        kind: 'LINK',
+        url,
+        label: hostLabel(url),
+      });
+    });
+  });
+
+  return Array.from(items.values());
 }
 
 function ensureMount(root: HTMLElement) {
@@ -141,7 +165,7 @@ function ensureMount(root: HTMLElement) {
   if (!mount) {
     mount = document.createElement('div');
     mount.dataset.lifonkFullHistory = 'true';
-    section.appendChild(mount);
+    label.insertAdjacentElement('afterend', mount);
   }
   return mount;
 }
@@ -175,14 +199,15 @@ export default function ChatInfoPanelFix() {
   const [context, setContext] = useState<Message[]>([]);
 
   const rootRef = useRef<HTMLElement | null>(null);
-  const conversationIdRef = useRef('');
   const usernameRef = useRef('');
   const messagesRef = useRef<Message[]>([]);
   const loadingPromiseRef = useRef<Promise<Message[]> | null>(null);
 
   const loadHistory = useCallback(async (root: HTMLElement, force = false) => {
     const username = findUsername(root);
-    if (!force && username && username === usernameRef.current && messagesRef.current.length) return messagesRef.current;
+    if (!force && username && username === usernameRef.current && messagesRef.current.length && items.length) {
+      return messagesRef.current;
+    }
     if (!force && loadingPromiseRef.current) return loadingPromiseRef.current;
 
     const promise = (async () => {
@@ -190,11 +215,13 @@ export default function ChatInfoPanelFix() {
       try {
         const conversation = await resolveConversation(root);
         if (!conversation?.conversationId) throw new Error('conversation-not-found');
-        const messages = await fetchAllMessages(conversation.conversationId);
-        conversationIdRef.current = conversation.conversationId;
+        const [messages, mediaMessages] = await Promise.all([
+          fetchAllMessages(conversation.conversationId),
+          fetchAllMediaMessages(conversation.conversationId),
+        ]);
         usernameRef.current = username;
         messagesRef.current = messages;
-        setItems(buildLibrary(messages));
+        setItems(buildLibrary(mediaMessages, messages));
         return messages;
       } catch (error) {
         console.error('Lifonk full chat history:', error);
@@ -208,7 +235,7 @@ export default function ChatInfoPanelFix() {
 
     loadingPromiseRef.current = promise;
     return promise;
-  }, []);
+  }, [items.length]);
 
   useEffect(() => {
     if (!window.location.pathname.startsWith('/chat')) return;
@@ -225,7 +252,6 @@ export default function ChatInfoPanelFix() {
       const username = findUsername(root);
       if (usernameRef.current && username && usernameRef.current !== username) {
         usernameRef.current = '';
-        conversationIdRef.current = '';
         messagesRef.current = [];
         setItems([]);
       }
@@ -276,7 +302,7 @@ export default function ChatInfoPanelFix() {
       return;
     }
 
-    const messages = await loadHistory(root);
+    const messages = messagesRef.current.length ? messagesRef.current : await loadHistory(root);
     const normalized = trimmed.toLocaleLowerCase('es');
     const found = messages.filter(message => (message.content || '').toLocaleLowerCase('es').includes(normalized));
     setQuery(trimmed);
