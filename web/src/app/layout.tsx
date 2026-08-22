@@ -13,6 +13,7 @@ import ChatScopedEnhancements from "@/components/ChatScopedEnhancements";
 import ChatReliableInteractions from "@/components/ChatReliableInteractions";
 import ChatReplyEnhancer from "@/components/ChatReplyEnhancer";
 import ChatInfoPanelFix from "@/components/ChatInfoPanelFix";
+import ChatSearchHistoryNavigator from "@/components/ChatSearchHistoryNavigator";
 import ChatCameraCaptureBridge from "@/components/ChatCameraCaptureBridge";
 import StoryCameraVideoRecorder from "@/components/StoryCameraVideoRecorder";
 import IncomingCallBridge from "@/components/IncomingCallBridge";
@@ -50,6 +51,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <ChatScopedEnhancements />
           <ChatReplyEnhancer />
           <ChatInfoPanelFix />
+          <ChatSearchHistoryNavigator />
           <ChatCameraCaptureBridge />
           <StoryCameraVideoRecorder />
           <IncomingCallBridge />

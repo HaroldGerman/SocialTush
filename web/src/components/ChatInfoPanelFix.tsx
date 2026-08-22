@@ -1,8 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronUp, FileText, Link2, Search, Video, X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import { api } from '@/context/AuthContext';
 
 type Attachment = {
@@ -14,9 +12,7 @@ type Attachment = {
 
 type Message = {
   messageId: string;
-  senderUsername?: string;
   content?: string;
-  createdAt?: string;
   attachments?: Attachment[];
 };
 
@@ -34,21 +30,19 @@ type LibraryItem = {
 };
 
 const LIBRARY_LABEL = 'multimedia, enlaces y archivos';
-const SEARCH_LABEL = 'buscar mensajes';
 const URL_RE = /https?:\/\/[^\s]+/gi;
 
 function text(node?: Element | null) {
   return node?.textContent?.trim() || '';
 }
 
-function findLabel(root: ParentNode, value: string) {
-  return Array.from(root.querySelectorAll<HTMLElement>('p,label'))
-    .find(node => text(node).toLocaleLowerCase('es').startsWith(value)) || null;
+function findLibraryLabel() {
+  return Array.from(document.querySelectorAll<HTMLElement>('p,label'))
+    .find(node => text(node).toLocaleLowerCase('es').startsWith(LIBRARY_LABEL)) || null;
 }
 
-function findInfoRoot(): HTMLElement | null {
-  const label = findLabel(document, LIBRARY_LABEL);
-  return label?.closest('aside') as HTMLElement | null;
+function findInfoRoot(label: HTMLElement) {
+  return label.closest('aside') as HTMLElement | null;
 }
 
 function findUsername(root: HTMLElement) {
@@ -78,27 +72,27 @@ async function resolveConversation(root: HTMLElement): Promise<Conversation | nu
   return null;
 }
 
-async function fetchAllMessages(conversationId: string) {
+async function fetchMedia(conversationId: string) {
+  const all: Message[] = [];
+  const size = 50;
+  for (let page = 0; page < 100; page += 1) {
+    const response = await api.get(`/chat/conversations/${conversationId}/media`, { params: { page, size } });
+    const chunk: Message[] = Array.isArray(response.data?.content) ? response.data.content : [];
+    all.push(...chunk);
+    const totalPages = Number(response.data?.totalPages);
+    if ((Number.isFinite(totalPages) && page + 1 >= totalPages) || chunk.length < size) break;
+  }
+  return all;
+}
+
+async function fetchMessages(conversationId: string) {
   const all: Message[] = [];
   const size = 100;
   for (let page = 0; page < 100; page += 1) {
     const response = await api.get(`/chat/conversations/${conversationId}/messages`, { params: { page, size } });
     const chunk: Message[] = response.data?.content || response.data || [];
     all.unshift(...chunk);
-    if (chunk.length < size) break;
-  }
-  return all;
-}
-
-async function fetchAllMediaMessages(conversationId: string) {
-  const all: Message[] = [];
-  const size = 50;
-  for (let page = 0; page < 100; page += 1) {
-    const response = await api.get(`/chat/conversations/${conversationId}/media`, { params: { page, size } });
-    const chunk: Message[] = response.data?.content || [];
-    all.push(...chunk);
-    const totalPages = Number(response.data?.totalPages);
-    if ((Number.isFinite(totalPages) && page + 1 >= totalPages) || chunk.length < size) break;
+    if (!Array.isArray(chunk) || chunk.length < size) break;
   }
   return all;
 }
@@ -112,7 +106,7 @@ function hostLabel(url: string) {
   catch { return 'Enlace'; }
 }
 
-function attachmentKind(fileType: string): LibraryItem['kind'] {
+function kindFor(fileType: string): LibraryItem['kind'] {
   if (fileType === 'IMAGE') return 'IMAGE';
   if (fileType === 'VIDEO') return 'VIDEO';
   if (fileType === 'AUDIO') return 'AUDIO';
@@ -120,26 +114,26 @@ function attachmentKind(fileType: string): LibraryItem['kind'] {
   return 'OTHER';
 }
 
-function buildLibrary(mediaMessages: Message[], historyMessages: Message[]) {
-  const items = new Map<string, LibraryItem>();
+function buildItems(mediaMessages: Message[], messages: Message[]) {
+  const map = new Map<string, LibraryItem>();
 
   mediaMessages.forEach(message => {
     (message.attachments || []).forEach(attachment => {
       if (!attachment.fileUrl || attachment.fileType.startsWith('VIEW_ONCE_')) return;
-      items.set(`a-${attachment.id}`, {
-        key: `a-${attachment.id}`,
-        kind: attachmentKind(attachment.fileType),
+      map.set(`attachment-${attachment.id}`, {
+        key: `attachment-${attachment.id}`,
+        kind: kindFor(attachment.fileType),
         url: attachment.fileUrl,
         label: attachment.fileName || attachment.fileType,
       });
     });
   });
 
-  [...historyMessages].reverse().forEach(message => {
+  messages.forEach(message => {
     ((message.content || '').match(URL_RE) || []).forEach((raw, index) => {
       const url = cleanUrl(raw);
-      items.set(`l-${message.messageId}-${index}`, {
-        key: `l-${message.messageId}-${index}`,
+      map.set(`link-${message.messageId}-${index}`, {
+        key: `link-${message.messageId}-${index}`,
         kind: 'LINK',
         url,
         label: hostLabel(url),
@@ -147,236 +141,180 @@ function buildLibrary(mediaMessages: Message[], historyMessages: Message[]) {
     });
   });
 
-  return Array.from(items.values());
+  return Array.from(map.values());
 }
 
-function ensureMount(root: HTMLElement) {
-  const label = findLabel(root, LIBRARY_LABEL);
-  const section = label?.parentElement;
-  if (!label || !section) return null;
+function mediaMount(label: HTMLElement) {
+  const section = label.parentElement;
+  if (!section) return null;
+
+  let mount = section.querySelector<HTMLElement>('[data-lifonk-media-library="true"]');
+  if (!mount) {
+    mount = document.createElement('div');
+    mount.dataset.lifonkMediaLibrary = 'true';
+    label.insertAdjacentElement('afterend', mount);
+  }
 
   Array.from(section.children).forEach(child => {
     const element = child as HTMLElement;
-    if (child === label || element.dataset.lifonkFullHistory === 'true') return;
+    if (child === label || element === mount) return;
     element.style.setProperty('display', 'none', 'important');
   });
-
-  let mount = section.querySelector<HTMLElement>('[data-lifonk-full-history="true"]');
-  if (!mount) {
-    mount = document.createElement('div');
-    mount.dataset.lifonkFullHistory = 'true';
-    label.insertAdjacentElement('afterend', mount);
-  }
+  mount.style.removeProperty('display');
   return mount;
 }
 
-function closeInfo(root: HTMLElement) {
-  const close = Array.from(root.querySelectorAll<HTMLButtonElement>('button'))
-    .find(button => Boolean(button.querySelector('svg.lucide-x')));
-  close?.click();
+function iconTile(item: LibraryItem) {
+  const link = document.createElement('a');
+  link.href = item.url;
+  link.target = '_blank';
+  link.rel = 'noreferrer';
+  link.className = 'flex aspect-square min-w-0 flex-col items-center justify-center gap-1 rounded-xl bg-slate-100 p-2 text-center dark:bg-[#111a29]';
+  const icon = document.createElement('span');
+  icon.className = 'text-xl text-[#8b5cf6]';
+  icon.textContent = item.kind === 'LINK' ? '🔗' : item.kind === 'AUDIO' ? '🎵' : '📄';
+  const label = document.createElement('span');
+  label.className = 'line-clamp-2 break-all text-[9px] font-bold text-slate-500 dark:text-slate-300';
+  label.textContent = item.label;
+  link.append(icon, label);
+  return link;
 }
 
-function visibleMessage(message: Message) {
-  const value = message.content?.trim();
-  if (!value) return null;
-  return Array.from(document.querySelectorAll<HTMLElement>('div'))
-    .filter(node => {
-      const cls = typeof node.className === 'string' ? node.className : '';
-      return cls.includes('max-w-[82%]') || cls.includes('md:max-w-[75%]');
-    })
-    .find(node => (node.textContent || '').includes(value)) || null;
+function renderLibrary(mount: HTMLElement, items: LibraryItem[], loading = false) {
+  mount.replaceChildren();
+
+  const header = document.createElement('div');
+  header.className = 'mb-2 flex items-center justify-between gap-2';
+  const count = document.createElement('span');
+  count.className = 'text-[10px] font-bold text-slate-400';
+  count.textContent = loading ? 'Cargando historial…' : `${items.length} elementos`;
+  header.appendChild(count);
+  mount.appendChild(header);
+
+  if (loading) return;
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'rounded-xl border border-dashed border-slate-300 px-3 py-5 text-center text-[10px] text-slate-400 dark:border-slate-700';
+    empty.textContent = 'Aún no hay multimedia, enlaces o archivos.';
+    mount.appendChild(empty);
+    return;
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'grid max-h-[430px] grid-cols-3 gap-2 overflow-y-auto pr-1';
+
+  items.forEach(item => {
+    if (item.kind === 'IMAGE') {
+      const link = document.createElement('a');
+      link.href = item.url;
+      link.target = '_blank';
+      link.rel = 'noreferrer';
+      link.className = 'block overflow-hidden rounded-xl bg-slate-100 dark:bg-[#111a29]';
+      const image = document.createElement('img');
+      image.src = item.url;
+      image.alt = item.label;
+      image.loading = 'lazy';
+      image.className = 'aspect-square h-full w-full object-cover';
+      link.appendChild(image);
+      grid.appendChild(link);
+      return;
+    }
+
+    if (item.kind === 'VIDEO') {
+      const link = document.createElement('a');
+      link.href = item.url;
+      link.target = '_blank';
+      link.rel = 'noreferrer';
+      link.className = 'relative flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-slate-100 dark:bg-[#111a29]';
+      const video = document.createElement('video');
+      video.src = item.url;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'metadata';
+      video.className = 'h-full w-full object-cover';
+      const badge = document.createElement('span');
+      badge.className = 'absolute rounded-full bg-black/60 px-2 py-1 text-xs text-white';
+      badge.textContent = '▶';
+      link.append(video, badge);
+      grid.appendChild(link);
+      return;
+    }
+
+    grid.appendChild(iconTile(item));
+  });
+
+  mount.appendChild(grid);
 }
 
 export default function ChatInfoPanelFix() {
-  const [mount, setMount] = useState<HTMLElement | null>(null);
-  const [items, setItems] = useState<LibraryItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Message[]>([]);
-  const [resultIndex, setResultIndex] = useState(0);
-  const [context, setContext] = useState<Message[]>([]);
-
-  const rootRef = useRef<HTMLElement | null>(null);
-  const usernameRef = useRef('');
-  const messagesRef = useRef<Message[]>([]);
-  const loadingPromiseRef = useRef<Promise<Message[]> | null>(null);
-
-  const loadHistory = useCallback(async (root: HTMLElement, force = false) => {
-    const username = findUsername(root);
-    if (!force && username && username === usernameRef.current && messagesRef.current.length && items.length) {
-      return messagesRef.current;
-    }
-    if (!force && loadingPromiseRef.current) return loadingPromiseRef.current;
-
-    const promise = (async () => {
-      setLoading(true);
-      try {
-        const conversation = await resolveConversation(root);
-        if (!conversation?.conversationId) throw new Error('conversation-not-found');
-        const [messages, mediaMessages] = await Promise.all([
-          fetchAllMessages(conversation.conversationId),
-          fetchAllMediaMessages(conversation.conversationId),
-        ]);
-        usernameRef.current = username;
-        messagesRef.current = messages;
-        setItems(buildLibrary(mediaMessages, messages));
-        return messages;
-      } catch (error) {
-        console.error('Lifonk full chat history:', error);
-        setNotice('No se pudo cargar el historial completo.');
-        return [];
-      } finally {
-        setLoading(false);
-        loadingPromiseRef.current = null;
-      }
-    })();
-
-    loadingPromiseRef.current = promise;
-    return promise;
-  }, [items.length]);
+  const cacheRef = useRef(new Map<string, LibraryItem[]>());
+  const loadingRef = useRef(new Set<string>());
+  const activeConversationRef = useRef('');
 
   useEffect(() => {
     if (!window.location.pathname.startsWith('/chat')) return;
+    let cancelled = false;
     let raf = 0;
 
-    const scan = () => {
-      const root = findInfoRoot();
-      rootRef.current = root;
-      if (!root) {
-        setMount(null);
+    const hydrate = async () => {
+      const label = findLibraryLabel();
+      if (!label) return;
+      const root = findInfoRoot(label);
+      const mount = mediaMount(label);
+      if (!root || !mount) return;
+
+      const conversation = await resolveConversation(root);
+      if (cancelled || !conversation?.conversationId) return;
+      const conversationId = conversation.conversationId;
+      activeConversationRef.current = conversationId;
+
+      const cached = cacheRef.current.get(conversationId);
+      if (cached) {
+        renderLibrary(mount, cached);
         return;
       }
+      if (loadingRef.current.has(conversationId)) return;
 
-      const username = findUsername(root);
-      if (usernameRef.current && username && usernameRef.current !== username) {
-        usernameRef.current = '';
-        messagesRef.current = [];
-        setItems([]);
+      loadingRef.current.add(conversationId);
+      renderLibrary(mount, [], true);
+      try {
+        const [mediaMessages, messages] = await Promise.all([
+          fetchMedia(conversationId),
+          fetchMessages(conversationId),
+        ]);
+        if (cancelled || activeConversationRef.current !== conversationId) return;
+        const items = buildItems(mediaMessages, messages);
+        cacheRef.current.set(conversationId, items);
+        const currentLabel = findLibraryLabel();
+        const currentMount = currentLabel ? mediaMount(currentLabel) : null;
+        if (currentMount) renderLibrary(currentMount, items);
+      } catch (error) {
+        console.error('No se pudo cargar multimedia completa:', error);
+        const currentLabel = findLibraryLabel();
+        const currentMount = currentLabel ? mediaMount(currentLabel) : null;
+        if (currentMount) renderLibrary(currentMount, []);
+      } finally {
+        loadingRef.current.delete(conversationId);
       }
-
-      const nextMount = ensureMount(root);
-      setMount(current => current === nextMount ? current : nextMount);
-      if (nextMount) void loadHistory(root);
     };
 
     const schedule = () => {
       if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(scan);
+      raf = requestAnimationFrame(() => { void hydrate(); });
     };
 
-    scan();
+    schedule();
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
-    const interval = window.setInterval(scan, 400);
+    const interval = window.setInterval(schedule, 700);
+
     return () => {
+      cancelled = true;
       if (raf) cancelAnimationFrame(raf);
       observer.disconnect();
       window.clearInterval(interval);
     };
-  }, [loadHistory]);
-
-  const showResult = useCallback((message: Message) => {
-    document.querySelectorAll('.lifonk-chat-search-hit').forEach(node => node.classList.remove('lifonk-chat-search-hit'));
-    const node = visibleMessage(message);
-    if (node) {
-      setContext([]);
-      node.classList.add('lifonk-chat-search-hit');
-      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
-    const index = messagesRef.current.findIndex(item => item.messageId === message.messageId);
-    setContext(index < 0 ? [message] : messagesRef.current.slice(Math.max(0, index - 3), index + 4));
   }, []);
 
-  const runSearch = useCallback(async (value: string) => {
-    const trimmed = value.trim();
-    if (trimmed.length < 2) {
-      setNotice('Escribe al menos 2 caracteres.');
-      return;
-    }
-    const root = rootRef.current || findInfoRoot();
-    if (!root) {
-      setNotice('No se pudo identificar la conversación.');
-      return;
-    }
-
-    const messages = messagesRef.current.length ? messagesRef.current : await loadHistory(root);
-    const normalized = trimmed.toLocaleLowerCase('es');
-    const found = messages.filter(message => (message.content || '').toLocaleLowerCase('es').includes(normalized));
-    setQuery(trimmed);
-    setResults(found);
-    setResultIndex(0);
-    setSearchOpen(true);
-    closeInfo(root);
-    window.setTimeout(() => { if (found[0]) showResult(found[0]); }, 120);
-    if (!found.length) setNotice(`No se encontraron mensajes con “${trimmed}”.`);
-  }, [loadHistory, showResult]);
-
-  useEffect(() => {
-    const onClick = (event: MouseEvent) => {
-      const button = (event.target as HTMLElement | null)?.closest('button');
-      if (!button) return;
-      const root = findInfoRoot();
-      if (!root || !root.contains(button)) return;
-      const label = findLabel(root, SEARCH_LABEL);
-      const section = label?.parentElement;
-      if (!section || !section.contains(button)) return;
-      const input = section.querySelector<HTMLInputElement>('input');
-      if (!input) return;
-      event.preventDefault();
-      event.stopPropagation();
-      void runSearch(input.value);
-    };
-    document.addEventListener('click', onClick, true);
-    return () => document.removeEventListener('click', onClick, true);
-  }, [runSearch]);
-
-  const goTo = (next: number) => {
-    if (!results.length) return;
-    const normalized = ((next % results.length) + results.length) % results.length;
-    setResultIndex(normalized);
-    window.setTimeout(() => showResult(results[normalized]), 20);
-  };
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(''), 3000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
-
-  return <>
-    <style jsx global>{`.lifonk-chat-search-hit{outline:3px solid #C97B63!important;outline-offset:5px;border-radius:18px}`}</style>
-
-    {mount && createPortal(
-      <div className="mt-2">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-[10px] font-bold text-slate-400">{loading ? 'Cargando historial…' : `${items.length} elementos`}</span>
-          {!loading && <button type="button" onClick={() => rootRef.current && void loadHistory(rootRef.current, true)} className="text-[9px] font-bold text-[#8b5cf6]">Actualizar</button>}
-        </div>
-        {!loading && items.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 px-3 py-5 text-center text-[10px] text-slate-400 dark:border-slate-700">Aún no hay multimedia, enlaces o archivos.</div>}
-        <div className="grid max-h-[430px] grid-cols-3 gap-2 overflow-y-auto pr-1">
-          {items.map(item => item.kind === 'IMAGE' ? (
-            <a key={item.key} href={item.url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl bg-slate-100 dark:bg-[#162033]"><img src={item.url} alt={item.label} className="aspect-square h-full w-full object-cover"/></a>
-          ) : item.kind === 'VIDEO' ? (
-            <a key={item.key} href={item.url} target="_blank" rel="noreferrer" className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-slate-100 dark:bg-[#162033]"><video src={item.url} muted playsInline preload="metadata" className="h-full w-full object-cover"/><span className="absolute rounded-full bg-black/60 p-2 text-white"><Video className="h-4 w-4"/></span></a>
-          ) : (
-            <a key={item.key} href={item.url} target="_blank" rel="noreferrer" className="flex aspect-square min-w-0 flex-col items-center justify-center gap-1 rounded-xl bg-slate-100 p-2 text-center dark:bg-[#162033]">{item.kind === 'LINK' ? <Link2 className="h-5 w-5 text-[#8b5cf6]"/> : <FileText className="h-5 w-5 text-slate-400"/>}<span className="line-clamp-2 break-all text-[8px] font-bold text-slate-500 dark:text-slate-300">{item.label}</span></a>
-          ))}
-        </div>
-      </div>, mount)}
-
-    {searchOpen && typeof document !== 'undefined' && createPortal(
-      <div className="fixed left-2 right-2 z-[2147482000] mx-auto max-w-3xl" style={{top:'calc(env(safe-area-inset-top) + 72px)'}}>
-        <div className="rounded-2xl border border-[#443C68]/30 bg-white/95 p-2.5 shadow-2xl backdrop-blur-xl dark:border-[#6d628f] dark:bg-[#0d0b13]/95">
-          <div className="flex items-center gap-2"><Search className="h-4 w-4 text-[#443C68] dark:text-[#b8add9]"/><input value={query} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();void runSearch(query)}}} className="min-w-0 flex-1 bg-transparent text-sm outline-none" placeholder="Buscar en el historial"/><span className="text-[10px] font-bold text-slate-500">{results.length ? `${resultIndex+1} de ${results.length}` : '0 de 0'}</span><button type="button" disabled={!results.length} onClick={()=>goTo(resultIndex-1)}><ChevronUp className="h-4 w-4"/></button><button type="button" disabled={!results.length} onClick={()=>goTo(resultIndex+1)}><ChevronDown className="h-4 w-4"/></button><button type="button" onClick={()=>{setSearchOpen(false);setContext([]);document.querySelectorAll('.lifonk-chat-search-hit').forEach(node=>node.classList.remove('lifonk-chat-search-hit'))}}><X className="h-4 w-4"/></button></div>
-        </div>
-      </div>, document.body)}
-
-    {context.length > 0 && typeof document !== 'undefined' && createPortal(
-      <div className="fixed inset-x-0 bottom-[calc(82px+env(safe-area-inset-bottom))] top-[calc(env(safe-area-inset-top)+130px)] z-[2147481900] overflow-y-auto bg-[#f7f5f8]/98 px-4 py-5 backdrop-blur dark:bg-[#090713]/98"><div className="mx-auto max-w-3xl space-y-3">{context.map(message=><div key={message.messageId} className={`rounded-2xl border p-3 ${message.messageId===results[resultIndex]?.messageId?'border-[#C97B63] bg-[#fff6f1] ring-2 ring-[#C97B63]/30 dark:bg-[#21151a]':'border-slate-200 bg-white dark:border-slate-800 dark:bg-[#12101a]'}`}><div className="mb-1 flex justify-between text-[9px] font-bold text-slate-500"><span>@{message.senderUsername||'usuario'}</span><span>{message.createdAt?new Date(message.createdAt).toLocaleString():''}</span></div><p className="whitespace-pre-wrap text-sm">{message.content||'Archivo o multimedia'}</p></div>)}</div></div>, document.body)}
-
-    {notice && typeof document !== 'undefined' && createPortal(<div className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+1rem)] z-[2147483001] -translate-x-1/2 rounded-full bg-[#1A1620]/95 px-4 py-2 text-xs font-bold text-white shadow-xl">{notice}</div>, document.body)}
-  </>;
+  return null;
 }
