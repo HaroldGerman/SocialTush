@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export const runtime = 'edge';
-
 const TIKTOK_HOSTS = new Set([
   'tiktok.com',
   'www.tiktok.com',
