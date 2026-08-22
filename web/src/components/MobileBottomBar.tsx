@@ -47,17 +47,17 @@ export default function MobileBottomBar({ onOpenCreate }: MobileBottomBarProps) 
         <span className="w-full truncate text-[8px] leading-none">Descubrir</span>
       </Link>
 
-      <Link href="/circles" className={`${base} ${pathname.startsWith('/circles') ? active : inactive}`}>
-        <Compass className="h-5 w-5 shrink-0" />
-        <span className="w-full truncate text-[8px] leading-none">Círculos</span>
-      </Link>
-
       <button onClick={handleCreateClick} className={`${base} text-teal-700 dark:text-teal-400`} aria-label="Crear">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-teal-700 text-white shadow-sm shadow-teal-900/20">
           <Plus className="h-5 w-5 stroke-[2.7]" />
         </span>
         <span className="w-full truncate text-[8px] font-bold leading-none">Crear</span>
       </button>
+
+      <Link href="/circles" className={`${base} ${pathname.startsWith('/circles') ? active : inactive}`}>
+        <Compass className="h-5 w-5 shrink-0" />
+        <span className="w-full truncate text-[8px] leading-none">Círculos</span>
+      </Link>
 
       <Link href="/chat" className={`${base} ${pathname.startsWith('/chat') ? active : inactive}`}>
         <span className="relative shrink-0">
