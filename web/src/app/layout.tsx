@@ -12,7 +12,6 @@ import DeepLinkedMomentOverlay from "@/components/DeepLinkedMomentOverlay";
 import ChatScopedEnhancements from "@/components/ChatScopedEnhancements";
 import ChatReliableInteractions from "@/components/ChatReliableInteractions";
 import ChatReplyEnhancer from "@/components/ChatReplyEnhancer";
-import ChatLinkPreviewEnhancer from "@/components/ChatLinkPreviewEnhancer";
 import BuzzPersistenceBridge from "@/components/BuzzPersistenceBridge";
 import WebPushAutoSync from "@/components/WebPushAutoSync";
 import MobileEcoEnhancer from "@/components/MobileEcoEnhancer";
@@ -46,7 +45,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <ChatReliableInteractions />
           <ChatScopedEnhancements />
           <ChatReplyEnhancer />
-          <ChatLinkPreviewEnhancer />
           <PulseInteractiveEcos />
           <MobileEcoEnhancer />
           <DeepLinkedMomentOverlay />
