@@ -13,12 +13,6 @@ type LinkPreview = {
 const previewCache = new Map<string, Promise<LinkPreview | null>>();
 const URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
 
-function messageWrappers() {
-  return Array.from(document.querySelectorAll<HTMLElement>('div.flex.flex-col')).filter(
-    (node) => typeof node.className === 'string' && node.className.includes('max-w-[82%]'),
-  );
-}
-
 function cleanUrl(value: string) {
   return value.replace(/[),.;!?]+$/g, '');
 }
@@ -30,22 +24,23 @@ function extractTikTokUrl(text: string) {
     try {
       const parsed = new URL(candidate);
       const host = parsed.hostname.toLowerCase();
-      if (host === 'tiktok.com' || host === 'www.tiktok.com' || host === 'm.tiktok.com' || host === 'vt.tiktok.com' || host === 'vm.tiktok.com') {
-        return candidate;
-      }
+      if (['tiktok.com', 'www.tiktok.com', 'm.tiktok.com', 'vt.tiktok.com', 'vm.tiktok.com'].includes(host)) return candidate;
     } catch {}
   }
   return null;
 }
 
 function linkifyParagraph(node: HTMLElement) {
-  const text = node.textContent || '';
+  const text = node.dataset.lifonkOriginalText || node.textContent || '';
+  if (node.dataset.lifonkOriginalText === undefined) node.dataset.lifonkOriginalText = text;
+  if (node.dataset.lifonkLinkified === text) return;
+
+  URL_REGEX.lastIndex = 0;
   if (!URL_REGEX.test(text)) {
     URL_REGEX.lastIndex = 0;
     return;
   }
   URL_REGEX.lastIndex = 0;
-  if (node.dataset.lifonkLinkified === text) return;
 
   const fragment = document.createDocumentFragment();
   let cursor = 0;
@@ -62,7 +57,7 @@ function linkifyParagraph(node: HTMLElement) {
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
     link.textContent = url;
-    link.className = 'break-all font-semibold underline decoration-white/50 underline-offset-2 hover:decoration-current';
+    link.className = 'break-all font-bold underline decoration-current/60 underline-offset-2 hover:opacity-80';
     link.dataset.lifonkChatLink = 'true';
     fragment.appendChild(link);
 
@@ -80,20 +75,21 @@ async function fetchPreview(url: string) {
   let cached = previewCache.get(url);
   if (!cached) {
     cached = fetch(`/api/link-preview?url=${encodeURIComponent(url)}`, { credentials: 'same-origin' })
-      .then(async (response) => response.ok ? await response.json() as LinkPreview : null)
+      .then(async response => response.ok ? await response.json() as LinkPreview : null)
       .catch(() => null);
     previewCache.set(url, cached);
   }
   return cached;
 }
 
-function buildCard(preview: LinkPreview) {
+function buildCard(preview: LinkPreview, originalUrl: string) {
   const card = document.createElement('a');
   card.dataset.lifonkLinkPreview = 'true';
-  card.href = preview.url;
+  card.dataset.previewUrl = originalUrl;
+  card.href = preview.url || originalUrl;
   card.target = '_blank';
   card.rel = 'noopener noreferrer';
-  card.className = 'mt-2 flex w-full min-w-[250px] max-w-[330px] overflow-hidden rounded-xl border border-white/20 bg-white/95 text-left text-slate-900 shadow-sm transition hover:shadow-md dark:border-white/10 dark:bg-[#171223] dark:text-white';
+  card.className = 'mt-2 flex w-full min-w-[250px] max-w-[340px] overflow-hidden rounded-2xl border border-white/20 bg-white/95 text-left text-slate-900 shadow-md transition active:scale-[.99] dark:border-white/10 dark:bg-[#171223] dark:text-white';
 
   if (preview.thumbnailUrl) {
     const image = document.createElement('img');
@@ -101,32 +97,50 @@ function buildCard(preview: LinkPreview) {
     image.alt = preview.title || 'TikTok';
     image.loading = 'lazy';
     image.referrerPolicy = 'no-referrer';
-    image.className = 'h-24 w-20 shrink-0 object-cover';
+    image.className = 'h-28 w-24 shrink-0 bg-black object-cover';
     card.appendChild(image);
+  } else {
+    const fallback = document.createElement('span');
+    fallback.className = 'flex h-24 w-20 shrink-0 items-center justify-center bg-[#1A1620] text-2xl font-black text-white';
+    fallback.textContent = '♪';
+    card.appendChild(fallback);
   }
 
   const body = document.createElement('span');
-  body.className = 'flex min-w-0 flex-1 flex-col justify-center px-3 py-2.5';
+  body.className = 'flex min-w-0 flex-1 flex-col justify-center px-3.5 py-3';
 
   const provider = document.createElement('span');
-  provider.className = 'text-[9px] font-black uppercase tracking-[.16em] text-[#C97B63]';
+  provider.className = 'text-[9px] font-black uppercase tracking-[.18em] text-[#C97B63]';
   provider.textContent = preview.providerName || 'TikTok';
 
   const title = document.createElement('strong');
-  title.className = 'mt-1 line-clamp-2 text-[11px] leading-snug';
+  title.className = 'mt-1.5 line-clamp-2 text-[12px] leading-snug';
   title.textContent = preview.title || 'Video de TikTok';
 
-  body.append(provider, title);
+  const open = document.createElement('span');
+  open.className = 'mt-2 text-[9px] font-bold text-[#443C68] dark:text-[#D8D1E8]';
+  open.textContent = 'Abrir en TikTok ↗';
 
+  body.append(provider, title);
   if (preview.authorName) {
     const author = document.createElement('span');
     author.className = 'mt-1 truncate text-[9px] text-slate-500 dark:text-slate-400';
     author.textContent = preview.authorName;
     body.appendChild(author);
   }
-
+  body.appendChild(open);
   card.appendChild(body);
   return card;
+}
+
+function fallbackPreview(url: string): LinkPreview {
+  return {
+    url,
+    providerName: 'TikTok',
+    title: 'Video compartido desde TikTok',
+    authorName: '',
+    thumbnailUrl: '',
+  };
 }
 
 export default function ChatLinkPreviewEnhancer() {
@@ -139,42 +153,30 @@ export default function ChatLinkPreviewEnhancer() {
     const decorate = () => {
       if (disposed || !window.location.pathname.startsWith('/chat')) return;
 
-      messageWrappers().forEach((wrapper) => {
-        const bubble = wrapper.firstElementChild as HTMLElement | null;
-        if (!bubble) return;
-
-        const messageText = bubble.querySelector<HTMLElement>('p.whitespace-pre-wrap');
-        if (!messageText) return;
-
-        const originalText = messageText.textContent || '';
+      const paragraphs = Array.from(document.querySelectorAll<HTMLElement>('p.whitespace-pre-wrap'));
+      paragraphs.forEach(messageText => {
+        const originalText = messageText.dataset.lifonkOriginalText || messageText.textContent || '';
         linkifyParagraph(messageText);
 
         const url = extractTikTokUrl(originalText);
-        const existing = bubble.querySelector<HTMLElement>('[data-lifonk-link-preview]');
+        const bubble = messageText.closest<HTMLElement>('div.rounded-2xl');
+        if (!bubble) return;
 
+        const existing = bubble.querySelector<HTMLElement>('[data-lifonk-link-preview]');
         if (!url) {
           existing?.remove();
           return;
         }
-
         if (existing?.dataset.previewUrl === url) return;
         existing?.remove();
 
-        const loading = document.createElement('div');
-        loading.dataset.lifonkLinkPreview = 'true';
-        loading.dataset.previewUrl = url;
-        loading.className = 'mt-2 h-20 w-full min-w-[250px] max-w-[330px] animate-pulse rounded-xl border border-white/15 bg-white/10';
-        bubble.appendChild(loading);
+        const initialCard = buildCard(fallbackPreview(url), url);
+        bubble.appendChild(initialCard);
 
-        void fetchPreview(url).then((preview) => {
-          if (disposed || !loading.isConnected) return;
-          if (!preview) {
-            loading.remove();
-            return;
-          }
-          const card = buildCard(preview);
-          card.dataset.previewUrl = url;
-          loading.replaceWith(card);
+        void fetchPreview(url).then(preview => {
+          if (disposed || !initialCard.isConnected || !preview) return;
+          const enriched = buildCard(preview, url);
+          initialCard.replaceWith(enriched);
         });
       });
     };
@@ -188,7 +190,13 @@ export default function ChatLinkPreviewEnhancer() {
     };
 
     decorate();
-    const observer = new MutationObserver(schedule);
+    const observer = new MutationObserver(mutations => {
+      if (mutations.every(mutation => {
+        const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+        return Boolean(target?.closest('[data-lifonk-link-preview],[data-lifonk-chat-link]'));
+      })) return;
+      schedule();
+    });
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
