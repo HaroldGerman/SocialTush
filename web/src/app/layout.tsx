@@ -13,6 +13,8 @@ import ChatScopedEnhancements from "@/components/ChatScopedEnhancements";
 import ChatReliableInteractions from "@/components/ChatReliableInteractions";
 import ChatReplyEnhancer from "@/components/ChatReplyEnhancer";
 import ChatHistoryTools from "@/components/ChatHistoryTools";
+import ChatSearchHistoryNavigator from "@/components/ChatSearchHistoryNavigator";
+import StoryCameraVideoRecorder from "@/components/StoryCameraVideoRecorder";
 import IncomingCallBridge from "@/components/IncomingCallBridge";
 import BuzzPersistenceBridge from "@/components/BuzzPersistenceBridge";
 import WebPushAutoSync from "@/components/WebPushAutoSync";
@@ -48,6 +50,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <ChatScopedEnhancements />
           <ChatReplyEnhancer />
           <ChatHistoryTools />
+          <ChatSearchHistoryNavigator />
+          <StoryCameraVideoRecorder />
           <IncomingCallBridge />
           <PulseInteractiveEcos />
           <MobileEcoEnhancer />
