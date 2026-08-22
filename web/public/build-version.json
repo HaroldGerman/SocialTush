@@ -1,5 +1,1 @@
-{
-  "version": "2026-08-22-chat-recovery-2",
-  "source": "main",
-  "features": ["chat-history-library", "in-chat-search", "pwa-refresh"]
-}
+{"version":"calls-search-20260822-0724","features":["incoming-call-push","call-ringtones","historical-search-navigation"]}

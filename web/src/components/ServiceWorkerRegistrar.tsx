@@ -3,92 +3,50 @@
 import { useEffect } from 'react';
 import { registerLifonkServiceWorker } from '@/lib/webPush';
 
-const BUILD_ID = '2026-08-22-chat-recovery-2';
-const RELOAD_KEY = 'lifonk-sw-controller-reload-v2';
-const BUILD_STORAGE_KEY = 'lifonk-last-build';
-
-async function readPublishedBuild() {
-  try {
-    const response = await fetch(`/build-version.json?t=${Date.now()}`, {
-      cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' },
-    });
-    if (!response.ok) return '';
-    const payload = await response.json();
-    return typeof payload?.version === 'string' ? payload.version : '';
-  } catch {
-    return '';
-  }
-}
+const RELOAD_KEY = 'lifonk-sw-controller-reload';
+const UPDATE_INTERVAL_MS = 60_000;
 
 export default function ServiceWorkerRegistrar() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
-
     let disposed = false;
     let registration: ServiceWorkerRegistration | null = null;
 
-    const hardRefreshToBuild = (version: string) => {
-      if (!version || disposed) return;
-      const url = new URL(window.location.href);
-      if (url.searchParams.get('__lifonk_build') === version) return;
-      url.searchParams.set('__lifonk_build', version);
-      window.location.replace(url.toString());
-    };
-
-    const checkPublishedBuild = async () => {
-      const version = await readPublishedBuild();
-      if (!version || disposed) return;
-      const previous = localStorage.getItem(BUILD_STORAGE_KEY) || '';
-      localStorage.setItem(BUILD_STORAGE_KEY, version);
-      if (previous && previous !== version) hardRefreshToBuild(version);
-    };
-
-    const refreshRegistration = async () => {
-      try {
-        if (!registration) registration = await registerLifonkServiceWorker();
-        else await registration.update();
-      } catch (error) {
-        console.error('Service Worker update:', error);
-      }
-      await checkPublishedBuild();
-    };
-
     const handleControllerChange = () => {
-      if (disposed || sessionStorage.getItem(RELOAD_KEY) === BUILD_ID) return;
-      sessionStorage.setItem(RELOAD_KEY, BUILD_ID);
-      hardRefreshToBuild(BUILD_ID);
+      if (disposed || sessionStorage.getItem(RELOAD_KEY) === '1') return;
+      sessionStorage.setItem(RELOAD_KEY, '1');
+      window.location.reload();
     };
 
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') void refreshRegistration();
+    const checkForUpdate = () => {
+      if (disposed || !registration) return;
+      void registration.update().catch(error => console.debug('SW update check:', error));
     };
 
-    const handleFocus = () => { void refreshRegistration(); };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') checkForUpdate();
+    };
 
     navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', checkForUpdate);
 
-    void refreshRegistration().then(() => {
-      if (disposed) return;
-      const url = new URL(window.location.href);
-      if (url.searchParams.has('__lifonk_build')) {
-        url.searchParams.delete('__lifonk_build');
-        window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
-      }
-    });
+    void registerLifonkServiceWorker()
+      .then(value => {
+        registration = value;
+        if (navigator.serviceWorker.controller) sessionStorage.removeItem(RELOAD_KEY);
+        checkForUpdate();
+      })
+      .catch(error => console.error('Service Worker registration:', error));
 
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refreshRegistration();
-    }, 5 * 60 * 1000);
+    const interval = window.setInterval(checkForUpdate, UPDATE_INTERVAL_MS);
 
     return () => {
       disposed = true;
-      window.clearInterval(timer);
+      window.clearInterval(interval);
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', checkForUpdate);
     };
   }, []);
 

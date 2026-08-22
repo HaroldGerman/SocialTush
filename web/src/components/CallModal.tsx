@@ -38,6 +38,19 @@ function configuredIceServers(): RTCIceServer[] {
   return servers;
 }
 
+function playTone(context: AudioContext, frequency: number, durationMs: number, gainValue = 0.055) {
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = 'sine';
+  oscillator.frequency.value = frequency;
+  gain.gain.setValueAtTime(gainValue, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + durationMs / 1000);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + durationMs / 1000);
+}
+
 export default function CallModal({ recipientUsername, isIncoming, callMode, initialOfferSdp, onClose, stompClientRef }: CallModalProps) {
   const { user } = useAuth();
   const [callStatus, setCallStatus] = useState<CallStatus>(isIncoming ? 'INCOMING' : 'CALLING');
@@ -77,6 +90,44 @@ export default function CallModal({ recipientUsername, isIncoming, callMode, ini
     setCallStatus('ENDED');
     window.setTimeout(onClose, 400);
   }, [cleanup, onClose, publish]);
+
+  useEffect(() => {
+    if (callStatus !== 'CALLING' && callStatus !== 'INCOMING') return;
+    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+    const context = new AudioContextCtor();
+    void context.resume().catch(() => undefined);
+    let cancelled = false;
+    const timers: number[] = [];
+
+    const ring = () => {
+      if (cancelled || context.state === 'closed') return;
+      if (callStatus === 'INCOMING') {
+        playTone(context, 740, 360, 0.075);
+        timers.push(window.setTimeout(() => playTone(context, 880, 360, 0.075), 430));
+      } else {
+        playTone(context, 440, 420, 0.05);
+        timers.push(window.setTimeout(() => playTone(context, 480, 420, 0.05), 480));
+      }
+    };
+
+    ring();
+    const interval = window.setInterval(ring, callStatus === 'INCOMING' ? 2200 : 2900);
+    let vibrationInterval: number | null = null;
+    if (callStatus === 'INCOMING' && 'vibrate' in navigator) {
+      navigator.vibrate?.([280, 140, 280, 140, 520]);
+      vibrationInterval = window.setInterval(() => navigator.vibrate?.([280, 140, 280, 140, 520]), 2400);
+    }
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      if (vibrationInterval !== null) window.clearInterval(vibrationInterval);
+      timers.forEach(timer => window.clearTimeout(timer));
+      navigator.vibrate?.(0);
+      void context.close().catch(() => undefined);
+    };
+  }, [callStatus]);
 
   const getLocalMedia = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('MediaDevices no está disponible.');
@@ -169,7 +220,9 @@ export default function CallModal({ recipientUsername, isIncoming, callMode, ini
           if (peerConnectionRef.current?.remoteDescription) await peerConnectionRef.current.addIceCandidate(signal.candidate);
           else pendingCandidatesRef.current.push(signal.candidate);
         } else if (['HANGUP', 'REJECT', 'BUSY'].includes(signal.type)) {
-          if (signal.type === 'REJECT') setError('La llamada fue rechazada.'); finish(false);
+          if (signal.type === 'REJECT') setError('La llamada fue rechazada.');
+          if (signal.type === 'BUSY') setError('La persona está ocupada.');
+          finish(false);
         }
       } catch (signalError) {
         console.error('Error procesando señal WebRTC:', signalError); setError('Falló la negociación de la llamada.'); setCallStatus('FAILED');
@@ -191,7 +244,7 @@ export default function CallModal({ recipientUsername, isIncoming, callMode, ini
       <div className="text-center text-white"><h3 className="font-bold">@{recipientUsername}</h3><p className="text-xs text-zinc-400">{statusText[callStatus]}</p>{error && <p className="mt-2 text-xs text-rose-400">{error}</p>}</div>
       <div className="relative my-4 flex flex-1 items-center justify-center overflow-hidden rounded-xl bg-zinc-950">
         {callMode === 'VIDEO' ? <><video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" /><video ref={localVideoRef} autoPlay playsInline muted className="absolute bottom-3 right-3 h-28 w-20 rounded-lg border border-white/20 object-cover -scale-x-100" /></>
-          : <><audio ref={remoteAudioRef} autoPlay /><div className="flex h-24 w-24 items-center justify-center rounded-full bg-teal-800 text-3xl font-bold text-white">{recipientUsername.charAt(0).toUpperCase()}</div></>}
+          : <><audio ref={remoteAudioRef} autoPlay /><div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#443C68] text-3xl font-bold text-white">{recipientUsername.charAt(0).toUpperCase()}</div></>}
       </div>
       <div className="flex justify-center gap-4">
         <button onClick={toggleMic} disabled={!localStreamRef.current} className="rounded-full bg-zinc-800 p-3 text-white disabled:opacity-40">{micActive ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}</button>

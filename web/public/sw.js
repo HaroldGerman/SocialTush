@@ -1,6 +1,6 @@
-const SW_BUILD = '2026-08-22-chat-recovery-2';
 const IMAGE_CACHE = 'lifonk-images-v1';
 const SHARE_CACHE = 'lifonk-share-v1';
+const SW_VERSION = 'calls-search-v1';
 
 self.addEventListener('install', event => {
   event.waitUntil(self.skipWaiting());
@@ -36,7 +36,6 @@ async function receiveShareTarget(request) {
 
     const cache = await caches.open(SHARE_CACHE);
     const fileMeta = [];
-
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
       const key = sharedKey(id, `file-${index}`);
@@ -47,25 +46,12 @@ async function receiveShareTarget(request) {
           'Cache-Control': 'no-store',
         },
       }));
-      fileMeta.push({
-        index,
-        name: file.name || `shared-${index}`,
-        type: file.type || 'application/octet-stream',
-        size: file.size || 0,
-      });
+      fileMeta.push({ index, name: file.name || `shared-${index}`, type: file.type || 'application/octet-stream', size: file.size || 0 });
     }
 
-    await cache.put(sharedKey(id, 'meta'), new Response(JSON.stringify({
-      id,
-      title,
-      text,
-      url,
-      files: fileMeta,
-      createdAt: Date.now(),
-    }), {
+    await cache.put(sharedKey(id, 'meta'), new Response(JSON.stringify({ id, title, text, url, files: fileMeta, createdAt: Date.now() }), {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
     }));
-
     const destination = new URL('/share', self.location.origin);
     destination.searchParams.set('shareId', id);
     return Response.redirect(destination.href, 303);
@@ -80,12 +66,10 @@ async function receiveShareTarget(request) {
 self.addEventListener('fetch', event => {
   const request = event.request;
   const url = new URL(request.url);
-
   if (request.method === 'POST' && url.origin === self.location.origin && url.pathname === '/share-target') {
     event.respondWith(receiveShareTarget(request));
     return;
   }
-
   if (url.origin === self.location.origin && url.pathname.startsWith('/__share/')) {
     if (request.method === 'GET') {
       event.respondWith((async () => {
@@ -94,7 +78,6 @@ self.addEventListener('fetch', event => {
       })());
       return;
     }
-
     if (request.method === 'DELETE') {
       event.respondWith((async () => {
         const parts = url.pathname.split('/').filter(Boolean);
@@ -105,12 +88,9 @@ self.addEventListener('fetch', event => {
       return;
     }
   }
-
   if (request.method !== 'GET' || request.destination !== 'image') return;
-
   const referrer = request.referrer || '';
   if (referrer.includes('/chat')) return;
-
   event.respondWith((async () => {
     const cache = await caches.open(IMAGE_CACHE);
     const cached = await cache.match(request);
@@ -136,23 +116,24 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('push', event => {
   let payload = {};
-  try {
-    payload = event.data ? event.data.json() : {};
-  } catch (error) {
-    console.error('Invalid Lifonk push payload', error);
-  }
+  try { payload = event.data ? event.data.json() : {}; }
+  catch (error) { console.error('Invalid Lifonk push payload', error); }
 
+  const incomingCall = payload.type === 'INCOMING_CALL';
   const title = typeof payload.title === 'string' ? payload.title : 'Lifonk';
-  const safePath = typeof payload.url === 'string' && payload.url.startsWith('/') && !payload.url.startsWith('//')
-    ? payload.url
-    : '/feed';
-  event.waitUntil(self.registration.showNotification(title, {
+  const safePath = typeof payload.url === 'string' && payload.url.startsWith('/') && !payload.url.startsWith('//') ? payload.url : '/feed';
+  const options = {
     body: typeof payload.body === 'string' ? payload.body : 'Tienes una nueva señal.',
     icon: '/icons/lifonk-192.png',
     badge: '/icons/lifonk-192.png',
-    tag: payload.notificationId ? `lifonk-${payload.notificationId}` : undefined,
-    data: { url: safePath },
-  }));
+    tag: incomingCall ? `lifonk-incoming-call-${payload.senderUsername || 'user'}` : (payload.notificationId ? `lifonk-${payload.notificationId}` : undefined),
+    data: { url: safePath, type: payload.type || '', senderUsername: payload.senderUsername || '', swVersion: SW_VERSION },
+    requireInteraction: incomingCall,
+    renotify: incomingCall,
+    silent: false,
+    vibrate: incomingCall ? [300, 150, 300, 150, 600] : undefined,
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', event => {
@@ -160,7 +141,6 @@ self.addEventListener('notificationclick', event => {
   const path = event.notification.data?.url;
   const safePath = typeof path === 'string' && path.startsWith('/') && !path.startsWith('//') ? path : '/feed';
   const destination = new URL(safePath, self.location.origin).href;
-
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of windows) {
