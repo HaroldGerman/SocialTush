@@ -16,7 +16,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Patch chat library and search
-        run: python .github/scripts/chat_library_search_patch.py
+        run: |
+          sed -i 's/const filteredConversations/const sendTypingSignal/' .github/scripts/chat_library_search_patch.py
+          python .github/scripts/chat_library_search_patch.py
       - name: Validate web build
         working-directory: web
         env:
