@@ -77,7 +77,7 @@ function buildLibrary(messages: Message[]) {
       const url=cleanUrl(raw); map.set(`l-${m.messageId}-${i}`, { key:`l-${m.messageId}-${i}`, kind:'LINK', url, label:hostLabel(url) });
     });
   });
-  return [...map.values()];
+  return Array.from(map.values());
 }
 
 function ensureLibraryMount() {
