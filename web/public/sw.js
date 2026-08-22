@@ -1,3 +1,4 @@
+const SW_BUILD = '2026-08-22-chat-recovery-2';
 const IMAGE_CACHE = 'lifonk-images-v1';
 const SHARE_CACHE = 'lifonk-share-v1';
 

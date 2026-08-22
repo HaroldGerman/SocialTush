@@ -1,0 +1,5 @@
+{
+  "version": "2026-08-22-chat-recovery-2",
+  "source": "main",
+  "features": ["chat-history-library", "in-chat-search", "pwa-refresh"]
+}
