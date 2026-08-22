@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Reply, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { api, useAuth } from '@/context/AuthContext';
 
 type ChatMessage = { messageId: string; senderUsername: string; senderDisplayName: string; content: string; messageType: string };
@@ -29,7 +29,15 @@ function messageWrappers() {
   );
 }
 
-function previewText(message: ChatMessage) {
+function composerTextarea() {
+  return document.querySelector<HTMLTextAreaElement>('textarea[placeholder*="mensaje" i]');
+}
+
+function composerForm() {
+  return composerTextarea()?.closest('form') || null;
+}
+
+function previewText(message: ChatMessage | ReplyPreview) {
   const text = (message.content || '').trim();
   if (text) return text.slice(0, 180);
   switch ((message.messageType || '').toUpperCase()) {
@@ -69,7 +77,7 @@ export default function ChatReplyEnhancer() {
         action = document.createElement('button');
         action.type = 'button';
         action.dataset.lifonkReplyAction = 'true';
-        action.className = 'mt-1 inline-flex items-center gap-1 self-start rounded-full px-2 py-1 text-[10px] font-bold text-slate-400 hover:bg-slate-100 hover:text-teal-700 dark:hover:bg-slate-800';
+        action.className = 'mt-1 inline-flex items-center gap-1 self-start rounded-full px-2 py-1 text-[10px] font-bold text-slate-400 transition hover:bg-slate-100 hover:text-teal-700 dark:hover:bg-slate-800';
         action.textContent = '↩ Responder';
         wrapper.appendChild(action);
       }
@@ -77,17 +85,24 @@ export default function ChatReplyEnhancer() {
 
       const context = contextsRef.current.get(message.messageId);
       const bubble = wrapper.firstElementChild as HTMLElement | null;
-      if (context && bubble && !bubble.querySelector('[data-lifonk-reply-quote]')) {
-        const quote = document.createElement('button');
+      const existingQuote = bubble?.querySelector<HTMLElement>('[data-lifonk-reply-quote]');
+      if (!context || !bubble) {
+        existingQuote?.remove();
+        return;
+      }
+
+      let quote = existingQuote as HTMLButtonElement | null;
+      if (!quote) {
+        quote = document.createElement('button');
         quote.type = 'button';
         quote.dataset.lifonkReplyQuote = 'true';
-        quote.dataset.parentId = context.messageId;
-        quote.className = 'mb-2 block w-full rounded-xl border-l-[3px] border-teal-300 bg-black/10 px-2.5 py-2 text-left text-[10px]';
-        quote.innerHTML = '<strong class="block text-[10px] opacity-90"></strong><span class="mt-0.5 block max-w-[250px] truncate opacity-75"></span>';
-        (quote.querySelector('strong') as HTMLElement).textContent = context.senderDisplayName || `@${context.senderUsername}`;
-        (quote.querySelector('span') as HTMLElement).textContent = context.content || 'Mensaje';
+        quote.className = 'mb-2 block w-full rounded-lg border-l-[3px] border-teal-300 bg-black/10 px-2.5 py-2 text-left text-[10px] transition hover:bg-black/15';
+        quote.innerHTML = '<strong class="block text-[10px] opacity-95"></strong><span class="mt-0.5 block max-w-[250px] truncate opacity-75"></span>';
         bubble.insertBefore(quote, bubble.firstChild);
       }
+      quote.dataset.parentId = context.messageId;
+      (quote.querySelector('strong') as HTMLElement).textContent = context.senderDisplayName || `@${context.senderUsername}`;
+      (quote.querySelector('span') as HTMLElement).textContent = previewText(context);
     });
   }, []);
 
@@ -120,28 +135,39 @@ export default function ChatReplyEnhancer() {
     }
   }, [decorate]);
 
+  const clearComposer = () => {
+    const textarea = composerTextarea();
+    if (!textarea) return;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    setter?.call(textarea, '');
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
   const sendReply = useCallback(async () => {
     if (!replying || !conversationId || sending) return;
-    const textarea = document.querySelector<HTMLTextAreaElement>('textarea[placeholder*="mensaje" i]');
+    const textarea = composerTextarea();
     const content = textarea?.value?.trim() || '';
     if (!content) {
       setNotice('Escribe una respuesta.');
+      textarea?.focus();
       return;
     }
+
     setSending(true);
+    setNotice('');
     try {
       await api.post(`/chat/conversations/${conversationId}/replies`, {
         parentMessageId: replying.messageId,
         content,
       });
-      if (textarea) {
-        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
-        setter?.call(textarea, '');
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+      clearComposer();
       setReplying(null);
-      window.setTimeout(() => void refresh(), 250);
-      window.setTimeout(() => void refresh(), 900);
+      window.setTimeout(() => {
+        void refresh();
+        const end = document.querySelector<HTMLElement>('[data-lifonk-message-id]:last-of-type');
+        end?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 180);
+      window.setTimeout(() => void refresh(), 700);
     } catch (error: any) {
       setNotice(error?.response?.data?.message || 'No se pudo enviar la respuesta.');
     } finally {
@@ -165,6 +191,7 @@ export default function ChatReplyEnhancer() {
     const click = (event: MouseEvent) => {
       if (!window.location.pathname.startsWith('/chat')) return;
       const target = event.target as HTMLElement | null;
+
       const action = target?.closest<HTMLButtonElement>('[data-lifonk-reply-action]');
       if (action) {
         event.preventDefault();
@@ -172,10 +199,11 @@ export default function ChatReplyEnhancer() {
         const message = messagesRef.current.find((item) => item.messageId === action.dataset.messageId);
         if (message) {
           setReplying(message);
-          window.setTimeout(() => document.querySelector<HTMLTextAreaElement>('textarea[placeholder*="mensaje" i]')?.focus(), 30);
+          window.setTimeout(() => composerTextarea()?.focus(), 30);
         }
         return;
       }
+
       const quote = target?.closest<HTMLButtonElement>('[data-lifonk-reply-quote]');
       if (quote?.dataset.parentId) {
         event.preventDefault();
@@ -183,19 +211,29 @@ export default function ChatReplyEnhancer() {
         if (original) {
           original.scrollIntoView({ behavior: 'smooth', block: 'center' });
           original.classList.add('ring-2', 'ring-teal-400', 'ring-offset-2');
-          window.setTimeout(() => original.classList.remove('ring-2', 'ring-teal-400', 'ring-offset-2'), 1400);
+          window.setTimeout(() => original.classList.remove('ring-2', 'ring-teal-400', 'ring-offset-2'), 1200);
         }
+        return;
       }
+
+      if (!replying || sending) return;
+      const form = composerForm();
+      const submitButton = target?.closest<HTMLButtonElement>('button[type="submit"]');
+      if (!form || !submitButton || !form.contains(submitButton)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      void sendReply();
     };
     document.addEventListener('click', click, true);
     return () => document.removeEventListener('click', click, true);
-  }, []);
+  }, [replying, sending, sendReply]);
 
   useEffect(() => {
     const submit = (event: SubmitEvent) => {
-      if (!replying || !window.location.pathname.startsWith('/chat')) return;
+      if (!replying || sending || !window.location.pathname.startsWith('/chat')) return;
       const form = event.target as HTMLFormElement | null;
-      if (!form?.querySelector('textarea[placeholder*="mensaje" i]')) return;
+      if (!form || form !== composerForm()) return;
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
@@ -203,20 +241,20 @@ export default function ChatReplyEnhancer() {
     };
     document.addEventListener('submit', submit, true);
     return () => document.removeEventListener('submit', submit, true);
-  }, [replying, sendReply]);
+  }, [replying, sending, sendReply]);
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (!replying || event.key !== 'Enter' || event.shiftKey || !window.matchMedia('(pointer:fine)').matches) return;
+      if (!replying || sending || event.key !== 'Enter' || event.shiftKey || !window.matchMedia('(pointer:fine)').matches) return;
       const target = event.target as HTMLElement | null;
-      if (!(target instanceof HTMLTextAreaElement)) return;
+      if (!(target instanceof HTMLTextAreaElement) || target !== composerTextarea()) return;
       event.preventDefault();
       event.stopPropagation();
       void sendReply();
     };
     document.addEventListener('keydown', key, true);
     return () => document.removeEventListener('keydown', key, true);
-  }, [replying, sendReply]);
+  }, [replying, sending, sendReply]);
 
   useEffect(() => {
     if (!notice) return;
@@ -226,14 +264,15 @@ export default function ChatReplyEnhancer() {
 
   return <>
     {replying && typeof document !== 'undefined' && createPortal(
-      <div className="fixed bottom-[calc(78px+env(safe-area-inset-bottom))] left-4 right-[72px] z-[2147481500] mx-auto max-w-xl rounded-2xl border border-teal-200 bg-white/95 p-2.5 shadow-xl backdrop-blur dark:border-teal-900 dark:bg-[#111b2a]/95">
-        <div className="flex items-start gap-2">
-          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300"><Reply className="h-4 w-4" /></div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-black text-teal-700 dark:text-teal-300">Respondiendo a {replying.senderDisplayName || `@${replying.senderUsername}`}</p>
-            <p className="mt-0.5 truncate text-[11px] text-slate-600 dark:text-slate-300">{previewText(replying)}</p>
+      <div className="pointer-events-none fixed bottom-[calc(76px+env(safe-area-inset-bottom))] left-0 right-0 z-[2147481500] px-3">
+        <div className="pointer-events-auto mx-auto max-w-xl overflow-hidden rounded-t-xl border border-b-0 border-slate-200 bg-white shadow-[0_-6px_20px_rgba(15,23,42,.08)] dark:border-[#26364c] dark:bg-[#111b2a]">
+          <div className="flex items-center gap-3 border-l-4 border-teal-500 px-3 py-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[11px] font-extrabold text-teal-700 dark:text-teal-300">{replying.senderDisplayName || `@${replying.senderUsername}`}</p>
+              <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-300">{previewText(replying)}</p>
+            </div>
+            <button type="button" aria-label="Cancelar respuesta" onClick={() => setReplying(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-4 w-4" /></button>
           </div>
-          <button type="button" onClick={() => setReplying(null)} className="p-1 text-slate-400"><X className="h-4 w-4" /></button>
         </div>
       </div>,
       document.body,
