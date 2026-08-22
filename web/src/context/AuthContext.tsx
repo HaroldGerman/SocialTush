@@ -67,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const accessTokenRef = React.useRef<string | null>(null);
+  const refreshPromiseRef = React.useRef<Promise<any> | null>(null);
 
   const sessionFromResponse = (data: any): UserSession => {
     const session: UserSession = {
@@ -87,6 +88,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAccessToken(token);
   };
 
+  const refreshSession = React.useCallback(async () => {
+    if (!refreshPromiseRef.current) {
+      refreshPromiseRef.current = axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+        withCredentials: true,
+        headers: deviceHeaders(),
+      }).then(res => {
+        setToken(res.data.accessToken);
+        setUser(sessionFromResponse(res.data));
+        return res.data;
+      }).finally(() => {
+        refreshPromiseRef.current = null;
+      });
+    }
+    return refreshPromiseRef.current;
+  }, []);
+
+  const invalidateSession = React.useCallback(() => {
+    setToken(null);
+    setUser(null);
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      const next = `${window.location.pathname}${window.location.search}`;
+      window.location.replace(`/login?next=${encodeURIComponent(next)}`);
+    }
+  }, []);
+
   useEffect(() => {
     const requestInterceptor = api.interceptors.request.use(
       (config) => {
@@ -105,48 +131,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       (response) => response,
       async (error) => {
         const originalRequest = error.config;
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
           originalRequest._retry = true;
           try {
-            const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
-              withCredentials: true,
-              headers: deviceHeaders(),
-            });
-            const newAccessToken = res.data.accessToken;
-            setToken(newAccessToken);
-            setUser(sessionFromResponse(res.data));
+            const data = await refreshSession();
+            const newAccessToken = data.accessToken;
+            originalRequest.headers = originalRequest.headers || {};
             originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
             const deviceId = getOrCreateDeviceId();
             if (deviceId) originalRequest.headers['X-Lifonk-Device-Id'] = deviceId;
             return api(originalRequest);
           } catch {
-            setToken(null);
-            setUser(null);
+            invalidateSession();
           }
         }
         return Promise.reject(error);
       }
     );
     return () => api.interceptors.response.eject(responseInterceptor);
-  }, []);
+  }, [refreshSession, invalidateSession]);
 
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
-          withCredentials: true,
-          headers: deviceHeaders(),
-        });
-        setToken(res.data.accessToken);
-        setUser(sessionFromResponse(res.data));
+        await refreshSession();
       } catch {
-        // No valid session cookie found.
+        setToken(null);
+        setUser(null);
       } finally {
         setIsLoading(false);
       }
     };
     void initAuth();
-  }, []);
+  }, [refreshSession]);
 
   const login = async (usernameOrEmail: string, password: string) => {
     setIsLoading(true);
