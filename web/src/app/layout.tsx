@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   description: "Connect, chat, share posts and stories in a premium, ultra-fast platform.",
   manifest: "/manifest.webmanifest",
   applicationName: "Lifonk",
-  themeColor: "#0f766e",
+  themeColor: "#6d28d9",
   icons: { icon: "/icons/lifonk.svg" },
 };
 
