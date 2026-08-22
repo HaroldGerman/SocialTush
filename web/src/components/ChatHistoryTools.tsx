@@ -36,34 +36,46 @@ type LibraryItem = {
 };
 
 const URL_RE = /https?:\/\/[^\s]+/gi;
+const LIBRARY_LABEL = 'multimedia, enlaces y archivos';
+const SEARCH_LABEL = 'buscar mensajes';
 
 function visible(node: Element) {
   const rect = (node as HTMLElement).getBoundingClientRect();
   return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
 }
 
+function textOf(node: Element | null) {
+  return node?.textContent?.trim() || '';
+}
+
 function activeIdentity() {
-  const usernames = Array.from(document.querySelectorAll<HTMLElement>('span,p,div')).filter(visible);
-  const username = usernames.find((node) => {
-    const text = node.textContent?.trim() || '';
-    if (!/^@[A-Za-z0-9_.-]+$/.test(text)) return false;
-    const rect = node.getBoundingClientRect();
-    return rect.top >= 0 && rect.top < 260;
-  })?.textContent?.trim().replace(/^@/, '');
+  const usernameCandidates = Array.from(document.querySelectorAll<HTMLElement>('span,p,div'))
+    .filter((node) => /^@[A-Za-z0-9_.-]+$/.test(textOf(node)));
 
-  const headings = Array.from(document.querySelectorAll<HTMLElement>('h1,h2,h3')).filter(visible);
-  const name = headings.find((node) => {
+  const visibleUsername = usernameCandidates.find((node) => {
+    if (!visible(node)) return false;
     const rect = node.getBoundingClientRect();
-    return rect.top >= 0 && rect.top < 260 && (node.textContent?.trim()?.length || 0) > 0;
-  })?.textContent?.trim();
+    return rect.top >= 0 && rect.top < 320;
+  });
+  const username = textOf(visibleUsername || usernameCandidates[0]).replace(/^@/, '');
 
-  return { username: username || '', name: name || '' };
+  const headings = Array.from(document.querySelectorAll<HTMLElement>('h1,h2,h3'))
+    .filter((node) => textOf(node).length > 0);
+  const visibleHeading = headings.find((node) => {
+    if (!visible(node)) return false;
+    const rect = node.getBoundingClientRect();
+    return rect.top >= 0 && rect.top < 320;
+  });
+  const name = textOf(visibleHeading || headings[0]);
+
+  return { username, name };
 }
 
 async function resolveConversation(): Promise<Conversation | null> {
   const { username, name } = activeIdentity();
   const response = await api.get('/chat/conversations');
   const conversations: Conversation[] = Array.isArray(response.data) ? response.data : [];
+
   if (username) {
     const direct = conversations.find((item) => item.otherUsername?.toLowerCase() === username.toLowerCase());
     if (direct) return direct;
@@ -79,6 +91,7 @@ async function loadAllMessages(conversationId: string) {
   const pageSize = 100;
   let page = 0;
   let all: Message[] = [];
+
   while (page < 100) {
     const response = await api.get(`/chat/conversations/${conversationId}/messages`, { params: { page, size: pageSize } });
     const chunk: Message[] = response.data?.content || response.data || [];
@@ -118,6 +131,33 @@ function highlightVisibleMessage(message?: Message) {
   return true;
 }
 
+function findSectionByLabel(labelText: string) {
+  const labels = Array.from(document.querySelectorAll<HTMLElement>('p,label'))
+    .filter((node) => textOf(node).toLowerCase().startsWith(labelText));
+  return labels.find(visible) || labels[0] || null;
+}
+
+function ensureLibraryMount() {
+  const label = findSectionByLabel(LIBRARY_LABEL);
+  if (!label) return null;
+  const container = label.parentElement;
+  if (!container) return null;
+
+  Array.from(container.children).forEach((child) => {
+    if (child === label) return;
+    if ((child as HTMLElement).dataset.lifonkFullLibrary === 'true') return;
+    if (child.classList.contains('grid')) (child as HTMLElement).style.display = 'none';
+  });
+
+  let mount = container.querySelector<HTMLElement>('[data-lifonk-full-library="true"]');
+  if (!mount) {
+    mount = document.createElement('div');
+    mount.dataset.lifonkFullLibrary = 'true';
+    container.appendChild(mount);
+  }
+  return mount;
+}
+
 export default function ChatHistoryTools() {
   const [libraryMount, setLibraryMount] = useState<HTMLElement | null>(null);
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
@@ -130,14 +170,54 @@ export default function ChatHistoryTools() {
   const [notice, setNotice] = useState('');
   const loadedConversationRef = useRef('');
   const loadedMessagesRef = useRef<Message[]>([]);
+  const loadingConversationRef = useRef('');
 
-  const buildLibrary = useCallback(async () => {
-    const conversation = await resolveConversation();
+  const resetHistoryCache = useCallback(() => {
+    loadedConversationRef.current = '';
+    loadedMessagesRef.current = [];
+    loadingConversationRef.current = '';
+    setLibraryItems([]);
+  }, []);
+
+  const buildLibrary = useCallback(async (force = false) => {
+    let conversation: Conversation | null = null;
+    try {
+      conversation = await resolveConversation();
+    } catch {
+      setNotice('No se pudo identificar esta conversación.');
+      return;
+    }
     if (!conversation?.conversationId) return;
-    if (loadedConversationRef.current === conversation.conversationId && libraryItems.length) return;
+
+    const conversationId = conversation.conversationId;
+    if (!force && loadedConversationRef.current === conversationId && loadedMessagesRef.current.length) {
+      if (!libraryItems.length) {
+        const cached = loadedMessagesRef.current;
+        const items: LibraryItem[] = [];
+        [...cached].reverse().forEach((message) => {
+          (message.attachments || []).forEach((attachment) => {
+            if (!attachment.fileUrl || attachment.fileType.startsWith('VIEW_ONCE_')) return;
+            const kind: LibraryItem['kind'] = attachment.fileType === 'IMAGE' ? 'IMAGE'
+              : attachment.fileType === 'VIDEO' ? 'VIDEO'
+              : attachment.fileType === 'AUDIO' ? 'AUDIO'
+              : attachment.fileType === 'DOCUMENT' ? 'DOCUMENT' : 'OTHER';
+            items.push({ key: `a-${attachment.id}`, kind, url: attachment.fileUrl, label: attachment.fileName || attachment.fileType });
+          });
+          ((message.content || '').match(URL_RE) || []).forEach((raw, index) => {
+            const url = cleanUrl(raw);
+            items.push({ key: `l-${message.messageId}-${index}`, kind: 'LINK', url, label: hostLabel(url) });
+          });
+        });
+        setLibraryItems(items);
+      }
+      return;
+    }
+    if (loadingConversationRef.current === conversationId) return;
+
+    loadingConversationRef.current = conversationId;
     setLibraryLoading(true);
     try {
-      const messages = await loadAllMessages(conversation.conversationId);
+      const messages = await loadAllMessages(conversationId);
       const items: LibraryItem[] = [];
       [...messages].reverse().forEach((message) => {
         (message.attachments || []).forEach((attachment) => {
@@ -153,43 +233,50 @@ export default function ChatHistoryTools() {
           items.push({ key: `l-${message.messageId}-${index}`, kind: 'LINK', url, label: hostLabel(url) });
         });
       });
-      loadedConversationRef.current = conversation.conversationId;
+      loadedConversationRef.current = conversationId;
       loadedMessagesRef.current = messages;
       setLibraryItems(items);
     } catch {
       setNotice('No se pudo cargar todo el historial de multimedia.');
     } finally {
+      loadingConversationRef.current = '';
       setLibraryLoading(false);
     }
   }, [libraryItems.length]);
 
   useEffect(() => {
     if (!window.location.pathname.startsWith('/chat')) return;
+    let raf = 0;
+    let previousIdentity = '';
+
     const scan = () => {
-      const labels = Array.from(document.querySelectorAll<HTMLElement>('p,label')).filter((node) => node.textContent?.trim().toLowerCase().startsWith('multimedia, enlaces y archivos'));
-      const label = labels.find(visible);
-      if (!label) {
-        setLibraryMount(null);
-        return;
-      }
-      const container = label.parentElement;
-      if (!container) return;
-      let mount = container.querySelector<HTMLElement>('[data-lifonk-full-library]');
-      if (!mount) {
-        const oldGrid = Array.from(container.children).find((child) => child !== label && child.classList.contains('grid')) as HTMLElement | undefined;
-        if (oldGrid) oldGrid.style.display = 'none';
-        mount = document.createElement('div');
-        mount.dataset.lifonkFullLibrary = 'true';
-        container.appendChild(mount);
-      }
-      setLibraryMount(mount);
-      void buildLibrary();
+      if (!window.location.pathname.startsWith('/chat')) return;
+      const identity = activeIdentity();
+      const identityKey = `${identity.username}|${identity.name}`;
+      if (previousIdentity && identityKey && previousIdentity !== identityKey) resetHistoryCache();
+      if (identityKey) previousIdentity = identityKey;
+
+      const mount = ensureLibraryMount();
+      setLibraryMount((current) => current === mount ? current : mount);
+      if (mount) void buildLibrary();
     };
+
+    const scheduleScan = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(scan);
+    };
+
     scan();
-    const observer = new MutationObserver(() => window.requestAnimationFrame(scan));
+    const observer = new MutationObserver(scheduleScan);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [buildLibrary]);
+    const interval = window.setInterval(scan, 750);
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      observer.disconnect();
+      window.clearInterval(interval);
+    };
+  }, [buildLibrary, resetHistoryCache]);
 
   const runSearch = useCallback(async (value: string) => {
     const trimmed = value.trim();
@@ -238,11 +325,13 @@ export default function ChatHistoryTools() {
       const target = event.target as HTMLElement | null;
       const button = target?.closest('button');
       if (!button) return;
-      const section = button.parentElement?.parentElement;
-      const label = section?.querySelector('label');
-      if (label?.textContent?.trim().toLowerCase() !== 'buscar mensajes') return;
-      const input = section?.querySelector<HTMLInputElement>('input');
+
+      const label = findSectionByLabel(SEARCH_LABEL);
+      const section = label?.parentElement;
+      if (!section || !section.contains(button)) return;
+      const input = section.querySelector<HTMLInputElement>('input');
       if (!input) return;
+
       event.preventDefault();
       event.stopPropagation();
       void runSearch(input.value);
@@ -273,6 +362,12 @@ export default function ChatHistoryTools() {
     return () => window.removeEventListener('keydown', handler);
   }, [searchOpen, resultIndex, results]);
 
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(''), 3000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   const current = results[resultIndex];
   const library = useMemo(() => libraryItems, [libraryItems]);
 
@@ -285,7 +380,7 @@ export default function ChatHistoryTools() {
       <div className="mt-2">
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-[10px] font-bold text-slate-400">{libraryLoading ? 'Cargando historial…' : `${library.length} elementos`}</span>
-          {!libraryLoading && <button type="button" onClick={() => { loadedConversationRef.current = ''; loadedMessagesRef.current = []; void buildLibrary(); }} className="text-[9px] font-bold text-[#8b5cf6]">Actualizar</button>}
+          {!libraryLoading && <button type="button" onClick={() => { resetHistoryCache(); void buildLibrary(true); }} className="text-[9px] font-bold text-[#8b5cf6]">Actualizar</button>}
         </div>
         {!libraryLoading && library.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 px-3 py-5 text-center text-[10px] text-slate-400 dark:border-slate-700">Aún no hay multimedia, enlaces o archivos.</div>}
         <div className="grid max-h-[430px] grid-cols-3 gap-2 overflow-y-auto pr-1">
