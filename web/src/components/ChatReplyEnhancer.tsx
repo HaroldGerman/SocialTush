@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { api, useAuth } from '@/context/AuthContext';
 
-type ChatMessage = { messageId: string; senderUsername: string; senderDisplayName: string; content: string; messageType: string };
+type ChatMessage = { messageId: string; senderUsername: string; senderDisplayName: string; content: string; messageType: string; replyTo?: ReplyPreview };
 type Conversation = { conversationId: string | null; otherUsername?: string; name?: string };
 type ReplyPreview = { messageId: string; senderUsername: string; senderDisplayName: string; content: string; messageType: string };
 type ReplyContext = { messageId: string; replyTo: ReplyPreview };
@@ -95,7 +95,7 @@ export default function ChatReplyEnhancer() {
         action = document.createElement('button');
         action.type = 'button';
         action.dataset.lifonkReplyAction = 'true';
-        action.className = 'mt-1 inline-flex items-center gap-1 self-start rounded-full px-2 py-1 text-[10px] font-bold text-slate-400 transition hover:bg-slate-100 hover:text-teal-700 dark:hover:bg-slate-800';
+        action.className = 'mt-1 inline-flex items-center gap-1 self-start rounded-full px-2 py-1 text-[10px] font-bold text-slate-400 transition hover:bg-slate-100 hover:text-violet-700 dark:hover:bg-slate-800';
         action.textContent = '↩ Responder';
         wrapper.appendChild(action);
       }
@@ -103,7 +103,10 @@ export default function ChatReplyEnhancer() {
         action.dataset.messageId = message.messageId;
       }
 
-      const context = contextsRef.current.get(message.messageId);
+      const context = contextsRef.current.get(message.messageId) || message.replyTo;
+      if (message.replyTo && !contextsRef.current.has(message.messageId)) {
+        contextsRef.current.set(message.messageId, message.replyTo);
+      }
       const bubble = wrapper.firstElementChild as HTMLElement | null;
       const existingQuote = bubble?.querySelector<HTMLElement>('[data-lifonk-reply-quote]');
       if (!context || !bubble) {
@@ -116,7 +119,7 @@ export default function ChatReplyEnhancer() {
         quote = document.createElement('button');
         quote.type = 'button';
         quote.dataset.lifonkReplyQuote = 'true';
-        quote.className = 'mb-2 block w-full rounded-lg border-l-[3px] border-teal-300 bg-black/10 px-2.5 py-2 text-left text-[10px] transition hover:bg-black/15';
+        quote.className = 'mb-2 block w-full rounded-lg border-l-[3px] border-violet-400 bg-black/10 px-2.5 py-2 text-left text-[10px] transition hover:bg-black/15';
         quote.innerHTML = '<strong class="block text-[10px] opacity-95"></strong><span class="mt-0.5 block max-w-[250px] truncate opacity-75"></span>';
         bubble.insertBefore(quote, bubble.firstChild);
       }
@@ -156,6 +159,9 @@ export default function ChatReplyEnhancer() {
       (Array.isArray(contextResponse.data) ? contextResponse.data : []).forEach((item: ReplyContext) => {
         if (item.messageId && item.replyTo) map.set(item.messageId, item.replyTo);
       });
+      messagesRef.current.forEach((message) => {
+        if (message.messageId && message.replyTo) map.set(message.messageId, message.replyTo);
+      });
       contextsRef.current = map;
       scheduleDecorate();
     } catch (error) {
@@ -186,24 +192,43 @@ export default function ChatReplyEnhancer() {
     setSending(true);
     setNotice('');
     try {
-      await api.post(`/chat/conversations/${conversationId}/replies`, {
+      const response = await api.post(`/chat/conversations/${conversationId}/replies`, {
         parentMessageId: replying.messageId,
         content,
       });
+      const sent = response.data as ChatMessage;
+      if (sent?.messageId) {
+        const immediateContext = sent.replyTo || {
+          messageId: replying.messageId,
+          senderUsername: replying.senderUsername,
+          senderDisplayName: replying.senderDisplayName,
+          content: replying.content,
+          messageType: replying.messageType,
+        };
+        contextsRef.current.set(sent.messageId, immediateContext);
+        if (!messagesRef.current.some((item) => item.messageId === sent.messageId)) {
+          messagesRef.current = [...messagesRef.current, { ...sent, replyTo: immediateContext }];
+        }
+      }
       clearComposer();
       setReplying(null);
+
+      /* The backend already returns replyTo. Decorate immediately instead of
+         waiting for a later refresh, which caused the quote to disappear until reload. */
+      scheduleDecorate();
+      window.setTimeout(scheduleDecorate, 60);
+      window.setTimeout(scheduleDecorate, 180);
       window.setTimeout(() => {
-        void refresh();
         const end = document.querySelector<HTMLElement>('[data-lifonk-message-id]:last-of-type');
         end?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      }, 180);
-      window.setTimeout(() => void refresh(), 700);
+      }, 220);
+      window.setTimeout(() => void refresh(), 900);
     } catch (error: any) {
       setNotice(error?.response?.data?.message || 'No se pudo enviar la respuesta.');
     } finally {
       setSending(false);
     }
-  }, [replying, conversationId, refresh, sending]);
+  }, [replying, conversationId, refresh, scheduleDecorate, sending]);
 
   useEffect(() => {
     if (!user || !accessToken) return;
@@ -247,8 +272,8 @@ export default function ChatReplyEnhancer() {
         const original = document.querySelector<HTMLElement>(`[data-lifonk-message-id="${quote.dataset.parentId}"]`);
         if (original) {
           original.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          original.classList.add('ring-2', 'ring-teal-400', 'ring-offset-2');
-          window.setTimeout(() => original.classList.remove('ring-2', 'ring-teal-400', 'ring-offset-2'), 1200);
+          original.classList.add('ring-2', 'ring-violet-400', 'ring-offset-2');
+          window.setTimeout(() => original.classList.remove('ring-2', 'ring-violet-400', 'ring-offset-2'), 1200);
         }
         return;
       }
@@ -303,9 +328,9 @@ export default function ChatReplyEnhancer() {
     {replying && typeof document !== 'undefined' && createPortal(
       <div className="pointer-events-none fixed bottom-[calc(76px+env(safe-area-inset-bottom))] left-0 right-0 z-[2147481500] px-3">
         <div className="pointer-events-auto mx-auto max-w-xl overflow-hidden rounded-t-xl border border-b-0 border-slate-200 bg-white shadow-[0_-6px_20px_rgba(15,23,42,.08)] dark:border-[#26364c] dark:bg-[#111b2a]">
-          <div className="flex items-center gap-3 border-l-4 border-teal-500 px-3 py-2.5">
+          <div className="flex items-center gap-3 border-l-4 border-violet-500 px-3 py-2.5">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[11px] font-extrabold text-teal-700 dark:text-teal-300">{replying.senderDisplayName || `@${replying.senderUsername}`}</p>
+              <p className="truncate text-[11px] font-extrabold text-violet-700 dark:text-violet-300">{replying.senderDisplayName || `@${replying.senderUsername}`}</p>
               <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-300">{previewText(replying)}</p>
             </div>
             <button type="button" aria-label="Cancelar respuesta" onClick={() => setReplying(null)} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-4 w-4" /></button>
