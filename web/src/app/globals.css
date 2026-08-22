@@ -4,20 +4,34 @@
 
 :root {
   --font-sans: 'Manrope', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
-  --bg-main: #f4f6f9;
+  --bg-main: #f7f6fb;
   --card-bg: #ffffff;
-  --text-main: #1e293b;
-  --text-muted: #64748b;
-  --primary-teal: #0d9488;
-  --primary-dark-teal: #0f766e;
-  --accent-light-teal: #ccfbf1;
+  --text-main: #1e1b2e;
+  --text-muted: #6b6680;
+
+  /* Lifonk brand: violet + coral */
+  --brand-primary: #6d28d9;
+  --brand-primary-hover: #5b21b6;
+  --brand-primary-soft: #f3e8ff;
+  --brand-primary-subtle: #faf5ff;
+  --brand-accent: #f43f5e;
+  --brand-accent-hover: #e11d48;
+  --brand-accent-soft: #ffe4e6;
+
+  /* Backward-compatible aliases while older components migrate. */
+  --primary-teal: var(--brand-primary);
+  --primary-dark-teal: var(--brand-primary-hover);
+  --accent-light-teal: var(--brand-primary-soft);
 }
 
 .dark {
-  --bg-main: #090d16;
-  --card-bg: #0f172a;
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
+  --bg-main: #0d0b14;
+  --card-bg: #15111f;
+  --text-main: #faf7ff;
+  --text-muted: #aaa2bd;
+  --brand-primary-soft: #2e1065;
+  --brand-primary-subtle: #1d1232;
+  --brand-accent-soft: #4c101d;
 }
 
 body {
@@ -36,18 +50,18 @@ body {
   background: var(--bg-main);
 }
 ::-webkit-scrollbar-thumb {
-  background: #94a3b8;
+  background: #a8a1b8;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #0d9488;
+  background: var(--brand-primary);
 }
 
 /* Clean Card Shadows & Effects */
 .soft-card {
   background: var(--card-bg);
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+  border: 1px solid #e7e3ef;
+  box-shadow: 0 4px 20px -2px rgba(46, 16, 101, 0.06);
   border-radius: 1.25rem;
 }
 
@@ -56,30 +70,94 @@ body {
 }
 .soft-card-hover:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 28px -4px rgba(13, 148, 136, 0.12);
-  border-color: #cbd5e1;
+  box-shadow: 0 12px 28px -4px rgba(109, 40, 217, 0.14);
+  border-color: #d8d0e8;
 }
 
+/* Legacy class names kept so existing markup does not break. */
 .teal-gradient-card {
-  background: linear-gradient(135deg, #042f2e 0%, #0f766e 100%);
+  background: linear-gradient(135deg, #2e1065 0%, #6d28d9 68%, #f43f5e 145%);
   color: #ffffff;
 }
 
 .teal-pill-btn {
-  background-color: #0f766e;
+  background: linear-gradient(135deg, var(--brand-primary), #7c3aed);
   color: #ffffff;
   transition: all 0.2s ease;
 }
 .teal-pill-btn:hover {
-  background-color: #0d9488;
-  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25);
+  background: linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary));
+  box-shadow: 0 4px 14px rgba(109, 40, 217, 0.28);
 }
 
 .badge-counter {
-  background-color: #0f766e;
+  background-color: var(--brand-accent);
   color: #ffffff;
   font-size: 0.7rem;
   font-weight: 700;
   padding: 0.15rem 0.45rem;
   border-radius: 9999px;
+}
+
+/*
+ * Brand migration layer.
+ * A large part of Lifonk still uses Tailwind teal utilities from the original
+ * visual identity. These aliases immediately move those surfaces to violet
+ * without changing behavior, while coral remains the attention/accent color.
+ */
+.text-teal-300 { color: #d8b4fe !important; }
+.text-teal-400 { color: #c084fc !important; }
+.text-teal-500 { color: #a855f7 !important; }
+.text-teal-600 { color: #9333ea !important; }
+.text-teal-700 { color: #7e22ce !important; }
+.text-teal-800 { color: #6b21a8 !important; }
+.text-teal-900 { color: #581c87 !important; }
+
+.bg-teal-50 { background-color: #faf5ff !important; }
+.bg-teal-100 { background-color: #f3e8ff !important; }
+.bg-teal-200 { background-color: #e9d5ff !important; }
+.bg-teal-300 { background-color: #d8b4fe !important; }
+.bg-teal-400 { background-color: #c084fc !important; }
+.bg-teal-500 { background-color: #a855f7 !important; }
+.bg-teal-600 { background-color: #9333ea !important; }
+.bg-teal-700 { background-color: #7e22ce !important; }
+.bg-teal-800 { background-color: #6b21a8 !important; }
+.bg-teal-900 { background-color: #581c87 !important; }
+.bg-teal-950 { background-color: #3b0764 !important; }
+
+.border-teal-100 { border-color: #f3e8ff !important; }
+.border-teal-200 { border-color: #e9d5ff !important; }
+.border-teal-300 { border-color: #d8b4fe !important; }
+.border-teal-400 { border-color: #c084fc !important; }
+.border-teal-500 { border-color: #a855f7 !important; }
+.border-teal-600 { border-color: #9333ea !important; }
+.border-teal-700 { border-color: #7e22ce !important; }
+.border-teal-800 { border-color: #6b21a8 !important; }
+.border-teal-900 { border-color: #581c87 !important; }
+
+.ring-teal-300 { --tw-ring-color: #d8b4fe !important; }
+.ring-teal-400 { --tw-ring-color: #c084fc !important; }
+.ring-teal-500 { --tw-ring-color: #a855f7 !important; }
+
+.hover\:text-teal-700:hover { color: #7e22ce !important; }
+.hover\:bg-teal-50:hover { background-color: #faf5ff !important; }
+.hover\:bg-teal-100:hover { background-color: #f3e8ff !important; }
+.hover\:bg-teal-700:hover { background-color: #7e22ce !important; }
+
+.dark .dark\:text-teal-300 { color: #d8b4fe !important; }
+.dark .dark\:bg-teal-950 { background-color: #2e1065 !important; }
+.dark .dark\:border-teal-900 { border-color: #581c87 !important; }
+.dark .dark\:hover\:bg-teal-800:hover { background-color: #6b21a8 !important; }
+
+/* Semantic helpers for new Lifonk components. */
+.lifonk-primary {
+  background: linear-gradient(135deg, var(--brand-primary), #7c3aed);
+  color: #fff;
+}
+.lifonk-accent {
+  color: var(--brand-accent);
+}
+.lifonk-accent-bg {
+  background-color: var(--brand-accent);
+  color: #fff;
 }
