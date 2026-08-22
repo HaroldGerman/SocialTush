@@ -11,6 +11,7 @@ type LinkPreview = {
 };
 
 const previewCache = new Map<string, Promise<LinkPreview | null>>();
+const URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
 
 function messageWrappers() {
   return Array.from(document.querySelectorAll<HTMLElement>('div.flex.flex-col')).filter(
@@ -18,10 +19,61 @@ function messageWrappers() {
   );
 }
 
+function cleanUrl(value: string) {
+  return value.replace(/[),.;!?]+$/g, '');
+}
+
 function extractTikTokUrl(text: string) {
-  const match = text.match(/https:\/\/(?:www\.|m\.|vt\.|vm\.)?tiktok\.com\/[^\s<>"']+/i);
-  if (!match) return null;
-  return match[0].replace(/[),.;!?]+$/g, '');
+  const matches = text.match(URL_REGEX) || [];
+  for (const raw of matches) {
+    const candidate = cleanUrl(raw);
+    try {
+      const parsed = new URL(candidate);
+      const host = parsed.hostname.toLowerCase();
+      if (host === 'tiktok.com' || host === 'www.tiktok.com' || host === 'm.tiktok.com' || host === 'vt.tiktok.com' || host === 'vm.tiktok.com') {
+        return candidate;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function linkifyParagraph(node: HTMLElement) {
+  const text = node.textContent || '';
+  if (!URL_REGEX.test(text)) {
+    URL_REGEX.lastIndex = 0;
+    return;
+  }
+  URL_REGEX.lastIndex = 0;
+  if (node.dataset.lifonkLinkified === text) return;
+
+  const fragment = document.createDocumentFragment();
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    const raw = match[0];
+    const url = cleanUrl(raw);
+    const start = match.index;
+    if (start > cursor) fragment.appendChild(document.createTextNode(text.slice(cursor, start)));
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = url;
+    link.className = 'break-all font-semibold underline decoration-white/50 underline-offset-2 hover:decoration-current';
+    link.dataset.lifonkChatLink = 'true';
+    fragment.appendChild(link);
+
+    const trailing = raw.slice(url.length);
+    if (trailing) fragment.appendChild(document.createTextNode(trailing));
+    cursor = start + raw.length;
+  }
+
+  if (cursor < text.length) fragment.appendChild(document.createTextNode(text.slice(cursor)));
+  node.replaceChildren(fragment);
+  node.dataset.lifonkLinkified = text;
 }
 
 async function fetchPreview(url: string) {
@@ -94,7 +146,10 @@ export default function ChatLinkPreviewEnhancer() {
         const messageText = bubble.querySelector<HTMLElement>('p.whitespace-pre-wrap');
         if (!messageText) return;
 
-        const url = extractTikTokUrl(messageText.textContent || '');
+        const originalText = messageText.textContent || '';
+        linkifyParagraph(messageText);
+
+        const url = extractTikTokUrl(originalText);
         const existing = bubble.querySelector<HTMLElement>('[data-lifonk-link-preview]');
 
         if (!url) {
@@ -112,7 +167,8 @@ export default function ChatLinkPreviewEnhancer() {
         bubble.appendChild(loading);
 
         void fetchPreview(url).then((preview) => {
-          if (disposed || !preview || !loading.isConnected) {
+          if (disposed || !loading.isConnected) return;
+          if (!preview) {
             loading.remove();
             return;
           }
@@ -132,13 +188,7 @@ export default function ChatLinkPreviewEnhancer() {
     };
 
     decorate();
-    const observer = new MutationObserver((mutations) => {
-      if (mutations.every((mutation) => {
-        const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
-        return Boolean(target?.closest('[data-lifonk-link-preview]'));
-      })) return;
-      schedule();
-    });
+    const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
