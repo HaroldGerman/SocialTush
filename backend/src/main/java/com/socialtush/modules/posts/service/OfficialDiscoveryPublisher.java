@@ -24,67 +24,100 @@ public class OfficialDiscoveryPublisher {
     private static final String USERNAME = "lifonk-descubre";
     private static final ZoneId LIMA = ZoneId.of("America/Lima");
 
+    // Dos contribuciones por cada uno de los 12 temas oficiales de Descubrir.
     private static final List<DiscoveryContribution> CONTRIBUTIONS = List.of(
-            new DiscoveryContribution("Naturaleza", "Hay lugares que parecen inventados", "Montañas, niebla y silencio. A veces descubrir también es detenerse un momento y mirar.", "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Astronomía", "Mirar al cielo también es mirar al pasado", "La luz de muchas estrellas tarda años en llegar hasta nosotros. Cuando observamos el cielo nocturno, vemos distintos momentos de la historia del universo.", "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Tecnología", "Internet también tiene una geografía", "Gran parte del tráfico mundial viaja por cables submarinos que conectan continentes bajo los océanos. La nube también depende de infraestructura física.", "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Historia", "Las bibliotecas son máquinas del tiempo", "Un libro puede conservar ideas durante siglos. Las bibliotecas no solo almacenan páginas: también guardan versiones de cómo una sociedad entendía su mundo.", "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Ciencia", "Lo invisible también construye el mundo", "Átomos, microorganismos y campos magnéticos no se ven a simple vista, pero participan constantemente en lo que ocurre a nuestro alrededor.", "https://images.unsplash.com/photo-1507413245164-6160d8298b31?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Geografía", "El desierto también guarda ritmo", "Las dunas cambian lentamente con el viento: un paisaje puede estar vivo aunque parezca inmóvil.", "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Programación", "Un pequeño programa puede mover sistemas enormes", "Las aplicaciones que usamos cada día nacen de instrucciones simples organizadas en muchas capas. La complejidad suele construirse paso a paso.", "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Psicología", "La memoria no funciona como una grabación", "Recordar es reconstruir. Nuestro cerebro combina detalles, contexto y emociones cada vez que recuperamos una experiencia.", "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Naturaleza", "Un minuto de bosque", "Los ecosistemas forestales conectan raíces, hongos, agua y nutrientes en redes mucho más complejas de lo que vemos.", "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Idiomas", "Cada idioma organiza el mundo de otra manera", "Aprender otra lengua no es solo memorizar palabras: también es descubrir nuevas formas de ordenar ideas, tiempo, relaciones y experiencias.", "https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Arte", "El color nunca está completamente solo", "La percepción de un color cambia según lo que lo rodea. Por eso una misma tonalidad puede sentirse más cálida, fría, intensa o apagada dependiendo del contexto.", "https://images.unsplash.com/photo-1547891654-e66ed7ebb968?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Arquitectura", "Las ciudades cuentan historias sin hablar", "Calles, plazas y edificios revelan decisiones de distintas épocas. Una ciudad puede leerse como un archivo construido capa por capa.", "https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Océanos", "La mayor parte del océano sigue siendo desconocida", "Aunque cubre la mayor parte del planeta, enormes zonas del fondo marino todavía no han sido observadas directamente con gran detalle.", "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Música", "El ritmo puede cambiar cómo sentimos el tiempo", "Una canción rápida puede hacer que unos minutos parezcan pasar distinto. El cerebro usa patrones y expectativas para anticipar lo que viene.", "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Historia", "Los mapas también reflejan poder", "Un mapa no solo representa territorio: también decide qué mostrar, qué nombrar y desde qué perspectiva mirar el mundo.", "https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Biología", "Tu cuerpo es también un ecosistema", "Millones de microorganismos viven en distintas partes del cuerpo humano y participan en procesos relacionados con digestión, defensa y equilibrio interno.", "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Espacio", "En el espacio no hay un arriba universal", "Arriba y abajo dependen del punto de referencia y de la gravedad cercana. Fuera de la Tierra, esas direcciones dejan de ser absolutas.", "https://images.unsplash.com/photo-1454789548928-9efd52dc4031?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Economía", "El valor también depende de la confianza", "Dinero, mercados y contratos funcionan porque muchas personas aceptan reglas y expectativas compartidas. La confianza es parte de la infraestructura económica.", "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Ingeniería", "Los puentes trabajan incluso cuando parecen quietos", "Una estructura distribuye fuerzas continuamente. El diseño busca que peso, movimiento, viento y materiales encuentren un equilibrio seguro.", "https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=1200&q=82"),
-            new DiscoveryContribution("Naturaleza", "La naturaleza también construye redes", "Un bosque no es una colección de árboles aislados. Bajo el suelo existen relaciones que intercambian nutrientes y señales.", "https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=1200&q=82")
+            new DiscoveryContribution("tecnologia", 0, "Tecnología", "La IA ya vive en cosas cotidianas", "Desde el teclado predictivo hasta la cámara del celular, muchos sistemas usan modelos que aprenden patrones para ayudarnos sin que siempre lo notemos.", "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("tecnologia", 1, "Tecnología", "La nube también está hecha de máquinas reales", "Cada foto, mensaje o archivo que guardamos en la nube termina viviendo en centros de datos con servidores, redes, energía y sistemas de respaldo físicos.", "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1200&q=82"),
+
+            new DiscoveryContribution("gaming", 0, "Gaming", "Un buen juego te enseña sin darte una clase", "Los mejores tutoriales suelen esconderse en el diseño: una puerta, una luz o un sonido pueden enseñarte qué hacer antes de que aparezca una sola palabra.", "https://images.unsplash.com/photo-1493711662062-fa541adb3fc8?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("gaming", 1, "Gaming", "Los eSports también se ganan fuera de la partida", "Preparación mental, análisis de rivales, comunicación y descanso influyen tanto como la mecánica cuando una partida se decide por segundos.", "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=82"),
+
+            new DiscoveryContribution("musica", 0, "Música", "Tu canción favorita también es matemática", "Ritmo, repetición, frecuencia y proporción aparecen en casi toda la música. La emoción y la estructura pueden convivir en el mismo compás.", "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("musica", 1, "Música", "Una pausa también puede ser parte de la melodía", "El silencio crea tensión, descanso y expectativa. A veces lo que una canción no toca es exactamente lo que hace que el siguiente sonido importe más.", "https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=1200&q=82"),
+
+            new DiscoveryContribution("anime", 0, "Anime & Manga", "Una escena puede contar más con el fondo que con el diálogo", "Color, encuadre, clima y arquitectura ayudan a contar emociones incluso cuando los personajes no dicen nada. Ahí también vive parte de la narrativa.", "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("anime", 1, "Anime & Manga", "El manga controla el tiempo con viñetas", "Una página puede acelerar una pelea o detener un instante usando tamaño, espacio y distribución de paneles. Leer también es recorrer ritmo visual.", "https://images.unsplash.com/photo-1614583225154-5fcdda07019e?auto=format&fit=crop&w=1200&q=82"),
+
+            new DiscoveryContribution("fotografia", 0, "Fotografía", "La mejor cámara también depende de dónde te colocas", "Moverte unos pasos cambia perspectiva, luz y fondo. Muchas veces una foto mejora más al cambiar de posición que al cambiar de equipo.", "https://images.unsplash.com/photo-1452780212940-6f5c0d14d848?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("fotografia", 1, "Fotografía", "La luz suave puede convertir una foto simple en una gran foto", "Ventanas, nubes y sombras abiertas crean transiciones suaves que suelen favorecer retratos y escenas cotidianas sin necesidad de un estudio.", "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=82"),
+
+            new DiscoveryContribution("ciencia", 0, "Ciencia", "Mirar una estrella es mirar hacia atrás", "La luz necesita tiempo para viajar. Eso significa que cada estrella que vemos nos muestra cómo era en un momento anterior de la historia del universo.", "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("ciencia", 1, "Ciencia", "Tu cuerpo también es un ecosistema", "Millones de microorganismos viven con nosotros y participan en procesos relacionados con digestión, defensa y equilibrio interno.", "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?auto=format&fit=crop&w=1200&q=82"),
+
+            new DiscoveryContribution("viajes", 0, "Viajes", "A veces el mejor recuerdo no estaba en el itinerario", "Perderse unas calles, probar algo local o conversar con alguien del lugar puede terminar siendo más memorable que la atracción que habías planeado visitar.", "https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("viajes", 1, "Viajes", "Viajar ligero cambia la forma de moverte", "Menos equipaje significa más libertad para caminar, cambiar de ruta y usar transporte local. Elegir qué no llevar también forma parte del viaje.", "https://images.unsplash.com/photo-1503220317375-aaad61436b1b?auto=format&fit=crop&w=1200&q=82"),
+
+            new DiscoveryContribution("fitness", 0, "Fitness & Bienestar", "La constancia suele ganar a la rutina perfecta", "Un plan sencillo que puedes repetir durante meses suele aportar más que una rutina extrema que abandonas en una semana.", "https://images.unsplash.com/photo-1538805060514-97d9cc17730c?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("fitness", 1, "Fitness & Bienestar", "Descansar también forma parte del entrenamiento", "El cuerpo necesita recuperar energía y reparar tejidos. Dormir y programar descansos no es hacer menos: es parte del proceso.", "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1200&q=82"),
+
+            new DiscoveryContribution("arte", 0, "Arte & Diseño", "El espacio vacío también diseña", "En una interfaz, una portada o una ilustración, el espacio alrededor de los elementos ayuda a crear jerarquía, claridad y respiración visual.", "https://images.unsplash.com/photo-1547891654-e66ed7ebb968?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("arte", 1, "Arte & Diseño", "El color cambia según lo que tiene al lado", "Una misma tonalidad puede sentirse más cálida, fría, brillante o apagada dependiendo de los colores que la rodean.", "https://images.unsplash.com/photo-1541961017774-22349e4a1262?auto=format&fit=crop&w=1200&q=82"),
+
+            new DiscoveryContribution("programacion", 0, "Programación", "Los sistemas grandes empiezan con piezas pequeñas", "Funciones, clases y servicios simples se combinan hasta formar aplicaciones enormes. La complejidad suele crecer capa por capa.", "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("programacion", 1, "Programación", "Leer código es una habilidad distinta a escribirlo", "Entender proyectos ajenos, seguir el flujo de datos y encontrar responsabilidades es una de las prácticas que más acelera el crecimiento como desarrollador.", "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=1200&q=82"),
+
+            new DiscoveryContribution("cine", 0, "Cine & Series", "La cámara también puede actuar", "Un plano cerrado puede hacerte sentir atrapado; uno abierto puede mostrar soledad o libertad. El encuadre cuenta parte de la historia sin hablar.", "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("cine", 1, "Cine & Series", "El sonido puede cambiar por completo una escena", "La misma imagen puede sentirse divertida, tensa o triste solo cambiando música, ambiente y silencios. El audio también dirige la emoción.", "https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&w=1200&q=82"),
+
+            new DiscoveryContribution("naturaleza", 0, "Naturaleza", "Un bosque también funciona como una red", "Raíces, hongos, agua y nutrientes forman relaciones complejas bajo el suelo. Lo que vemos en la superficie es solo una parte del sistema.", "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=82"),
+            new DiscoveryContribution("naturaleza", 1, "Naturaleza", "Un paisaje nunca está completamente quieto", "Viento, agua, temperatura y vida cambian poco a poco montañas, costas, bosques y desiertos aunque nuestros ojos no alcancen a verlo en un instante.", "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=82")
     );
 
     private final UserRepository userRepository;
     private final PostRepository postRepository;
 
+    // 10:15 y 19:15 (hora de Lima): 12 publicaciones por tanda, una por cada tema.
     @Scheduled(cron = "0 15 10,19 * * *", zone = "America/Lima")
     @Transactional
-    public void publishDailyContribution() {
+    public void publishDailyContributions() {
         User official = userRepository.findByUsernameIgnoreCase(USERNAME).orElse(null);
         if (official == null) {
-            log.warn("Lifonk Descubre todavía no existe; se omitió la contribución programada.");
+            log.warn("Lifonk Descubre todavía no existe; se omitieron las contribuciones programadas.");
             return;
         }
 
         LocalDate today = LocalDate.now(LIMA);
         Instant dayStart = today.atStartOfDay(LIMA).toInstant();
         Instant dayEnd = today.plusDays(1).atStartOfDay(LIMA).toInstant();
-        long publishedToday = postRepository.countByUserAndCreatedAtBetween(official, dayStart, dayEnd);
-        if (publishedToday >= 2) return;
+        List<Post> publishedToday = postRepository.findByUserAndCreatedAtBetweenOrderByCreatedAtAsc(official, dayStart, dayEnd);
 
-        int index = Math.floorMod((int) (today.toEpochDay() * 2 + publishedToday), CONTRIBUTIONS.size());
-        DiscoveryContribution contribution = CONTRIBUTIONS.get(index);
+        int slot = java.time.ZonedDateTime.now(LIMA).getHour() >= 19 ? 1 : 0;
+        int published = 0;
 
-        Post post = Post.builder()
-                .user(official)
-                .caption(contribution.title() + "\n\n" + contribution.caption())
-                .isShortVideo(false)
-                .build();
-        PostMedia media = PostMedia.builder()
-                .post(post)
-                .mediaType("IMAGE")
-                .originalUrl(contribution.imageUrl())
-                .mediumUrl(contribution.imageUrl())
-                .thumbnailUrl(contribution.imageUrl())
-                .displayOrder(0)
-                .build();
-        post.getMediaList().add(media);
-        postRepository.save(post);
-        log.info("Lifonk Descubre publicó {}: {} ({} del día {}).", contribution.topic(), contribution.title(), publishedToday + 1, today);
+        for (DiscoveryContribution contribution : CONTRIBUTIONS) {
+            if (contribution.slot() != slot) continue;
+            String marker = marker(contribution, slot);
+            boolean alreadyPublished = publishedToday.stream()
+                    .map(Post::getCaption)
+                    .filter(java.util.Objects::nonNull)
+                    .anyMatch(caption -> caption.contains(marker));
+            if (alreadyPublished) continue;
+
+            Post post = Post.builder()
+                    .user(official)
+                    .caption(contribution.title() + "\n\n" + contribution.caption() + "\n\n" + marker)
+                    .isShortVideo(false)
+                    .build();
+            PostMedia media = PostMedia.builder()
+                    .post(post)
+                    .mediaType("IMAGE")
+                    .originalUrl(contribution.imageUrl())
+                    .mediumUrl(contribution.imageUrl())
+                    .thumbnailUrl(contribution.imageUrl())
+                    .displayOrder(0)
+                    .build();
+            post.getMediaList().add(media);
+            postRepository.save(post);
+            published++;
+        }
+
+        log.info("Lifonk Descubre publicó {} contribuciones de la tanda {} para {}.", published, slot + 1, today);
     }
 
-    private record DiscoveryContribution(String topic, String title, String caption, String imageUrl) {}
+    private String marker(DiscoveryContribution contribution, int slot) {
+        return "#Descubre" + contribution.slug().substring(0, 1).toUpperCase() + contribution.slug().substring(1)
+                + (slot == 0 ? " #LifonkAM" : " #LifonkPM");
+    }
+
+    private record DiscoveryContribution(String slug, int slot, String topic, String title, String caption, String imageUrl) {}
 }
