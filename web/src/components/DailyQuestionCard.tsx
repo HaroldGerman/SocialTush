@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { ArrowRight, BadgeCheck, Brain, Compass, MessageCircleQuestion, Sparkles } from 'lucide-react';
+import { ArrowRight, Brain, MessageCircleQuestion, Sparkles } from 'lucide-react';
 import { api, useAuth } from '@/context/AuthContext';
 
 const DAILY_QUESTIONS = [
@@ -46,24 +45,6 @@ const FACTS_BY_INTEREST: Record<string, string[]> = {
   viajes: ['Nepal es el único país cuya bandera nacional no tiene forma rectangular.'],
   naturaleza: ['Los bosques de manglar pueden almacenar más carbono por unidad de superficie que muchos bosques terrestres tropicales.']
 };
-
-const DISCOVERY_POSTS = [
-  {
-    image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=82',
-    title: 'Hay lugares que parecen inventados',
-    caption: 'Montañas, niebla y silencio. A veces descubrir también es detenerse un momento y mirar.'
-  },
-  {
-    image: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=82',
-    title: 'El desierto también guarda ritmo',
-    caption: 'Las dunas cambian lentamente con el viento: un paisaje puede estar vivo aunque parezca inmóvil.'
-  },
-  {
-    image: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=82',
-    title: 'Un minuto de bosque',
-    caption: 'Los ecosistemas forestales conectan raíces, hongos, agua y nutrientes en redes mucho más complejas de lo que vemos.'
-  }
-];
 
 interface DailyQuestionCardProps { onPublished?: (post: any) => void; }
 
@@ -157,7 +138,6 @@ export default function DailyQuestionCard({ onPublished }: DailyQuestionCardProp
   }, [dateKey, interests, user?.username]);
 
   const randomFact = useMemo(() => GENERAL_FACTS[dailySequenceIndex(dateKey, GENERAL_FACTS.length, 'random')], [dateKey]);
-  const discovery = useMemo(() => DISCOVERY_POSTS[hashIndex(`${dateKey}:${user?.username || ''}:landscape`, DISCOVERY_POSTS.length)], [dateKey, user?.username]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -210,16 +190,6 @@ export default function DailyQuestionCard({ onPublished }: DailyQuestionCardProp
         <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-amber-500"/><p className="text-[10px] font-black uppercase tracking-[.18em] text-amber-700 dark:text-amber-400">{interests.length ? 'Dato para ti' : 'Cultura general'}</p></div>
         <p className="mt-2 text-sm font-bold leading-relaxed text-slate-800 dark:text-slate-100">{personalFact}</p>
         {interests.length > 0 && <p className="mt-2 text-[10px] text-slate-500">Basado en: {interests.slice(0, 3).join(' · ')}</p>}
-      </section>
-
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0f172a]">
-        <Link href="/profile/lifonk-descubre" className="flex items-center gap-3 p-4 transition hover:bg-slate-50 dark:hover:bg-slate-900/40">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-teal-600 to-cyan-600 font-black text-white">L</div>
-          <div className="min-w-0 flex-1"><div className="flex items-center gap-1"><p className="text-sm font-black dark:text-white">Lifonk Descubre</p><BadgeCheck className="h-4 w-4 text-teal-500"/></div><p className="text-[10px] text-slate-500">@lifonk-descubre · Cuenta oficial</p></div>
-          <Compass className="h-4 w-4 text-teal-500"/>
-        </Link>
-        <Link href="/profile/lifonk-descubre" className="block"><img src={discovery.image} alt={discovery.title} loading="lazy" className="max-h-[66dvh] w-full bg-slate-100 object-cover dark:bg-[#09121f]" /></Link>
-        <div className="p-4"><h3 className="text-base font-black text-slate-900 dark:text-white">{discovery.title}</h3><p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{discovery.caption}</p><Link href="/profile/lifonk-descubre" className="mt-3 inline-block text-[10px] font-bold uppercase tracking-[.14em] text-teal-600 dark:text-teal-400">Ver perfil · Descubre algo nuevo cada día</Link></div>
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-[#0f172a]"><p className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-600 dark:text-cyan-400">Dato random</p><p className="mt-2 text-sm font-bold leading-relaxed text-slate-800 dark:text-slate-100">{randomFact}</p></section>
