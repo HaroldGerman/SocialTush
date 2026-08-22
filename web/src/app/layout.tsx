@@ -14,6 +14,7 @@ import ChatReliableInteractions from "@/components/ChatReliableInteractions";
 import ChatReplyEnhancer from "@/components/ChatReplyEnhancer";
 import ChatHistoryTools from "@/components/ChatHistoryTools";
 import ChatSearchHistoryNavigator from "@/components/ChatSearchHistoryNavigator";
+import ChatCameraCaptureBridge from "@/components/ChatCameraCaptureBridge";
 import StoryCameraVideoRecorder from "@/components/StoryCameraVideoRecorder";
 import IncomingCallBridge from "@/components/IncomingCallBridge";
 import BuzzPersistenceBridge from "@/components/BuzzPersistenceBridge";
@@ -51,6 +52,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <ChatReplyEnhancer />
           <ChatHistoryTools />
           <ChatSearchHistoryNavigator />
+          <ChatCameraCaptureBridge />
           <StoryCameraVideoRecorder />
           <IncomingCallBridge />
           <PulseInteractiveEcos />
