@@ -23,12 +23,7 @@ async function resolveTikTokUrl(input: URL) {
   });
 
   const finalUrl = new URL(response.url || input.toString());
-  try {
-    await response.body?.cancel();
-  } catch {
-    // No-op: the final redirected URL is all we need.
-  }
-
+  try { await response.body?.cancel(); } catch {}
   if (!isTikTokUrl(finalUrl)) throw new Error('Redirección de TikTok no permitida');
   return finalUrl;
 }
@@ -58,6 +53,17 @@ async function fetchTikTokOEmbed(url: URL) {
   return data;
 }
 
+function fallbackPayload(url: URL) {
+  return {
+    url: url.toString(),
+    providerName: 'TikTok',
+    title: 'Video compartido desde TikTok',
+    authorName: '',
+    authorUrl: '',
+    thumbnailUrl: '',
+  };
+}
+
 export async function GET(request: NextRequest) {
   const rawUrl = request.nextUrl.searchParams.get('url')?.trim();
   if (!rawUrl || rawUrl.length > 2048) {
@@ -75,17 +81,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: 'Proveedor no compatible' }, { status: 400 });
   }
 
+  let canonicalUrl = sharedUrl;
   try {
-    let canonicalUrl = sharedUrl;
-    let data = await fetchTikTokOEmbed(sharedUrl);
-
-    if (!data && (sharedUrl.hostname === 'vt.tiktok.com' || sharedUrl.hostname === 'vm.tiktok.com')) {
-      canonicalUrl = await resolveTikTokUrl(sharedUrl);
-      data = await fetchTikTokOEmbed(canonicalUrl);
+    if (sharedUrl.hostname === 'vt.tiktok.com' || sharedUrl.hostname === 'vm.tiktok.com') {
+      try { canonicalUrl = await resolveTikTokUrl(sharedUrl); } catch {}
     }
 
+    const data = await fetchTikTokOEmbed(canonicalUrl);
     if (!data) {
-      return NextResponse.json({ message: 'Vista previa no disponible' }, { status: 404 });
+      return NextResponse.json(fallbackPayload(canonicalUrl), {
+        headers: { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600' },
+      });
     }
 
     return NextResponse.json({
@@ -96,12 +102,12 @@ export async function GET(request: NextRequest) {
       authorUrl: data.author_url || '',
       thumbnailUrl: data.thumbnail_url || '',
     }, {
-      headers: {
-        'Cache-Control': 'public, max-age=900, stale-while-revalidate=86400',
-      },
+      headers: { 'Cache-Control': 'public, max-age=900, stale-while-revalidate=86400' },
     });
   } catch (error) {
     console.error('TikTok link preview error', error);
-    return NextResponse.json({ message: 'No se pudo cargar la vista previa' }, { status: 502 });
+    return NextResponse.json(fallbackPayload(canonicalUrl), {
+      headers: { 'Cache-Control': 'public, max-age=120, stale-while-revalidate=600' },
+    });
   }
 }
