@@ -18,6 +18,7 @@ import java.util.UUID;
 public interface PostRepository extends JpaRepository<Post, UUID> {
     long countByUser(User user);
     long countByUserAndCreatedAtBetween(User user, Instant start, Instant end);
+    List<Post> findByUserAndCreatedAtBetweenOrderByCreatedAtAsc(User user, Instant start, Instant end);
 
     List<Post> findByUserAndFeaturedPositionIsNotNullOrderByFeaturedPositionAsc(User user);
 
