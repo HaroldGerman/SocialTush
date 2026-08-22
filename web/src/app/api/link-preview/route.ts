@@ -13,27 +13,49 @@ function isTikTokUrl(value: URL) {
 }
 
 async function resolveTikTokUrl(input: URL) {
-  let current = input;
+  const response = await fetch(input.toString(), {
+    method: 'GET',
+    redirect: 'follow',
+    headers: {
+      'user-agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36',
+      accept: 'text/html,application/xhtml+xml',
+    },
+  });
 
-  for (let index = 0; index < 4; index += 1) {
-    const response = await fetch(current.toString(), {
-      method: 'HEAD',
-      redirect: 'manual',
-      headers: {
-        'user-agent': 'Mozilla/5.0 (compatible; LifonkLinkPreview/1.0)',
-      },
-    });
-
-    if (![301, 302, 303, 307, 308].includes(response.status)) return current;
-    const location = response.headers.get('location');
-    if (!location) return current;
-
-    const next = new URL(location, current);
-    if (!isTikTokUrl(next)) throw new Error('Redirección de TikTok no permitida');
-    current = next;
+  const finalUrl = new URL(response.url || input.toString());
+  try {
+    await response.body?.cancel();
+  } catch {
+    // No-op: the final redirected URL is all we need.
   }
 
-  return current;
+  if (!isTikTokUrl(finalUrl)) throw new Error('Redirección de TikTok no permitida');
+  return finalUrl;
+}
+
+async function fetchTikTokOEmbed(url: URL) {
+  const endpoint = new URL('https://www.tiktok.com/oembed');
+  endpoint.searchParams.set('url', url.toString());
+
+  const response = await fetch(endpoint.toString(), {
+    headers: {
+      accept: 'application/json',
+      'user-agent': 'Mozilla/5.0 (compatible; LifonkLinkPreview/1.0)',
+    },
+  });
+
+  if (!response.ok) return null;
+
+  const data = await response.json() as {
+    title?: string;
+    author_name?: string;
+    author_url?: string;
+    thumbnail_url?: string;
+    provider_name?: string;
+  };
+
+  if (!data.thumbnail_url && !data.title) return null;
+  return data;
 }
 
 export async function GET(request: NextRequest) {
@@ -55,37 +77,14 @@ export async function GET(request: NextRequest) {
 
   try {
     let canonicalUrl = sharedUrl;
-    if (sharedUrl.hostname === 'vt.tiktok.com' || sharedUrl.hostname === 'vm.tiktok.com') {
-      try {
-        canonicalUrl = await resolveTikTokUrl(sharedUrl);
-      } catch {
-        canonicalUrl = sharedUrl;
-      }
+    let data = await fetchTikTokOEmbed(sharedUrl);
+
+    if (!data && (sharedUrl.hostname === 'vt.tiktok.com' || sharedUrl.hostname === 'vm.tiktok.com')) {
+      canonicalUrl = await resolveTikTokUrl(sharedUrl);
+      data = await fetchTikTokOEmbed(canonicalUrl);
     }
 
-    const endpoint = new URL('https://www.tiktok.com/oembed');
-    endpoint.searchParams.set('url', canonicalUrl.toString());
-
-    const response = await fetch(endpoint.toString(), {
-      headers: {
-        accept: 'application/json',
-        'user-agent': 'Mozilla/5.0 (compatible; LifonkLinkPreview/1.0)',
-      },
-    });
-
-    if (!response.ok) {
-      return NextResponse.json({ message: 'Vista previa no disponible' }, { status: 404 });
-    }
-
-    const data = await response.json() as {
-      title?: string;
-      author_name?: string;
-      author_url?: string;
-      thumbnail_url?: string;
-      provider_name?: string;
-    };
-
-    if (!data.thumbnail_url && !data.title) {
+    if (!data) {
       return NextResponse.json({ message: 'Vista previa no disponible' }, { status: 404 });
     }
 
