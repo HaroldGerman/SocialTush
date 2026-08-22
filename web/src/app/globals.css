@@ -8,8 +8,6 @@
   --card-bg: #ffffff;
   --text-main: #1e1b2e;
   --text-muted: #6b6680;
-
-  /* Lifonk brand: violet + coral */
   --brand-primary: #6d28d9;
   --brand-primary-hover: #5b21b6;
   --brand-primary-soft: #f3e8ff;
@@ -17,8 +15,6 @@
   --brand-accent: #f43f5e;
   --brand-accent-hover: #e11d48;
   --brand-accent-soft: #ffe4e6;
-
-  /* Backward-compatible aliases while older components migrate. */
   --primary-teal: var(--brand-primary);
   --primary-dark-teal: var(--brand-primary-hover);
   --accent-light-teal: var(--brand-primary-soft);
@@ -41,45 +37,28 @@ body {
   overflow-x: hidden;
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: var(--bg-main);
-}
-::-webkit-scrollbar-thumb {
-  background: #a8a1b8;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--brand-primary);
-}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-main); }
+::-webkit-scrollbar-thumb { background: #a8a1b8; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--brand-primary); }
 
-/* Clean Card Shadows & Effects */
 .soft-card {
   background: var(--card-bg);
   border: 1px solid #e7e3ef;
   box-shadow: 0 4px 20px -2px rgba(46, 16, 101, 0.06);
   border-radius: 1.25rem;
 }
-
-.soft-card-hover {
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
+.soft-card-hover { transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
 .soft-card-hover:hover {
   transform: translateY(-2px);
   box-shadow: 0 12px 28px -4px rgba(109, 40, 217, 0.14);
   border-color: #d8d0e8;
 }
 
-/* Legacy class names kept so existing markup does not break. */
 .teal-gradient-card {
   background: linear-gradient(135deg, #2e1065 0%, #6d28d9 68%, #f43f5e 145%);
   color: #ffffff;
 }
-
 .teal-pill-btn {
   background: linear-gradient(135deg, var(--brand-primary), #7c3aed);
   color: #ffffff;
@@ -89,7 +68,6 @@ body {
   background: linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary));
   box-shadow: 0 4px 14px rgba(109, 40, 217, 0.28);
 }
-
 .badge-counter {
   background-color: var(--brand-accent);
   color: #ffffff;
@@ -99,65 +77,55 @@ body {
   border-radius: 9999px;
 }
 
-/*
- * Brand migration layer.
- * A large part of Lifonk still uses Tailwind teal utilities from the original
- * visual identity. These aliases immediately move those surfaces to violet
- * without changing behavior, while coral remains the attention/accent color.
- */
+/* Complete migration of old brand utilities to Lifonk violet. */
+[class*="text-teal-"] { color: var(--brand-primary) !important; }
+[class*="bg-teal-"] { background-color: var(--brand-primary) !important; }
+[class*="border-teal-"] { border-color: #d8b4fe !important; }
+[class*="ring-teal-"] { --tw-ring-color: #c084fc !important; }
+[class*="shadow-teal-"] { --tw-shadow-color: rgba(109,40,217,.24) !important; }
+[class*="focus:border-teal-"]:focus { border-color: #a855f7 !important; }
+[class*="hover:text-teal-"]:hover { color: #7e22ce !important; }
+[class*="hover:bg-teal-"]:hover { background-color: #5b21b6 !important; }
+
+/* Preserve soft/light teal utilities as soft violet surfaces. */
+.bg-teal-50, [class*="bg-teal-50/"] { background-color: #faf5ff !important; }
+.bg-teal-100, [class*="bg-teal-100/"] { background-color: #f3e8ff !important; }
+.bg-teal-200, [class*="bg-teal-200/"] { background-color: #e9d5ff !important; }
+.text-teal-100 { color: #f3e8ff !important; }
 .text-teal-300 { color: #d8b4fe !important; }
 .text-teal-400 { color: #c084fc !important; }
 .text-teal-500 { color: #a855f7 !important; }
 .text-teal-600 { color: #9333ea !important; }
 .text-teal-700 { color: #7e22ce !important; }
 .text-teal-800 { color: #6b21a8 !important; }
-.text-teal-900 { color: #581c87 !important; }
+.text-teal-900, .text-teal-950 { color: #4c1d75 !important; }
 
-.bg-teal-50 { background-color: #faf5ff !important; }
-.bg-teal-100 { background-color: #f3e8ff !important; }
-.bg-teal-200 { background-color: #e9d5ff !important; }
-.bg-teal-300 { background-color: #d8b4fe !important; }
-.bg-teal-400 { background-color: #c084fc !important; }
-.bg-teal-500 { background-color: #a855f7 !important; }
-.bg-teal-600 { background-color: #9333ea !important; }
-.bg-teal-700 { background-color: #7e22ce !important; }
-.bg-teal-800 { background-color: #6b21a8 !important; }
-.bg-teal-900 { background-color: #581c87 !important; }
-.bg-teal-950 { background-color: #3b0764 !important; }
+/* Tailwind gradient variables used by old teal/emerald brand gradients. */
+[class*="from-teal-"] {
+  --tw-gradient-from: #6d28d9 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(109 40 217 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+[class*="via-teal-"] {
+  --tw-gradient-to: rgb(126 34 206 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), #7e22ce var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+[class*="from-teal-"][class*="to-emerald-"] {
+  --tw-gradient-to: #f43f5e var(--tw-gradient-to-position) !important;
+}
 
-.border-teal-100 { border-color: #f3e8ff !important; }
-.border-teal-200 { border-color: #e9d5ff !important; }
-.border-teal-300 { border-color: #d8b4fe !important; }
-.border-teal-400 { border-color: #c084fc !important; }
-.border-teal-500 { border-color: #a855f7 !important; }
-.border-teal-600 { border-color: #9333ea !important; }
-.border-teal-700 { border-color: #7e22ce !important; }
-.border-teal-800 { border-color: #6b21a8 !important; }
-.border-teal-900 { border-color: #581c87 !important; }
+/* Old hard-coded chat receipt colors. */
+[class*="border-[#18877e]"] { border-color: #7e22ce !important; }
+[class*="bg-[#18877e]"] { background-color: #7e22ce !important; }
+[class*="bg-[#62d0c4]"] { background-color: #f43f5e !important; }
 
-.ring-teal-300 { --tw-ring-color: #d8b4fe !important; }
-.ring-teal-400 { --tw-ring-color: #c084fc !important; }
-.ring-teal-500 { --tw-ring-color: #a855f7 !important; }
+.dark [class*="text-teal-"] { color: #d8b4fe !important; }
+.dark [class*="bg-teal-950"] { background-color: #2e1065 !important; }
+.dark [class*="border-teal-900"] { border-color: #581c87 !important; }
 
-.hover\:text-teal-700:hover { color: #7e22ce !important; }
-.hover\:bg-teal-50:hover { background-color: #faf5ff !important; }
-.hover\:bg-teal-100:hover { background-color: #f3e8ff !important; }
-.hover\:bg-teal-700:hover { background-color: #7e22ce !important; }
-
-.dark .dark\:text-teal-300 { color: #d8b4fe !important; }
-.dark .dark\:bg-teal-950 { background-color: #2e1065 !important; }
-.dark .dark\:border-teal-900 { border-color: #581c87 !important; }
-.dark .dark\:hover\:bg-teal-800:hover { background-color: #6b21a8 !important; }
-
-/* Semantic helpers for new Lifonk components. */
 .lifonk-primary {
   background: linear-gradient(135deg, var(--brand-primary), #7c3aed);
   color: #fff;
 }
-.lifonk-accent {
-  color: var(--brand-accent);
-}
-.lifonk-accent-bg {
-  background-color: var(--brand-accent);
-  color: #fff;
-}
+.lifonk-accent { color: var(--brand-accent); }
+.lifonk-accent-bg { background-color: var(--brand-accent); color: #fff; }
