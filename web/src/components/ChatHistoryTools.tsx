@@ -89,20 +89,6 @@ async function loadAllMessages(conversationId: string) {
   return all;
 }
 
-async function searchAll(conversationId: string, query: string) {
-  const results: Message[] = [];
-  for (let page = 0; page < 100; page += 1) {
-    const response = await api.get(`/chat/conversations/${conversationId}/messages/search`, {
-      params: { q: query, page, size: 50 },
-    });
-    const content: Message[] = response.data?.content || response.data || [];
-    results.push(...content);
-    const isLast = response.data?.last === true || content.length < 50;
-    if (isLast) break;
-  }
-  return results;
-}
-
 function cleanUrl(value: string) {
   return value.replace(/[),.!?]+$/, '');
 }
@@ -143,6 +129,7 @@ export default function ChatHistoryTools() {
   const [searching, setSearching] = useState(false);
   const [notice, setNotice] = useState('');
   const loadedConversationRef = useRef('');
+  const loadedMessagesRef = useRef<Message[]>([]);
 
   const buildLibrary = useCallback(async () => {
     const conversation = await resolveConversation();
@@ -167,6 +154,7 @@ export default function ChatHistoryTools() {
         });
       });
       loadedConversationRef.current = conversation.conversationId;
+      loadedMessagesRef.current = messages;
       setLibraryItems(items);
     } catch {
       setNotice('No se pudo cargar todo el historial de multimedia.');
@@ -182,7 +170,6 @@ export default function ChatHistoryTools() {
       const label = labels.find(visible);
       if (!label) {
         setLibraryMount(null);
-        loadedConversationRef.current = '';
         return;
       }
       const container = label.parentElement;
@@ -212,9 +199,22 @@ export default function ChatHistoryTools() {
     }
     setSearching(true);
     try {
-      const conversation = await resolveConversation();
-      if (!conversation?.conversationId) throw new Error('conversation-not-found');
-      const found = await searchAll(conversation.conversationId, trimmed);
+      let conversationId = loadedConversationRef.current;
+      if (!conversationId) {
+        const conversation = await resolveConversation();
+        conversationId = conversation?.conversationId || '';
+      }
+      if (!conversationId) throw new Error('conversation-not-found');
+
+      let messages = loadedMessagesRef.current;
+      if (!messages.length || loadedConversationRef.current !== conversationId) {
+        messages = await loadAllMessages(conversationId);
+        loadedMessagesRef.current = messages;
+        loadedConversationRef.current = conversationId;
+      }
+
+      const normalizedQuery = trimmed.toLocaleLowerCase('es');
+      const found = messages.filter((message) => (message.content || '').toLocaleLowerCase('es').includes(normalizedQuery));
       setQuery(trimmed);
       setResults(found);
       setResultIndex(0);
@@ -285,7 +285,7 @@ export default function ChatHistoryTools() {
       <div className="mt-2">
         <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-[10px] font-bold text-slate-400">{libraryLoading ? 'Cargando historial…' : `${library.length} elementos`}</span>
-          {!libraryLoading && <button type="button" onClick={() => { loadedConversationRef.current = ''; void buildLibrary(); }} className="text-[9px] font-bold text-[#8b5cf6]">Actualizar</button>}
+          {!libraryLoading && <button type="button" onClick={() => { loadedConversationRef.current = ''; loadedMessagesRef.current = []; void buildLibrary(); }} className="text-[9px] font-bold text-[#8b5cf6]">Actualizar</button>}
         </div>
         {!libraryLoading && library.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 px-3 py-5 text-center text-[10px] text-slate-400 dark:border-slate-700">Aún no hay multimedia, enlaces o archivos.</div>}
         <div className="grid max-h-[430px] grid-cols-3 gap-2 overflow-y-auto pr-1">
