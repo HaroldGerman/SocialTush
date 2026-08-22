@@ -11,20 +11,26 @@ module.exports = {
     extend: {
       colors: {
         background: {
-          light: '#f8fafc', // slate-50
-          dark: '#09090b',  // zinc-950
+          light: '#f7f6fb',
+          dark: '#0d0b14',
         },
         surface: {
           light: '#ffffff',
-          dark: '#18181b',  // zinc-900
+          dark: '#15111f',
         },
         border: {
-          light: '#e2e8f0', // slate-200
-          dark: '#27272a',  // zinc-800
+          light: '#e7e3ef',
+          dark: '#2b2139',
         },
         primary: {
-          DEFAULT: '#6366f1', // violet/indigo-500
-          hover: '#4f46e5',
+          DEFAULT: '#6d28d9',
+          hover: '#5b21b6',
+          soft: '#f3e8ff',
+        },
+        accent: {
+          DEFAULT: '#f43f5e',
+          hover: '#e11d48',
+          soft: '#ffe4e6',
         },
       },
       animation: {
